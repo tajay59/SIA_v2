@@ -31,7 +31,7 @@ Source: [BSD](../BSD.md) (field-level definitions, the source of truth), [TAD §
 | `accounts` | identity | `svc_identity` | find, insert, update | 65 | 1M |
 | `temp` | identity | `svc_identity` | find, insert, update, remove | 0 | ~10k (TTL) |
 | `organisations` ✚ | identity | `svc_identity` | find, insert, update | — | ~5k |
-| `auditlog` ✚ | identity | `svc_identity` | find, **insert only** | — | +2M/yr |
+| `auditlog` ✚ | identity | `svc_identity` | find, **insert** (update only to anonymise purged accounts) | — | +2M/yr |
 | `product` | catalog | `svc_catalog` | find, insert, update | 83 | 2M |
 | `xuser` (view) | catalog | `svc_catalog` | find | view | — |
 | `misc` | catalog | `svc_catalog` | find, insert, update | 12 | ~5k |
@@ -91,7 +91,7 @@ Products, units, sites, locations and shelves keep their legacy barcode formats.
 ## 4.4 Collections at a glance
 
 ### `accounts`
-`id` (unique) · `email` (unique, case-insensitive) · `passwordHash` (Argon2id; legacy hash upgraded at next login) · `firstname`, `lastname`, `phone` · `role` · **`status`** · `isCimh` · `organisationText` (typed) → **`organisationId`** (set at approval) · `department`, `country` · `addresses[]` (max 10) · `defaults{site, location, shelf}` (staff) · `verifiedAt`, `approvedBy/At`, `rejection` · `statusHistory[]` · `failedLogins` · `mfa` · `outbox[]`.
+`id` (unique) · `email` (unique, case-insensitive) · `passwordHash` (Argon2id; legacy hash upgraded at next login) · `firstname`, `lastname`, `phone` · `role` · **`status`** · `isCimh` · `organisationText` (typed) → **`organisationId`** (set at approval) · `department`, `country` · `addresses[]` (max 10) · `defaults{site, location, shelf}` (staff) · `verifiedAt`, `approvedBy/At`, `rejection` · `statusHistory[]` · `failedLogins` · `mfa` · `approvalReminderAt` · `deletedAt` (purge in progress) · `outbox[]`.
 Removed: `cart` (moves to `orders`), `emailconfirmed`, `registered`, `timestamp`, `password`.
 Rule: an `ACTIVE` non-CIMH account must have an `organisationId`.
 

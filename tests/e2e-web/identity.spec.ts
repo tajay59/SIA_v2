@@ -6,6 +6,19 @@ import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
 import { activeCimhAccount, adminAccount, claimCode, IDENTITY, nextTotpWindow, PASSWORD, req, run, totp } from './support'
 
+/** Any Content-Security-Policy violation or uncaught page error fails the test (preview sends staging's CSP). */
+let pageProblems: string[] = []
+test.beforeEach(({ page }) => {
+  pageProblems = []
+  page.on('console', (m) => {
+    if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) pageProblems.push(`CSP: ${m.text().slice(0, 160)}`)
+  })
+  page.on('pageerror', (e) => pageProblems.push(`page error: ${e.message}`))
+})
+test.afterEach(() => {
+  expect(pageProblems).toEqual([])
+})
+
 /** Vuetify's code input: six visual boxes over one real textbox (named by aria-label). */
 async function typeCode(page: Page, code: string) {
   await page.getByRole('textbox', { name: '6-digit code' }).fill(code)

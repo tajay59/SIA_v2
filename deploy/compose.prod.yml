@@ -184,13 +184,47 @@ services:
       REDIS_URL_FILE: /run/secrets/redis_url_relay
       KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
       KAFKA_SASL_USER: relay
-      KAFKA_SASL_PASSWORD_FILE: /run/secrets/kafka_relay
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_relay
       KAFKA_CA_FILE: /run/secrets/ca.pem
-    secrets: [ca.pem, mongo_url_identity, redis_url_relay, kafka_relay]
+    secrets: [ca.pem, mongo_url_identity, redis_url_relay, app_kafka_relay]
     healthcheck: { disable: true }
     depends_on: { kafka-setup: { condition: service_completed_successfully } }
     networks: [data]
     mem_limit: 64m
+    cpus: 0.1
+
+  # Scheduled jobs: expire unverified sign-ups, approval reminders, 90-day purge (Redis-locked leader).
+  identity-jobs:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/identity-svc@${IDENTITY_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "identity_svc.jobs"]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_identity
+      REDIS_URL_FILE: /run/secrets/redis_url_identity
+    secrets: [ca.pem, mongo_url_identity, redis_url_identity]
+    healthcheck: { disable: true }
+    depends_on: { redis: { condition: service_healthy }, mongo1: { condition: service_healthy } }
+    networks: [data]
+    mem_limit: 96m
+    cpus: 0.1
+
+  # audit.events -> auditlog (other services' audit records).
+  identity-audit-consumer:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/identity-svc@${IDENTITY_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "identity_svc.audit_consumer"]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_identity
+      REDIS_URL_FILE: /run/secrets/redis_url_identity
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: identity
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_identity
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_identity, redis_url_identity, app_kafka_identity]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 128m
     cpus: 0.1
 
   # ---------------------------------------------------------------- monitoring
@@ -260,6 +294,8 @@ secrets:
   kafka_notification: { file: "${SECRETS:-./secrets}/kafka_notification" }
   kafka_media: { file: "${SECRETS:-./secrets}/kafka_media" }
   kafka_relay: { file: "${SECRETS:-./secrets}/kafka_relay" }
+  app_kafka_relay: { file: "${SECRETS:-./secrets}/app_kafka_relay" }     # copy owned by uid 10001
+  app_kafka_identity: { file: "${SECRETS:-./secrets}/app_kafka_identity" }
   kafka_exporter: { file: "${SECRETS:-./secrets}/kafka_exporter" }
 
 networks:

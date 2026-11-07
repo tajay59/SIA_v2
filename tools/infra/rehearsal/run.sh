@@ -78,6 +78,7 @@ tar -C "$SEC" -cf - . | docker run --rm -i -v $SECRETS_VOLUME:/s alpine:3.20 sh 
   put kafka 1000 pki/ca.pem $(cd /in && ls kafka_*)
   cp /in/pki/sia-host.cimh.local.pem /s/kafka/kafka.pem; chown 1000 /s/kafka/kafka.pem; chmod 400 /s/kafka/kafka.pem
   put app 10001 pki/ca.pem $(cd /in && ls mongo_url_* redis_url_* kafka_relay) jwt_private_key data_key code_pepper service_secrets
+  for k in relay identity; do cp /in/kafka_$k /s/app/app_kafka_$k; chown 10001 /s/app/app_kafka_$k; chmod 400 /s/app/app_kafka_$k; done
   put backup 999 pki/ca.pem mongo_url_backup mongo_url_restore restic_password'
 ok "secrets volume prepared"
 

@@ -83,6 +83,36 @@ services:
     mem_limit: 96m
     cpus: 0.1
 
+  identity-jobs:
+    image: cimh/identity-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "identity_svc.jobs"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+    healthcheck: { disable: true }
+    depends_on:
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 96m
+    cpus: 0.1
+
+  identity-audit-consumer:
+    image: cimh/identity-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "identity_svc.audit_consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 128m
+    cpus: 0.1
+
   mongo:
     image: mongo:8.0
     restart: unless-stopped

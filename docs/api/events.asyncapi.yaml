@@ -30,6 +30,7 @@ channels:
       userRoleChanged: { $ref: '#/components/messages/userRoleChanged' }
       userProfileUpdated: { $ref: '#/components/messages/userProfileUpdated' }
       userDeleted: { $ref: '#/components/messages/userDeleted' }
+      userApprovalPending: { $ref: '#/components/messages/userApprovalPending' }
       userPasswordResetRequested: { $ref: '#/components/messages/userPasswordResetRequested' }
       userEmailChangeRequested: { $ref: '#/components/messages/userEmailChangeRequested' }
   catalogProductEvents:
@@ -298,6 +299,17 @@ components:
     userProfileUpdated:
       name: user.profile_updated
       payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { $ref: '#/components/schemas/UserRef' } } } ] }
+    userApprovalPending:
+      name: user.approval_pending
+      description: An account has waited longer than the reminder threshold (48 h) for admin approval; sent once per account by identity's scheduled job. notification-svc emails the admins (J-08).
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - properties: { waitingSince: { type: [string, 'null'], format: date-time } }
     userDeleted:
       name: user.deleted
       description: Tombstone (value has userId only). Consumers remove personal data copies.

@@ -19,7 +19,15 @@ import pytest
 pytest.importorskip("testcontainers")
 from testcontainers.core.container import DockerContainer
 
-TOPICS = ["identity.user.events", "audit.events", "itest.events", "itest.events.retry", "itest.events.dlq"]
+TOPICS = [
+    "identity.user.events",
+    "audit.events",
+    "audit.events.retry",
+    "audit.events.dlq",
+    "itest.events",
+    "itest.events.retry",
+    "itest.events.dlq",
+]
 
 
 @dataclass

@@ -122,6 +122,34 @@ services:
     mem_limit: 64m
     healthcheck: { disable: true }
 
+  identity-jobs:
+    image: cimh/identity-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "identity_svc.jobs"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JOBS_INTERVAL_SECONDS: "300"
+    depends_on:
+      identity-svc: { condition: service_healthy }
+    mem_limit: 96m
+    healthcheck: { disable: true }
+
+  identity-audit-consumer:
+    profiles: [kafka]
+    image: cimh/identity-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "identity_svc.audit_consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      identity-svc: { condition: service_healthy }
+    mem_limit: 128m
+    healthcheck: { disable: true }
+
   prometheus:
     image: prom/prometheus:v3.1.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]

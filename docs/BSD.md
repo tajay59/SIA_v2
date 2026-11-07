@@ -57,7 +57,7 @@ Only the owning service connects to its collections. Each service has **its own 
 | `accounts` | identity-svc | `svc_identity` | find, insert, update | 65 | 1M |
 | `temp` | identity-svc | `svc_identity` | find, insert, update, remove | 0 | ~10k (TTL) |
 | `organisations` ✚ | identity-svc | `svc_identity` | find, insert, update | — | ~5k |
-| `auditlog` ✚ | identity-svc | `svc_identity` | find, **insert only** | — | +2M/year |
+| `auditlog` ✚ | identity-svc | `svc_identity` | find, **insert** (update only to anonymise purged accounts) | — | +2M/year |
 | `product` | catalog-svc | `svc_catalog` | find, insert, update | 83 | 2M |
 | `xuser` (view) | catalog-svc | `svc_catalog` | find | view | — |
 | `misc` | catalog-svc | `svc_catalog` | find, insert, update | 12 | ~5k (sites/shelves) |
@@ -149,6 +149,8 @@ Users of every role.
 | `failedLogins` | `{ count int, lockedUntil? }` | R | ✚ | Never returned by the API |
 | `mfa` | `{ enabled bool, totpSecretEnc? }` | | ✚ | Admins (TRD TR-AUTH-9); the secret is encrypted |
 | `createdAt`, `updatedAt` | Timestamp | R | ✚ (was `registered`/`timestamp`) | |
+| `approvalReminderAt` | Timestamp | O | ✚ | Set when the one 48 h approval reminder was sent (`user.approval_pending`) |
+| `deletedAt` | Timestamp | O | ✚ | Set by the 90-day purge: personal data already removed, `user.deleted` waiting in the outbox; the document is removed once it is published. Hidden from every list |
 | `outbox` | OutboxEvent[] | R | ✚ | Usually empty |
 | `cart` | — | | ✖ | Moved to `orders` (`status: CART`) |
 | `emailconfirmed`, `registered`, `timestamp`, `password` | — | | ✖ | Replaced as above |
@@ -245,7 +247,7 @@ Short-lived verification and reset codes.
 | `{ "actor.id": 1, at: -1 }` | What one person did |
 | `{ action: 1, at: -1 }` | Filtering by action |
 
-**Rules:** `svc_identity` has `insert` and `find` only. Retention is indefinite. On account deletion, `actor.name` and `ip` are replaced with `"[deleted]"` by the migration role, the only exception to "add only".
+**Rules:** identity-svc only inserts and reads entries, except one case: when the 90-day purge deletes an account, its job replaces `actor.name` with `"[deleted]"` and removes `ip` on that person's entries (the only exception to "add only"; MongoDB can't grant update on single fields, so `svc_identity` holds update on the collection and the code is the control). Retention is indefinite. Entries from other services arrive through `audit.events`; their id is derived from the event id, so redelivery never duplicates them.
 
 ### 5.5 `product` (catalog-svc)
 

@@ -214,3 +214,106 @@ def test_redis_lock_is_exclusive_and_token_safe(stack: Any) -> None:
         return res
 
     assert _run(scenario()) == [True, False, False, False, True, True, True]
+
+
+def test_jobs_and_audit_consumer_on_real_stack(stack: Any) -> None:
+    """Jobs' date comparisons and update operators on a real server; the audit consumer on real Kafka."""
+    from datetime import UTC, datetime, timedelta
+
+    from cimh_common.consume_loop import run_service_consumer
+    from cimh_common.consumer import IdempotentConsumer
+    from identity_svc.audit_consumer import make_handler
+    from identity_svc.jobs import Jobs
+    from identity_svc.store import Store
+
+    async def scenario() -> tuple[dict[str, int], dict[str, Any] | None, int]:
+        import redis.asyncio as aioredis
+        from aiokafka import AIOKafkaProducer
+        from pymongo import AsyncMongoClient
+
+        db = AsyncMongoClient(stack.mongo_url, tz_aware=True)[f"itest_{uuid.uuid4().hex[:8]}"]
+        store = Store(db)
+        now = datetime.now(UTC)
+        await store.accounts.insert_many(
+            [
+                {
+                    "id": "USR_A",
+                    "email": "a@x.org",
+                    "status": "PENDING_VERIFICATION",
+                    "version": 1,
+                    "createdAt": now - timedelta(hours=30),
+                    "updatedAt": now - timedelta(hours=30),
+                    "outbox": [],
+                },
+                {
+                    "id": "USR_B",
+                    "email": "b@x.org",
+                    "status": "PENDING_APPROVAL",
+                    "version": 1,
+                    "firstname": "B",
+                    "lastname": "B",
+                    "role": "user",
+                    "isCimh": False,
+                    "verifiedAt": now - timedelta(hours=50),
+                    "createdAt": now - timedelta(days=3),
+                    "updatedAt": now,
+                    "outbox": [],
+                },
+                {
+                    "id": "USR_C",
+                    "email": "c@x.org",
+                    "status": "REJECTED",
+                    "version": 1,
+                    "firstname": "C",
+                    "lastname": "C",
+                    "createdAt": now - timedelta(days=200),
+                    "updatedAt": now - timedelta(days=100),
+                    "outbox": [],
+                },
+            ]
+        )
+        counts = await Jobs(store).run_all(now)
+
+        redis = aioredis.from_url(stack.redis_url)
+        producer = AIOKafkaProducer(bootstrap_servers=stack.kafka)
+        await producer.start()
+        evt = new_event(
+            "audit.recorded",
+            {
+                "action": "order.quoted",
+                "entity": {"type": "request", "id": "ORD1"},
+                "actor": {"id": "USR_S", "name": "Sam", "role": "staff"},
+            },
+            correlation_id="itest",
+        )
+        await producer.send_and_wait("audit.events", evt.envelope().model_dump_json().encode(), key=b"ORD1")
+        stop = asyncio.Event()
+        handler = IdempotentConsumer(f"identity-{uuid.uuid4().hex[:6]}", make_handler(store), redis, producer)
+        task = asyncio.create_task(
+            run_service_consumer(
+                group=handler.group,
+                topics=["audit.events"],
+                handler=handler,
+                bootstrap=stack.kafka,
+                security={},
+                stop=stop,
+            )
+        )
+        entry = None
+        for _ in range(120):
+            entry = await store.audit.find_one({"id": f"AUD{evt.eventId}"})
+            if entry:
+                break
+            await asyncio.sleep(0.5)
+        stop.set()
+        await asyncio.wait_for(task, 15)
+        await producer.stop()
+        await redis.aclose()
+        remaining = await store.accounts.count_documents({"deletedAt": {"$exists": True}})
+        return counts, entry, remaining
+
+    counts, entry, tombstones = _run(scenario())
+    assert counts == {"expired": 1, "reminded": 1, "purged": 1, "removed": 0}
+    assert tombstones == 1  # waits for the relay to publish user.deleted
+    assert entry is not None
+    assert entry["action"] == "order.quoted"
