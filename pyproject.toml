@@ -3,7 +3,7 @@
 [tool.ruff]
 line-length = 120
 target-version = "py313"
-extend-exclude = [".venv", "node_modules"]
+extend-exclude = [".venv", "node_modules", "legacy", "docs", ".claude", "SIA", "SHOP", "v2", "_old_root_npm", "LOCAL", "Spares", "slides", "sia_env"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF", "SIM", "PT"]

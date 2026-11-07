@@ -77,9 +77,9 @@ def main(argv: list[str] | None = None) -> int:
     index = {}
     for etype, schema in sorted(schemas.items()):
         fname = f"{etype}.v1.json"
-        (args.out / fname).write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+        (args.out / fname).write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8", newline="\n")
         index[etype] = fname
-    (args.out / "index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8")
+    (args.out / "index.json").write_text(json.dumps(index, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"{len(schemas)} event schemas -> {args.out}")
     return 0
 

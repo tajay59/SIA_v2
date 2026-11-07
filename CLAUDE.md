@@ -13,9 +13,10 @@ Keep it terse. Detail lives in `docs/`; this file only points to it.
 ## What this is
 **Team: one developer working with Claude Code. No deadline; phases end on exit criteria.**
 Rebuild of CIMH's stores system to production grade (target: 1M registered users).
-- **SHOP** (`SHOP/SIA-STORE`): customer web store (Vue 3, legacy JS). Build output in `SHOP/store/` (served by nginx). `SHOP/SIA-STORE` **is** a git repo (has the owner's uncommitted WIP in `src/stores`, `src/views`; don't commit it).
-- **v2** (`v2/`): the new monorepo (git, branch `main`, no remote yet). See `v2/README.md` and `v2/CONTRIBUTING.md`. Venv `v2/.venv`; dev stack `docker compose -f deploy/compose.dev.yml [--profile kafka]` on ports 18000 (hello) / 18001 (identity) / 19090/19093/18025 (9090 and 27018 are taken by other software on this PC).
-- **SIA** (`SIA/`): legacy **Flask** API (`SIA/app/views.py` ~3.7k lines, `functions.py` = Mongo layer) + staff Vue app (`SIA/src`). Git repo.
+- **One git repo at the project root** (branch `main`, no remote yet). v2 code at the root (`services/ packages/ web/ deploy/ tools/ tests/`, `README.md`, `CONTRIBUTING.md`); `docs/`; legacy apps in `legacy/` with their histories (SIA history purged of customer files). Venv `.venv` at the root. `core.autocrlf=false` + `.gitattributes` (LF). Dev stack: `docker compose -f deploy/compose.dev.yml [--profile kafka]` on ports 18000 (hello) / 18001 (identity) / 19090/19093/18025 (9090 and 27018 are taken by other software on this PC).
+- **Legacy SHOP** (`legacy/shop`): customer web store (Vue 3, legacy JS) + its nginx confs (`legacy/shop/nginx/`). The owner's uncommitted WIP (`src/stores`, `src/views`, package files) is carried over **uncommitted**; don't commit it.
+- **Old folders `SIA/`, `SHOP/`, `v2/`** are pre-merge copies kept until the owner confirms; git ignores them. Delete only when asked. Stray root npm install moved to `_old_root_npm/`.
+- **Legacy SIA** (`legacy/sia`): **Flask** API (`legacy/sia/app/views.py` ~3.7k lines, `functions.py` = Mongo layer) + staff Vue app (`legacy/sia/src`). Its `.env` was copied in (git-ignored).
 - **SIA Mobile**: Android (Kotlin/Compose) at `C:\Users\tedwards\AndroidStudioProjects\StockInventoryApp`.
 - Root also holds unrelated clutter (`product photos/`, `LOCAL/`, `fake_products.json` 564 MB, PDFs). **Ignore it.**
 
@@ -77,7 +78,7 @@ Rebuild of CIMH's stores system to production grade (target: 1M registered users
 - Org name uniqueness via `nameKey` (lower-cased) instead of a collation index. HIBP fail-open (TRD). Missing `If-Match` → 428 `PRECONDITION_REQUIRED`.
 
 ## Staging-lite server (demo, shared)
-- `ssh kw-server` (84.247.187.64, Contabo, Ubuntu 22.04, 4 cores / 6 GB, **shared with live stacks**: mms, printit, kreativwrist). Our stack: `/opt/sia-staging`, compose project `sia-staging`, deploy with `v2/deploy/staging-lite/deploy.sh` (from `v2/`).
+- `ssh kw-server` (84.247.187.64, Contabo, Ubuntu 22.04, 4 cores / 6 GB, **shared with live stacks**: mms, printit, kreativwrist). Our stack: `/opt/sia-staging`, compose project `sia-staging`, deploy with `deploy/staging-lite/deploy.sh` (from the repo root).
 - https://sia.hashiz.store (status page + identity API), https://store.hashiz.store (placeholder). Edge = `printit-nginx` (owns 80/443, loads `/srv/edge-sites/*.conf`; ours: `cimh-stores-staging.conf`) → `sia-gateway` alias on `kong-net`. Always `nginx -t` before reload.
 - Cert `sia.hashiz.store` (both names) is **standalone**: certbot's global pre/post hooks **stop/start printit-nginx** (all sites blip ~10 s) on every certbot run, so never run certbot casually; webroot can't work here.
 - Secrets only in `/opt/sia-staging/secrets` (generated on the server). **Synthetic data only** (DPA). ~1.5 GB RAM left on the box; keep `mem_limit`s.
@@ -99,9 +100,9 @@ Update CLI skills: `npx skills update -p`.
 
 ## Environment and gotchas
 - Windows 11; use the Bash tool (Git Bash) or PowerShell. **Bash heredocs containing `'''` or nested quotes break**: write scripts to the scratchpad with the Write tool, then run them.
-- `SIA/sia_env` venv is broken (points at a missing Python). Use system Python 3.13 or a scratch venv.
+- `SIA/sia_env` (old copy) venv is broken (points at a missing Python). Use system Python 3.13 or a scratch venv.
 - draw.io CLI: `"C:\Program Files\draw.io\draw.io.exe" -x -f svg --svg-theme dark -o images/X.svg diagrams/X.drawio`. **Always use `--svg-theme dark`**; the manual cards are `#121212`. **Exception: `28-design-tokens` → `--svg-theme light`** (dark mode recolours swatches; the diagram draws its own dark background). Don't regenerate a `.drawio` file that has been hand-edited.
-- **Secrets:** `SIA/.env` holds real credentials, and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
+- **Secrets:** `legacy/sia/.env` (and old `SIA/.env`) hold real credentials. **`git.txt` in the root holds a GitHub token: owner must revoke it** (git-ignored), and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
 - Commit or push only when asked. P0 fixes are committed in SIA (`3ad5fa0`, `4a5881b`).
 - Customer quotation PDFs and `Spares.db` are untracked now but **still in SIA git history**: purge (`git filter-repo`) before SIA is ever pushed anywhere.
 
@@ -127,6 +128,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-07: One monorepo at the project root (v2 + legacy/sia + legacy/shop + docs, histories kept, customer files purged from history); all checks re-run green from the new layout.
 - 2026-11-07: Staging-lite live on sia/store.hashiz.store (kw-server); e2e smoke passes over public HTTPS.
 - 2026-11-07: P2 identity backend + outbox relay built and verified end to end; contract gaps fixed (code claim endpoint, 2 events, error codes) in API/BSD/TAD/manual (diagrams 03, 13).
 - 2026-11-07: P1 code built in `v2/` (monorepo, py-common, hello-svc, deploy, CI, test tooling, web packages); infra/GitHub steps left for the owner.
