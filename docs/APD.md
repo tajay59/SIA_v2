@@ -257,5 +257,6 @@ Code: `web/shop`, `web/sia` (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes)
 | A-01 | Identity counters only (pending approvals, unverified sign-ups) until order/inventory exist |
 | **New:** `/mfa-setup` (SIA) | An admin without MFA lands here after login and can't use anything else (TR-AUTH-9). After confirming, the admin logs in again, because the old token predates MFA |
 | **New:** `/staff-only` (SIA) | The "This app is for CIMH staff" screen of §2 |
+| **SIA Mobile** M-01 + session (`mobile/sia`) | New app (id `bb.edu.cimh.sia`) next to the legacy one. Login with MFA code step, "staff only" for customers, admins without MFA sent to SIA web; refresh token sealed in the Android Keystore; app lock after 5 min (screen lock or strong biometric; no screen lock → signed out); HTTPS only with pinned Let's Encrypt roots. M-02 is a placeholder; M-03–M-11 come with P8. CI job `mobile` (unit, lint, debug + release build) |
 
 Behaviour notes: the start-up session probe never shows "session ended" to an anonymous visitor (only a failed refresh during use does). Dev servers use ports 15173 (SHOP) and 15174 (SIA).
