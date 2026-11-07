@@ -12,8 +12,12 @@ RUN python -m venv /opt/venv \
 
 FROM python:3.13-slim
 # TR-SEC-8: non-root uid 10001, read-only root fs (set in compose), no build tools.
-RUN groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app
+# No pip at runtime: it is never used, and its vendored libs (urllib3, msgpack...) are scanner findings.
+RUN groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app \
+ && python -m pip uninstall -y -q pip \
+ && rm -rf /usr/local/lib/python3.13/ensurepip
 COPY --from=build /opt/venv /opt/venv
+RUN rm -rf /opt/venv/lib/python3.13/site-packages/pip /opt/venv/lib/python3.13/site-packages/pip-*.dist-info /opt/venv/bin/pip*
 ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
