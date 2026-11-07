@@ -11,6 +11,7 @@ name: sia-rehearsal
 services:
   mongo1:
     extends: { file: ../../../deploy/compose.prod.yml, service: mongo1 }
+    cpus: 1.0   # CI runners have 2 CPUs
     secrets: !reset []
     ports: !reset []
     volumes: !override
@@ -20,6 +21,7 @@ services:
 
   mongo2: &pi
     extends: { file: ../../../deploy/compose.prod.yml, service: mongo1 }
+    cpus: 1.0   # CI runners have 2 CPUs
     secrets: !reset []
     command: ["mongod", "--config", "/etc/mongod.conf", "--wiredTigerCacheSizeGB", "0.25"]
     ports: !reset []
@@ -32,6 +34,7 @@ services:
     mem_limit: 768m
   mongo3:
     <<: *pi
+    cpus: 1.0
     secrets: !reset []
     volumes: !override
       - mongo3:/data/db
