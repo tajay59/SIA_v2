@@ -169,17 +169,16 @@ jobs:
           HOST: ${{ vars.STAGING_HOST }}
         run: |
           install -m 700 -d ~/.ssh
-          printf '%s
-' "$KEY" > ~/.ssh/staging && chmod 600 ~/.ssh/staging
-          printf '%s
-' "$KNOWN" > ~/.ssh/known_hosts
-          printf 'Host kw-server
-  HostName %s
-  User root
-  IdentityFile ~/.ssh/staging
-  IdentitiesOnly yes
-  StrictHostKeyChecking yes
-' "$HOST" > ~/.ssh/config
+          echo "$KEY" > ~/.ssh/staging && chmod 600 ~/.ssh/staging
+          echo "$KNOWN" > ~/.ssh/known_hosts
+          {
+            echo "Host kw-server"
+            echo "  HostName $HOST"
+            echo "  User root"
+            echo "  IdentityFile ~/.ssh/staging"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking yes"
+          } > ~/.ssh/config
       - name: Deploy (build, ship, restart; edge/cert step stays manual)
         run: bash deploy/staging-lite/deploy.sh
       - name: Smoke
