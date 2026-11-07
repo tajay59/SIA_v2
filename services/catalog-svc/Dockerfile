@@ -14,7 +14,7 @@ FROM python:3.13-slim
 # TR-SEC-8: non-root uid 10001, read-only root fs (set in compose), no build tools.
 # No pip at runtime: it is never used, and its vendored libs (urllib3, msgpack...) are scanner findings.
 RUN groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app \
- && mkdir -p /srv/sia-data/incoming /srv/sia-data/products && chown -R 10001:10001 /srv/sia-data \
+ && mkdir -p /srv/sia-data/incoming /srv/sia-data/public/products && chown -R 10001:10001 /srv/sia-data \
  && python -m pip uninstall -y -q pip \
  && rm -rf /usr/local/lib/python3.13/ensurepip
 COPY --from=build /opt/venv /opt/venv

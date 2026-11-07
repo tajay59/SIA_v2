@@ -23,7 +23,7 @@ SECRETS_VOLUME=sia-rehearsal-secrets-$(date +%s)
 export SECRETS_VOLUME
 C="docker compose -f $HERE/compose.yml"
 export KAFKA_CLUSTER_ID=${KAFKA_CLUSTER_ID:-$(docker run --rm --entrypoint /opt/kafka/bin/kafka-storage.sh apache/kafka:3.9.0 random-uuid | tr -d '\r')}
-export VLAN_IP=127.0.0.1 HELLO_SVC_DIGEST=sha256:unused IDENTITY_SVC_DIGEST=sha256:unused CATALOG_SVC_DIGEST=sha256:unused
+export VLAN_IP=127.0.0.1 HELLO_SVC_DIGEST=sha256:unused IDENTITY_SVC_DIGEST=sha256:unused CATALOG_SVC_DIGEST=sha256:unused MEDIA_WORKER_DIGEST=sha256:unused
 PASS=0; FAIL=0
 ok() { echo "  PASS  $*"; PASS=$((PASS+1)); }
 bad() { echo "  FAIL  $*"; FAIL=$((FAIL+1)); }

@@ -31,7 +31,7 @@ for u in kafka_admin kafka_identity kafka_catalog kafka_inventory kafka_order ka
 done
 
 # Redis ACL users (users.acl is rendered from these by render-redis-acl.sh).
-for u in redis_identity redis_catalog redis_inventory redis_order redis_document redis_notification redis_relay redis_exporter; do
+for u in redis_identity redis_catalog redis_inventory redis_order redis_document redis_notification redis_media redis_relay redis_exporter; do
   make "$u" rand
 done
 
@@ -56,7 +56,7 @@ for svc in identity catalog inventory order; do
   url "mongo_url_$svc" "mongodb://svc_$svc:$(cat "$DIR/mongo_svc_$svc")@$MONGO_HOSTS/inventory?authSource=admin&$MONGO_OPTS"
 done
 url mongo_url_backup "mongodb://svc_backup:$(cat "$DIR/mongo_svc_backup")@$BACKUP_HOST/?authSource=admin&tls=true&tlsCAFile=/run/secrets/ca.pem&directConnection=true"
-for svc in identity catalog inventory order document notification relay; do
+for svc in identity catalog inventory order document notification media relay; do
   url "redis_url_$svc" "redis://$svc:$(cat "$DIR/redis_$svc")@$REDIS_HOST/0"
 done
 

@@ -175,6 +175,22 @@ services:
     mem_limit: 112m
     cpus: 0.1
 
+  media-worker:
+    image: cimh/media-worker:staging
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      MEDIA_ROOT: /srv/sia-data
+    volumes: [media:/srv/sia-data]
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 320m
+    cpus: 0.5
+
   mongo:
     image: mongo:8.0
     restart: unless-stopped

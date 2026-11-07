@@ -29,7 +29,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker
           pip install -r requirements-dev.txt
       - name: Ruff
         run: ruff check . && ruff format --check .
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}", cache: pip }
       - run: |
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -r requirements-dev.txt
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -r requirements-dev.txt
           # Real Mongo replica set, Redis and Kafka in containers (tests/integration).
           pytest -m integration --no-cov
 
@@ -135,7 +135,7 @@ jobs:
           pip install bandit pip-audit
           bandit -q -r packages services -x '*/tests/*'
           pip-audit -r requirements-dev.txt
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc && pip-audit --skip-editable
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker && pip-audit --skip-editable
       - name: Semgrep
         run: pipx run semgrep scan --config p/python --config p/owasp-top-ten --error packages services
 
@@ -147,7 +147,7 @@ jobs:
     permissions: { contents: read, packages: write, id-token: write }
     strategy:
       matrix:
-        service: [hello-svc, identity-svc, catalog-svc]
+        service: [hello-svc, identity-svc, catalog-svc, media-worker]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -184,7 +184,7 @@ jobs:
       - name: actionlint (workflow files)
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
       - name: compose files render
-        env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", CATALOG_SVC_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
+        env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", CATALOG_SVC_DIGEST: "sha256:x", MEDIA_WORKER_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
         run: |
           for f in deploy/compose.prod.yml deploy/compose.pi.yml deploy/compose.dev.yml; do docker compose -f "$f" config -q; done
           docker volume create sia-rehearsal-secrets && docker compose -f tools/infra/rehearsal/compose.yml config -q

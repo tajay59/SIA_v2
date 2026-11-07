@@ -18,6 +18,7 @@ declare -A KEYS=(
   [order]='~ord:*'
   [document]='~doc:*'
   [notification]='~ntf:*'
+  [media]='~media:*'
   [relay]='~lock:outbox-relay:*'
 )
 

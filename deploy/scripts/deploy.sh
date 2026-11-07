@@ -31,7 +31,7 @@ PREVIOUS=$(cat "$STATE_DIR/$SERVICE.digest" 2>/dev/null || true)
 
 # Compose interpolates every service's image, not only the one being deployed: export the other services'
 # deployed digests (a placeholder for one never deployed; --no-deps means it is not touched).
-for other in $(grep -o '[A-Z_]*_SVC_DIGEST' "$COMPOSE_FILE" | sort -u); do
+for other in $(grep -o '[A-Z_]*_DIGEST:?' "$COMPOSE_FILE" | tr -d ':?' | sort -u); do
   name=$(echo "${other%_DIGEST}" | tr 'A-Z_' 'a-z-')
   export "$other=$(cat "$STATE_DIR/$name.digest" 2>/dev/null || echo "sha256:$(printf '0%.0s' {1..64})")"
 done
