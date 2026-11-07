@@ -122,7 +122,7 @@ services:
 
   # The restore target (stands in for staging's single-node replica set).
   mongo-restore:
-    image: mongo:8.0.26
+    image: mongo:8.0.30
     command: ["--replSet", "rs1", "--bind_ip_all"]
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "try { if (db.hello().isWritablePrimary) quit(0); rs.initiate({_id:'rs1',members:[{_id:0,host:'mongo-restore:27017'}]}) } catch (e) {} quit(1)"]

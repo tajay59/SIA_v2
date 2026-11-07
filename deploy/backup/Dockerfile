@@ -1,6 +1,6 @@
 # Backup runner: mongodump/mongorestore (from the mongo image) + restic (static binary). INFRASTRUCTURE §7.
 FROM restic/restic:0.17.3 AS restic
-FROM mongo:8.0.26
+FROM mongo:8.0.30
 COPY --from=restic /usr/bin/restic /usr/local/bin/restic
 RUN apt-get update && apt-get install -y --no-install-recommends openssh-client \
  && rm -rf /var/lib/apt/lists/* \

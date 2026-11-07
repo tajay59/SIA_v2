@@ -70,7 +70,7 @@ services:
   # ---------------------------------------------------------------- data
   mongo1:
     <<: *hardening
-    image: mongo:8.0.26
+    image: mongo:8.0.30
     user: "999"
     command: ["mongod", "--config", "/etc/mongod.conf", "--wiredTigerCacheSizeGB", "6"]
     configs: [{ source: mongod-conf, target: /etc/mongod.conf }]

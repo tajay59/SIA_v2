@@ -130,6 +130,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-07: All Mongo images pinned to 8.0.30 (8.0.21–29 refuse to start on kernel 6.19+, found in CI); host kernels must be ≤6.18 or ≥7.0.14.
 - 2026-11-07: P1 code finished: platform as code + rehearsal (all checks pass on Docker), integration tests (testcontainers), Schemathesis contract tests (found 3 contract gaps: implicit error responses now in API README §4, name minLength, health paths at root), identity image in CI.
 - 2026-11-07: CI fully green on GitHub (fixed: identity install, HIBP SHA-1 false positive, trivy-action pin by SHA, pip removed from runtime images = Trivy HIGH in pip's vendored libs).
 - 2026-11-07: Pushed to github.com/tajay59/SIA_v2; `legacy/` removed from the repo and its history (owner decision, force-pushed once); CI fixes (identity install, HIBP SHA-1 nosemgrep).

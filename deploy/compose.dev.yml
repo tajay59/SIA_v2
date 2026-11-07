@@ -16,7 +16,7 @@ x-hardening: &hardening
 
 services:
   mongo:
-    image: mongo:8.0
+    image: mongo:8.0.30
     command: ["--replSet", "rs0", "--bind_ip_all"]
     healthcheck:
       # Initialise a single-member replica set on first start (change streams need one).

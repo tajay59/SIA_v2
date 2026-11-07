@@ -55,7 +55,7 @@ def _free_port() -> int:
 def _mongo() -> tuple[DockerContainer, str]:
     from pymongo import MongoClient
 
-    c = DockerContainer("mongo:8.0").with_command("--replSet rs0 --bind_ip_all").with_exposed_ports(27017)
+    c = DockerContainer("mongo:8.0.30").with_command("--replSet rs0 --bind_ip_all").with_exposed_ports(27017)
     c.start()
     url = f"mongodb://{c.get_container_host_ip()}:{c.get_exposed_port(27017)}/?directConnection=true"
     client: MongoClient[dict[str, object]] = MongoClient(url, serverSelectionTimeoutMS=2000)
