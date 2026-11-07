@@ -573,7 +573,7 @@ components:
         allOf:
           - $ref: '#/components/schemas/Envelope'
           - properties:
-              payload: { type: object, required: [productId, sourcePath, removeBackground], properties: { productId: { type: string }, sourcePath: { type: string }, removeBackground: { type: boolean } } }
+              payload: { type: object, required: [jobId, productId, sourcePath, removeBackground], properties: { jobId: { type: string }, productId: { type: string }, sourcePath: { type: string, description: 'Relative to the files volume, e.g. incoming/<random>.jpg' }, removeBackground: { type: boolean } } }
     imageProcessed:
       name: image.processed
       payload:
@@ -584,6 +584,7 @@ components:
                 type: object
                 required: [productId, ok]
                 properties:
+                  jobId: { type: string, description: From image.process }
                   productId: { type: string }
                   ok: { type: boolean }
                   fileId: { type: string }

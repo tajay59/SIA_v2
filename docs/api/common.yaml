@@ -40,7 +40,7 @@ components:
       in: header
       required: true
       description: The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409.
-      schema: { type: string, example: '"7"' }
+      schema: { type: string, pattern: '^(W/)?"?[0-9]{1,9}"?$', example: '"7"' }
     CsrfToken:
       name: X-CSRF-Token
       in: header
@@ -82,6 +82,9 @@ components:
       content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
     Unavailable:
       description: A dependency is unavailable; nothing was written.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    PreconditionRequired:
+      description: '`If-Match` missing (code PRECONDITION_REQUIRED); send the version you last read.'
       content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
 
   schemas:

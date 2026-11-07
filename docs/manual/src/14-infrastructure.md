@@ -266,6 +266,7 @@ Everything in §4–§7 and §10 steps 4–9 exists as code in `deploy/`; only t
 | Pis and nightly backup (mongodump `--oplog` from the secondary → restic, manifest of counts) | `compose.pi.yml`, `deploy/backup/` |
 | Restore with count verification against the manifest | `deploy/backup/restore.sh` |
 | First build, steps 4–8 | `deploy/scripts/provision.sh` |
+| catalog-svc, its relay and consumer; per-service `service_secret_<name>` files (each caller reads only its own); `/srv/sia-data/{incoming,products}` owned by 10001 | `compose.prod.yml`, `make-secrets.sh`, `provision.sh` |
 
 **Implementation notes.** The first Kafka SCRAM user can't be added through the official image's start script, so `kafka-setup` connects over the mTLS INTERNAL listener as the broker certificate (a super user) and creates every SCRAM user, topic and ACL. The Kafka image writes its config at start, so `/opt/kafka/config` is a tmpfs owned by uid 1000 and `LOG_DIR=/tmp/kafka-logs`; the root filesystem stays read-only. Compose (non-swarm) mounts secret files with the host owner and mode, so `provision.sh` gives each file to the uid that reads it; mongod refuses a keyfile it doesn't own. The localhost exception allows only `createUser`, so `roles.js` creates root first; `provision.sh` passes the user passwords to it on stdin.
 

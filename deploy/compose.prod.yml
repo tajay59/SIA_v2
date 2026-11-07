@@ -227,6 +227,64 @@ services:
     mem_limit: 128m
     cpus: 0.1
 
+  # ---------------------------------------------------------------- catalog (P3)
+  catalog-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/catalog-svc@${CATALOG_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/prod.env]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_catalog
+      REDIS_URL_FILE: /run/secrets/redis_url_catalog
+      IDENTITY_URL: http://identity-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_catalog
+      MEDIA_ROOT: /srv/sia-data
+    volumes: ["/srv/sia-data:/srv/sia-data"]
+    secrets: [ca.pem, mongo_url_catalog, redis_url_catalog, service_secret_catalog]
+    depends_on: { redis: { condition: service_healthy }, mongo1: { condition: service_healthy } }
+    mem_limit: 256m
+    cpus: 0.5
+    deploy: { replicas: 2 }
+
+  outbox-relay-catalog:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/catalog-svc@${CATALOG_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      RELAY_NAME: catalog
+      RELAY_COLLECTIONS: product,misc
+      RELAY_TOPICS: "product.=catalog.product.events,image.=media.jobs,audit.=audit.events"
+      MONGO_URL_FILE: /run/secrets/mongo_url_catalog
+      REDIS_URL_FILE: /run/secrets/redis_url_relay
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: relay
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_relay
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_catalog, redis_url_relay, app_kafka_relay]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+  # inventory.stock.events -> inStock; media.results -> product images.
+  catalog-consumer:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/catalog-svc@${CATALOG_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "catalog_svc.consumer"]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_catalog
+      REDIS_URL_FILE: /run/secrets/redis_url_catalog
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: catalog
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_catalog
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_catalog, redis_url_catalog, app_kafka_catalog]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 128m
+    cpus: 0.1
+
   # ---------------------------------------------------------------- monitoring
   prometheus:
     <<: *hardening
@@ -280,6 +338,9 @@ secrets:
   mongo_url_identity: { file: "${SECRETS:-./secrets}/mongo_url_identity" }
   redis_url_identity: { file: "${SECRETS:-./secrets}/redis_url_identity" }
   redis_url_relay: { file: "${SECRETS:-./secrets}/redis_url_relay" }
+  mongo_url_catalog: { file: "${SECRETS:-./secrets}/mongo_url_catalog" }
+  redis_url_catalog: { file: "${SECRETS:-./secrets}/redis_url_catalog" }
+  service_secret_catalog: { file: "${SECRETS:-./secrets}/service_secret_catalog" }
   jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }
   data_key: { file: "${SECRETS:-./secrets}/data_key" }
   code_pepper: { file: "${SECRETS:-./secrets}/code_pepper" }
@@ -296,6 +357,7 @@ secrets:
   kafka_relay: { file: "${SECRETS:-./secrets}/kafka_relay" }
   app_kafka_relay: { file: "${SECRETS:-./secrets}/app_kafka_relay" }     # copy owned by uid 10001
   app_kafka_identity: { file: "${SECRETS:-./secrets}/app_kafka_identity" }
+  app_kafka_catalog: { file: "${SECRETS:-./secrets}/app_kafka_catalog" }
   kafka_exporter: { file: "${SECRETS:-./secrets}/kafka_exporter" }
 
 networks:

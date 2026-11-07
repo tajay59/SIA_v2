@@ -840,7 +840,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <tr>
 <td>catalog</td>
 <td><code>product</code>, <code>xuser</code>, <code>misc</code></td>
-<td><code>catalog.product.events</code>, <code>media.jobs</code></td>
+<td><code>catalog.product.events</code>, <code>media.jobs</code>, <code>audit.events</code></td>
 <td><code>media.results</code>, <code>inventory.stock.events</code></td>
 <td>—</td>
 </tr>
@@ -1320,10 +1320,10 @@ Rule: an <code>ACTIVE</code> non-CIMH account must have an <code>organisationId<
 <h3 id="auditlog-can-only-be-added-to"><code>auditlog</code> ✚ (can only be added to)</h3>
 <p><code>id</code> (= source eventId, so duplicates are impossible), <code>at</code>, <code>actor</code>, <code>action</code>, <code>entity{type,id}</code>, <code>from/to</code>, <code>reason</code>, <code>ip</code>, <code>correlationId</code>. The service user can insert and read only. Kept indefinitely; personal data is removed when an account is deleted.</p>
 <h3 id="product"><code>product</code></h3>
-<p><code>id</code> (unique) · <code>name</code>, <code>description</code>, <code>details</code>, <code>make</code>, <code>modelname</code>, <code>modelnumber</code> · <strong><code>type</code></strong> codes <code>MET, RAD, EQUIP, SUPP, MISC, PRO</code> · <code>department</code>, <code>project</code> · <strong><code>sellable</code> → bool</strong> · <strong><code>probono</code> bool (required at creation)</strong> · <code>probonoMaxPerRequest?</code> · <code>cost</code> (Money, staff only) · <code>threshold</code>, <code>unitquantity</code>, <code>weight</code>, <code>dimension</code>, <code>sn</code>, <code>sn1</code> · <code>keywords[]</code> · <code>images[]{fileId, url, w, h, primary}</code> · <code>inStock</code> (derived) · <code>active</code> (soft delete).
-Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on <code>sn</code>, <code>sn1</code>, <code>modelnumber</code>.</p>
+<p><code>id</code> (unique) · <code>name</code>, <code>description</code>, <code>details</code>, <code>make</code>, <code>modelname</code>, <code>modelnumber</code> · <strong><code>type</code></strong> codes <code>MET, RAD, EQUIP, SUPP, MISC, PRO</code> · <code>department</code>, <code>project</code> · <strong><code>sellable</code> → bool</strong> · <strong><code>probono</code> bool (required at creation)</strong> · <code>probonoMaxPerRequest?</code> · <code>cost</code> (Money, staff only) · <code>threshold</code>, <code>unitquantity</code>, <code>weight</code>, <code>dimension</code>, <code>sn</code>, <code>sn1</code> · <code>keywords[]</code> · <code>images[]{fileId, url, w, h, primary}</code> · <code>inStock</code>, <code>stockCount</code>, <code>stockAt</code> (derived from stock events; an older event never overwrites a newer one) · <code>active</code> (soft delete).
+Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on <code>sn</code>, <code>sn1</code>, <code>modelnumber</code>. Browsing is sorted by name (indexes end in <code>name, id</code> for cursor paging).</p>
 <h3 id="xuser-view"><code>xuser</code> (view)</h3>
-<p><code>product</code> filtered to <code>sellable: true, active: true</code>, projecting <strong>only public fields</strong>, so <code>cost</code> and serials can never reach a customer.</p>
+<p><code>product</code> filtered to <code>sellable: true, active: true</code>, projecting <strong>only public fields</strong>, so <code>cost</code> and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.</p>
 <h3 id="misc-reference-data-now-with-a-kind-field"><code>misc</code> (reference data, now with a <code>kind</code> field)</h3>
 <table>
 <thead>
@@ -3779,8 +3779,9 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of t
 <p>Rate limits are 20 requests/s per IP for the API in general and 5/min on auth endpoints. Exceeding them returns <code>429</code> with <code>Retry-After</code>.</p>
 <p><strong>Implicit responses.</strong> To keep the specs readable, these are not repeated on every operation, but any
 operation may return them (all as <code>application/problem+json</code>): <strong>401</strong> and <strong>403</strong> if the operation is
-secured; <strong>422</strong> if it takes a body, query or path parameters; <strong>400</strong>, <strong>429</strong> and <strong>503</strong> always. Every
+secured; <strong>422</strong> if it takes a body, query or path parameters; <strong>428</strong> (<code>PRECONDITION_REQUIRED</code>) if it takes <code>If-Match</code>; <strong>400</strong>, <strong>429</strong> and <strong>503</strong> always. Every
 other status must be listed on the operation. The Schemathesis contract tests apply exactly this rule.</p>
+<p><strong>Strict bodies.</strong> Request bodies are validated strictly: a number sent as a string, or <code>true</code> for an integer, is a 422 (never coerced).</p>
 <h2 id="104-the-request-order-api-state-machine-as-endpoints">10.4 The request (order) API: state machine as endpoints</h2>
 <table>
 <thead>
@@ -7259,6 +7260,10 @@ rs.initiate({
 <tr>
 <td>First build, steps 4–8</td>
 <td><code>deploy/scripts/provision.sh</code></td>
+</tr>
+<tr>
+<td>catalog-svc, its relay and consumer; per-service <code>service_secret_&lt;name&gt;</code> files (each caller reads only its own); <code>/srv/sia-data/{incoming,products}</code> owned by 10001</td>
+<td><code>compose.prod.yml</code>, <code>make-secrets.sh</code>, <code>provision.sh</code></td>
 </tr>
 </tbody>
 </table>
