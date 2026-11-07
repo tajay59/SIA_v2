@@ -90,6 +90,33 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
+  kafka-init:
+    profiles: [kafka]
+    image: apache/kafka:3.9.0
+    depends_on: [kafka]
+    entrypoint: ["/bin/bash", "/topics/create-topics.sh"]
+    environment: { BOOTSTRAP: "kafka:9092", REPLICATION: "1" }
+    volumes: [./kafka:/topics:ro]
+
+  outbox-relay-identity:
+    profiles: [kafka]
+    image: cimh/identity-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      RELAY_NAME: identity
+      RELAY_COLLECTIONS: accounts
+      RELAY_TOPICS: "user.=identity.user.events,audit.=audit.events"
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    mem_limit: 64m
+    healthcheck: { disable: true }
+
   prometheus:
     image: prom/prometheus:v3.1.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]
