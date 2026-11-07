@@ -18,6 +18,7 @@ from cimh_common.ids import new_id, ulid
 from cimh_common.outbox import new_event
 from cimh_common.paging import page
 
+from . import privacy
 from . import security as sec
 from .config import Settings
 from .store import Store, now
@@ -71,6 +72,7 @@ def summary(acc: dict[str, Any], org_name: str | None = None) -> dict[str, Any]:
         "organisationName": org_name,
         "organisationText": acc.get("organisationText"),
         "createdAt": iso(acc.get("createdAt")),
+        "erasureRequestedAt": iso(acc.get("erasureRequestedAt")),
     }
 
 
@@ -613,6 +615,84 @@ class IdentityService:
         )
         return account_view(doc, staff_view=False, org_name=await self._org_name(doc.get("organisationId")))
 
+    # ------------------------------------------------------------------ personal-data rights (TR-PRIV-1)
+
+    async def export_data(self, subject_id: str, *, by: Principal, for_admin: bool, cid: str) -> dict[str, Any]:
+        acc = await self.store.accounts.find_one({"id": subject_id, "deletedAt": {"$exists": False}})
+        if acc is None:
+            raise not_found("Account not found") if for_admin else unauthorized()
+        view = account_view(acc, staff_view=True, org_name=await self._org_name(acc.get("organisationId")))
+        out = {
+            "generatedAt": iso(now()),
+            "subjectId": subject_id,
+            "sections": {
+                "identity": {
+                    "account": privacy.export_account_view(view, subject_id, for_admin=for_admin),
+                    "auditTrail": await privacy.audit_trail(self.store, subject_id, for_admin=for_admin),
+                }
+            },
+            "notes": [
+                "Requests, quotes, agreements and their files are kept as financial records; "
+                "ask CIMH for a copy until they are part of this export."
+            ],
+        }
+        await self.store.record_audit(
+            actor=actor_of(by),
+            action="privacy.exported",
+            entity_type="account",
+            entity_id=subject_id,
+            correlation_id=cid,
+        )
+        return out
+
+    async def request_erasure(self, p: Principal, password: str, cid: str) -> None:
+        acc = await self._me(p)
+        if not sec.verify_password(acc.get("passwordHash"), password):
+            raise unauthorized("Password is wrong", code="INVALID_CREDENTIALS")
+        if acc.get("erasureRequestedAt"):
+            return
+        t = now()
+        evt = new_event(
+            "user.erasure_requested",
+            {**user_ref(acc), "requestedAt": iso(t)},
+            correlation_id=cid,
+            actor_id=p.sub,
+        )
+        res = await self.store.accounts.update_one(
+            {"id": acc["id"], "erasureRequestedAt": {"$exists": False}, "deletedAt": {"$exists": False}},
+            {"$set": {"erasureRequestedAt": t}, "$push": {"outbox": evt.model_dump(mode="python")}},
+        )
+        if res.modified_count:
+            await self.store.record_audit(
+                actor=actor_of(p),
+                action="privacy.erasure_requested",
+                entity_type="account",
+                entity_id=acc["id"],
+                correlation_id=cid,
+            )
+
+    async def erase(self, p: Principal, account_id: str, version: int, reason: str, cid: str) -> None:
+        if account_id == p.sub:
+            raise conflict("ACCOUNT_ILLEGAL_TRANSITION", "You cannot erase your own account; ask another admin")
+        acc = await self.store.accounts.find_one({"id": account_id, "deletedAt": {"$exists": False}})
+        if acc is None:
+            raise not_found("Account not found")
+        if acc["role"] == "admin" and acc["status"] == "ACTIVE":
+            await self._ensure_not_last_admin(account_id)
+        done = await privacy.strip_account(
+            self.store,
+            acc,
+            now(),
+            actor=actor_of(p),
+            action="account.erased",
+            reason=reason,
+            correlation_id=cid,
+            version=version,
+        )
+        if not done:
+            raise conflict("VERSION_CONFLICT", "The account was changed by someone else; reload and retry")
+        await self.tokens.revoke_all(account_id)
+
     # ------------------------------------------------------------------ admin: accounts (A3-A5, A7, A10)
 
     async def list_accounts(
@@ -620,6 +700,8 @@ class IdentityService:
     ) -> tuple[list[dict[str, Any]], str | None]:
         q: dict[str, Any] = {k: v for k, v in filters.items() if v and k in ("status", "role", "organisationId")}
         q["deletedAt"] = {"$exists": False}  # purged accounts wait only for their tombstone to be published
+        if filters.get("erasureRequested") is not None:
+            q["erasureRequestedAt"] = {"$exists": bool(filters["erasureRequested"])}
         text = filters.get("q")
         if text:
             import re
@@ -637,7 +719,7 @@ class IdentityService:
         return out, nxt
 
     async def get_account(self, account_id: str) -> dict[str, Any]:
-        acc = await self.store.accounts.find_one({"id": account_id})
+        acc = await self.store.accounts.find_one({"id": account_id, "deletedAt": {"$exists": False}})
         if acc is None:
             raise not_found("Account not found")
         return account_view(acc, staff_view=True, org_name=await self._org_name(acc.get("organisationId")))

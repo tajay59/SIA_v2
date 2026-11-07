@@ -64,7 +64,7 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | S-16 | `/login` | Log in | public | Email, password, (code if MFA) | Success → `returnTo` or S-10 · Status errors as §2 · Forgot → S-17 · Sign up → S-13 |
 | S-17 | `/forgot-password` | Forgot password | public | Email | Submit → S-18 (always, no enumeration) |
 | S-18 | `/reset-password?email=` | Reset password | public | Code + new password | Success → S-16 "Password changed" |
-| S-19 | `/account` | Profile | auth | Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme | Save ↺ (If-Match) · Change email ⧉ → code step · Log out → S-01 |
+| S-19 | `/account` | Profile | auth | Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme, **your data** | Save ↺ (If-Match) · Change email ⧉ → code step · Download my data · Ask to delete ⧉ (password) · Log out → S-01 |
 | S-20 | `/[...notFound]` | Not found | public | Message + links | → S-01 |
 
 ## 4. SIA: screens (staff and admin)
@@ -91,7 +91,7 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | A-14 | `/reports/assignments` | Who has what | staff | Units issued to people | Unassign ⧉ |
 | A-15 | `/reports/history` | Movement history | staff | Filters unit, user, operation, dates | — |
 | A-16 | `/admin/approvals` | Pending accounts | admin | Oldest first; organisation text, email domain, suggested organisation match; checkbox multi-select | **Approve** ⧉ (pick/create organisation, role) ↺ · **Deny** ⧉ reason ↺ · Bulk approve/deny ⧉ (207 results) ↺ |
-| A-17 | `/admin/accounts` · `/admin/accounts/[id]` | Accounts | admin (staff read) | List with filters; detail with status history | Role ⧉ · Suspend ⧉ / Reactivate · → A-20 filtered |
+| A-17 | `/admin/accounts` · `/admin/accounts/[id]` | Accounts | admin (staff read) | List with filters (incl. "asked to be deleted"); detail with status history | Role ⧉ · Suspend ⧉ / Reactivate · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered |
 | A-18 | `/admin/organisations` | Organisations | admin | List, members, aliases, domains | New/Edit ⧉ · **Merge** ⧉ target |
 | A-19 | `/admin/settings` | Settings | admin | Tabs: Fees (admin fee) · Email lists · Workflow (quote validity, reminders, purge, cart inactivity) · Reference (departments, projects) | Save ↺ |
 | A-20 | `/admin/audit` | Audit log | admin | Filters entity, actor, action, dates | Entity link → its screen |
@@ -253,6 +253,7 @@ Code: `web/shop`, `web/sia` (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes)
 | S-01 | Text and "how requesting works" only: featured products and the Pro Bono teaser need the catalogue (P3); the hero image is still to come (Design Brief §7) |
 | S-10 | Empty state until order-svc (P5) |
 | A-21, A-16, A-17, A-18, A-20 | As specified; A-16 suggests an organisation from the email domain, then the organisation text, and can create one in the dialog |
+| Personal data (S-19, A-21, A-17) | "Your data" card: download (JSON) and ask to delete; A-17 marks and filters requests, exports and erases. Journey in `tests/e2e-web/privacy.spec.ts`. The admin email for a request waits for notification-svc (P6) |
 | A-01 | Identity counters only (pending approvals, unverified sign-ups) until order/inventory exist |
 | **New:** `/mfa-setup` (SIA) | An admin without MFA lands here after login and can't use anything else (TR-AUTH-9). After confirming, the admin logs in again, because the old token predates MFA |
 | **New:** `/staff-only` (SIA) | The "This app is for CIMH staff" screen of §2 |

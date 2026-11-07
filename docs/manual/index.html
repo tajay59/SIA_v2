@@ -972,7 +972,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <tbody>
 <tr>
 <td><code>identity.user.events</code></td>
-<td><code>user.registered</code>, <code>user.verified</code>, <code>user.approved</code>, <code>user.rejected</code>, <code>user.suspended</code>, <code>user.reactivated</code>, <code>user.role_changed</code>, <code>user.profile_updated</code>, <code>user.deleted</code>, <code>user.password_reset_requested</code>, <code>user.email_change_requested</code> (code events carry only a <code>codeRef</code>)</td>
+<td><code>user.registered</code>, <code>user.verified</code>, <code>user.approved</code>, <code>user.rejected</code>, <code>user.suspended</code>, <code>user.reactivated</code>, <code>user.role_changed</code>, <code>user.profile_updated</code>, <code>user.approval_pending</code>, <code>user.erasure_requested</code>, <code>user.deleted</code>, <code>user.password_reset_requested</code>, <code>user.email_change_requested</code> (code events carry only a <code>codeRef</code>)</td>
 </tr>
 <tr>
 <td><code>catalog.product.events</code></td>
@@ -1310,7 +1310,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <p>Products, units, sites, locations and shelves keep their legacy barcode formats.</p>
 <h2 id="44-collections-at-a-glance">4.4 Collections at a glance</h2>
 <h3 id="accounts"><code>accounts</code></h3>
-<p><code>id</code> (unique) · <code>email</code> (unique, case-insensitive) · <code>passwordHash</code> (Argon2id; legacy hash upgraded at next login) · <code>firstname</code>, <code>lastname</code>, <code>phone</code> · <code>role</code> · <strong><code>status</code></strong> · <code>isCimh</code> · <code>organisationText</code> (typed) → <strong><code>organisationId</code></strong> (set at approval) · <code>department</code>, <code>country</code> · <code>addresses[]</code> (max 10) · <code>defaults{site, location, shelf}</code> (staff) · <code>verifiedAt</code>, <code>approvedBy/At</code>, <code>rejection</code> · <code>statusHistory[]</code> · <code>failedLogins</code> · <code>mfa</code> · <code>approvalReminderAt</code> · <code>deletedAt</code> (purge in progress) · <code>outbox[]</code>.
+<p><code>id</code> (unique) · <code>email</code> (unique, case-insensitive) · <code>passwordHash</code> (Argon2id; legacy hash upgraded at next login) · <code>firstname</code>, <code>lastname</code>, <code>phone</code> · <code>role</code> · <strong><code>status</code></strong> · <code>isCimh</code> · <code>organisationText</code> (typed) → <strong><code>organisationId</code></strong> (set at approval) · <code>department</code>, <code>country</code> · <code>addresses[]</code> (max 10) · <code>defaults{site, location, shelf}</code> (staff) · <code>verifiedAt</code>, <code>approvedBy/At</code>, <code>rejection</code> · <code>statusHistory[]</code> · <code>failedLogins</code> · <code>mfa</code> · <code>approvalReminderAt</code> · <code>erasureRequestedAt</code> (the person asked to be deleted) · <code>deletedAt</code> (purge or erasure in progress) · <code>outbox[]</code>.
 Removed: <code>cart</code> (moves to <code>orders</code>), <code>emailconfirmed</code>, <code>registered</code>, <code>timestamp</code>, <code>password</code>.
 Rule: an <code>ACTIVE</code> non-CIMH account must have an <code>organisationId</code>.</p>
 <h3 id="temp"><code>temp</code></h3>
@@ -1553,7 +1553,8 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of t
 </tr>
 </tbody>
 </table>
-<p><strong>Right to erasure:</strong> delete the account and replace the personal data on its requests with <code>[deleted]</code>. The financial fields and the audit trail are kept.</p>
+<p><strong>Right of access:</strong> people download their own data from their profile (staff appear by role only); admins can export anyone's. Each export is audited.</p>
+<p><strong>Right to erasure:</strong> the person asks from their profile (password required), and an admin erases the account with a reason. The name, contact details, addresses and sign-in are removed, sessions end, the person's audit entries lose name and IP, and <code>user.deleted</code> tells other services to replace the personal data on requests with <code>[deleted]</code> (open requests are cancelled). The financial fields and the audit trail are kept. The 90-day purge of rejected and expired accounts uses the same steps.</p>
 <h2 id="49-migration-from-the-legacy-data">4.9 Migration from the legacy data</h2>
 <table>
 <thead>
@@ -2760,7 +2761,7 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of t
 </tr>
 <tr>
 <td>Data subject rights</td>
-<td>Access/export via admin; erasure = account deletion + <code>[deleted]</code> replacement in requests (BSD §8)</td>
+<td>Access: self-service download or by an admin; erasure: the person asks (password), an admin erases; personal data removed, <code>[deleted]</code> replacement in requests, audit kept (BSD §8)</td>
 </tr>
 <tr>
 <td>Security</td>
@@ -4203,8 +4204,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/account</code></td>
 <td>Profile</td>
 <td>auth</td>
-<td>Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme</td>
-<td>Save ↺ (If-Match) · Change email ⧉ → code step · Log out → S-01</td>
+<td>Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme, <strong>your data</strong></td>
+<td>Save ↺ (If-Match) · Change email ⧉ → code step · Download my data · Ask to delete ⧉ (password) · Log out → S-01</td>
 </tr>
 <tr>
 <td>S-20</td>
@@ -4364,8 +4365,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/admin/accounts</code> · <code>/admin/accounts/[id]</code></td>
 <td>Accounts</td>
 <td>admin (staff read)</td>
-<td>List with filters; detail with status history</td>
-<td>Role ⧉ · Suspend ⧉ / Reactivate · → A-20 filtered</td>
+<td>List with filters (incl. "asked to be deleted"); detail with status history</td>
+<td>Role ⧉ · Suspend ⧉ / Reactivate · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered</td>
 </tr>
 <tr>
 <td>A-18</td>
@@ -4886,6 +4887,10 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>A-21, A-16, A-17, A-18, A-20</td>
 <td>As specified; A-16 suggests an organisation from the email domain, then the organisation text, and can create one in the dialog</td>
+</tr>
+<tr>
+<td>Personal data (S-19, A-21, A-17)</td>
+<td>"Your data" card: download (JSON) and ask to delete; A-17 marks and filters requests, exports and erases. The admin email for a request waits for notification-svc (P6)</td>
 </tr>
 <tr>
 <td>A-01</td>

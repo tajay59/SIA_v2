@@ -6,8 +6,10 @@
 import { mdiDelete, mdiPencil, mdiPlus } from '@mdi/js'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { formatDate } from '@cimh/web-ui'
 import { ApiError, call, identity, ifMatch } from '../api'
 import { countries, countryName } from '../countries'
+import { downloadJson, exportFilename } from '../download'
 import { useNotify } from '../notify'
 import { useSession } from '../session'
 import { useThemeMode } from '../theme-mode'
@@ -162,6 +164,46 @@ async function changePassword() {
   }
 }
 
+// ---- your data (TR-PRIV-1): download, ask for erasure
+const exporting = ref(false)
+async function downloadMyData() {
+  exporting.value = true
+  try {
+    const body = await call(() => identity.GET('/me/export'))
+    downloadJson(body, exportFilename('cimh-my-data', body.generatedAt))
+  } catch (e) {
+    notify.report(e)
+  } finally {
+    exporting.value = false
+  }
+}
+
+const eraseOpen = ref(false)
+const erasePassword = ref('')
+const eraseValid = ref(false)
+const eraseBusy = ref(false)
+const eraseError = ref<string | null>(null)
+function openErase() {
+  erasePassword.value = ''
+  eraseError.value = null
+  eraseOpen.value = true
+}
+async function requestErasure() {
+  eraseBusy.value = true
+  eraseError.value = null
+  try {
+    await call(() => identity.POST('/me/erasure-request', { body: { password: erasePassword.value } }))
+    eraseOpen.value = false
+    await session.load(true)
+    notify.toast('Request sent. An administrator will erase your account.', 'success')
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401 && e.code === 'INVALID_CREDENTIALS') eraseError.value = 'Your password is not correct.'
+    else notify.report(e)
+  } finally {
+    eraseBusy.value = false
+  }
+}
+
 async function logout() {
   await session.logout()
   await router.push(props.afterLogout)
@@ -272,6 +314,34 @@ const organisation = computed(() => {
       </v-card-text>
     </v-card>
 
+    <v-card>
+      <v-card-title class="t-h3">Your data</v-card-title>
+      <v-card-text class="stack">
+        <div class="row">
+          <div class="stack-sm">
+            <span class="t-label">Download your data</span>
+            <span class="t-body muted">Your profile, addresses and account history as a JSON file.</span>
+          </div>
+          <span class="spacer" />
+          <v-btn variant="outlined" :loading="exporting" @click="downloadMyData">Download</v-btn>
+        </div>
+        <v-divider />
+        <div class="row">
+          <div class="stack-sm">
+            <span class="t-label">Delete your account</span>
+            <span v-if="account.erasureRequestedAt" class="t-body">
+              You asked for this on {{ formatDate(account.erasureRequestedAt) }}. An administrator will erase your account.
+            </span>
+            <span v-else class="t-body muted">
+              An administrator erases your personal data. Requests stay on record as financial documents, with your name removed.
+            </span>
+          </div>
+          <span class="spacer" />
+          <v-btn v-if="!account.erasureRequestedAt" variant="outlined" color="error" @click="openErase">Ask to delete</v-btn>
+        </div>
+      </v-card-text>
+    </v-card>
+
     <AddressDialog v-model="addrOpen" :address="addrIndex === null ? null : addresses[addrIndex]" @save="saveAddress" />
 
     <v-dialog v-model="emailOpen" max-width="480">
@@ -288,6 +358,26 @@ const organisation = computed(() => {
             </div>
           </v-form>
           <VerifyForm v-else :email="newEmail.trim()" no-resend submit-label="Confirm new email" @verified="emailVerified" />
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="eraseOpen" max-width="480">
+      <v-card>
+        <v-card-title class="t-h3">Delete your account?</v-card-title>
+        <v-card-text>
+          <v-form v-model="eraseValid" class="stack" @submit.prevent="requestErasure">
+            <p class="t-body">
+              An administrator will erase your name, contact details and addresses, and you will be signed out. This cannot be
+              undone. Download your data first if you want a copy.
+            </p>
+            <v-alert v-if="eraseError" type="error" variant="tonal" density="compact">{{ eraseError }}</v-alert>
+            <PasswordField v-model="erasePassword" label="Your password" name="erase-password" autocomplete="current-password" :rules="[(v: unknown) => !!v || 'Required']" />
+            <div class="row-end">
+              <v-btn variant="text" @click="eraseOpen = false">Cancel</v-btn>
+              <v-btn type="submit" color="error" :loading="eraseBusy" :disabled="!eraseValid">Ask to delete</v-btn>
+            </div>
+          </v-form>
         </v-card-text>
       </v-card>
     </v-dialog>

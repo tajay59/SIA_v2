@@ -57,7 +57,7 @@ Only the owning service connects to its collections. Each service has **its own 
 | `accounts` | identity-svc | `svc_identity` | find, insert, update | 65 | 1M |
 | `temp` | identity-svc | `svc_identity` | find, insert, update, remove | 0 | ~10k (TTL) |
 | `organisations` ✚ | identity-svc | `svc_identity` | find, insert, update | — | ~5k |
-| `auditlog` ✚ | identity-svc | `svc_identity` | find, **insert** (update only to anonymise purged accounts) | — | +2M/year |
+| `auditlog` ✚ | identity-svc | `svc_identity` | find, **insert** (update only to anonymise purged or erased accounts) | — | +2M/year |
 | `product` | catalog-svc | `svc_catalog` | find, insert, update | 83 | 2M |
 | `xuser` (view) | catalog-svc | `svc_catalog` | find | view | — |
 | `misc` | catalog-svc | `svc_catalog` | find, insert, update | 12 | ~5k (sites/shelves) |
@@ -150,6 +150,7 @@ Users of every role.
 | `mfa` | `{ enabled bool, totpSecretEnc? }` | | ✚ | Admins (TRD TR-AUTH-9); the secret is encrypted |
 | `createdAt`, `updatedAt` | Timestamp | R | ✚ (was `registered`/`timestamp`) | |
 | `approvalReminderAt` | Timestamp | O | ✚ | Set when the one 48 h approval reminder was sent (`user.approval_pending`) |
+| `erasureRequestedAt` | Timestamp | O | ✚ | The person asked to be deleted (`POST /me/erasure-request`, `user.erasure_requested`); admins filter on it |
 | `deletedAt` | Timestamp | O | ✚ | Set by the 90-day purge: personal data already removed, `user.deleted` waiting in the outbox; the document is removed once it is published. Hidden from every list |
 | `outbox` | OutboxEvent[] | R | ✚ | Usually empty |
 | `cart` | — | | ✖ | Moved to `orders` (`status: CART`) |
@@ -564,7 +565,9 @@ db.runCommand({ collMod: "orders", validator: { $jsonSchema: {
 | Backups | 30 daily, 12 monthly | restic `forget --keep-daily 30 --keep-monthly 12` |
 | Logs | Rotation (10 × 50 MB per container) | Docker `local` driver |
 
-**Right to erasure:** delete the account, replace personal data in its requests (`customerSnapshot`, `shipTo`) with `"[deleted]"`, keep the financial fields and the audit trail.
+**Right of access:** `GET /me/export` (self) and `GET /admin/accounts/{id}/export` (admin) return a JSON bundle per service (`sections.identity` now; order-svc adds requests, quotes and files in P5). The self-service copy names staff by role only. Every export is audited (`privacy.exported`).
+
+**Right to erasure:** the person asks (`POST /me/erasure-request`, password required; admins are emailed), an admin erases (`POST /admin/accounts/{id}/erase`, reason + If-Match; not oneself, not the last admin). Erasure is the same strip as the 90-day purge: name, contact details, addresses, password and MFA removed, sessions revoked, the person's audit entries lose name and IP, `user.deleted` published, then the document is removed. Consumers replace personal data in requests (`customerSnapshot`, `shipTo`) with `"[deleted]"` and keep the financial fields; order-svc cancels open requests. The audit trail stays.
 
 ## 9. Migration mapping (summary)
 

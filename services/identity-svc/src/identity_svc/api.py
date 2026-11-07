@@ -109,6 +109,10 @@ class EmailChangeIn(Strict):
     password: str
 
 
+class ErasureRequestIn(Strict):
+    password: str = Field(min_length=1, max_length=256)
+
+
 class PasswordChangeIn(Strict):
     currentPassword: str
     newPassword: Password
@@ -342,6 +346,27 @@ async def change_password(
     return Response(status_code=204)
 
 
+def export_response(body: dict[str, Any], filename: str) -> JSONResponse:
+    return JSONResponse(
+        body,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "no-store"},
+    )
+
+
+@router.get("/me/export", tags=["me"])
+async def export_me(request: Request, me: Principal = Depends(current_principal)) -> JSONResponse:
+    body = await svc(request).export_data(me.sub, by=me, for_admin=False, cid=cid(request))
+    return export_response(body, f"cimh-my-data-{body['generatedAt'][:10]}.json")
+
+
+@router.post("/me/erasure-request", status_code=202, tags=["me"])
+async def erasure_request(
+    body: ErasureRequestIn, request: Request, me: Principal = Depends(current_principal)
+) -> Response:
+    await svc(request).request_erasure(me, body.password, cid(request))
+    return Response(status_code=202)
+
+
 # ---------------------------------------------------------------- admin accounts
 
 
@@ -352,13 +377,13 @@ async def list_accounts(
     role: Role | None = None,
     organisationId: str | None = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
+    erasureRequested: bool | None = None,
     cursor: str | None = None,
     limit: Limit = None,
     me: Principal = Depends(require_staff),
 ) -> dict[str, Any]:
-    items, nxt = await svc(request).list_accounts(
-        {"status": status, "role": role, "organisationId": organisationId, "q": q}, cursor, limit
-    )
+    filters = {"status": status, "role": role, "organisationId": organisationId, "q": q}
+    items, nxt = await svc(request).list_accounts({**filters, "erasureRequested": erasureRequested}, cursor, limit)
     return {"items": items, "nextCursor": nxt}
 
 
@@ -401,6 +426,20 @@ async def reactivate(
     accountId: str, request: Request, version: IfMatch = None, me: Principal = Depends(require_admin)
 ) -> JSONResponse:
     return with_etag(await svc(request).reactivate(me, accountId, if_match(version), cid(request)))
+
+
+@router.get("/admin/accounts/{accountId}/export", tags=["admin-accounts"])
+async def export_account(accountId: str, request: Request, me: Principal = Depends(require_admin)) -> JSONResponse:
+    body = await svc(request).export_data(accountId, by=me, for_admin=True, cid=cid(request))
+    return export_response(body, f"cimh-data-{accountId}-{body['generatedAt'][:10]}.json")
+
+
+@router.post("/admin/accounts/{accountId}/erase", status_code=204, tags=["admin-accounts"])
+async def erase(
+    accountId: str, body: ReasonIn, request: Request, version: IfMatch = None, me: Principal = Depends(require_admin)
+) -> Response:
+    await svc(request).erase(me, accountId, if_match(version), body.reason, cid(request))
+    return Response(status_code=204)
 
 
 @router.put("/admin/accounts/{accountId}/role", tags=["admin-accounts"])

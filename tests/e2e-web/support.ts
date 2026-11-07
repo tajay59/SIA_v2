@@ -106,3 +106,17 @@ export async function nextTotpWindow(): Promise<void> {
   const left = 30_000 - (Date.now() % 30_000)
   await new Promise((r) => setTimeout(r, left + 500))
 }
+
+/** An admin with MFA already on (set up through the API, as the admin would in A-20). Returns the TOTP key. */
+export async function adminWithMfa(): Promise<{ email: string; key: string }> {
+  const email = await adminAccount()
+  const login = await post('/auth/login', { email, password: PASSWORD, client: 'mobile' })
+  if (!login.ok) throw new Error(`admin login: ${login.status}`)
+  const auth = { Authorization: `Bearer ${((await login.json()) as { accessToken: string }).accessToken}`, 'content-type': 'application/json' }
+  const setup = await req(`${API}/auth/mfa/setup`, { method: 'POST', headers: auth })
+  const uri = ((await setup.json()) as { otpauthUri: string }).otpauthUri
+  const key = new URL(uri).searchParams.get('secret')!
+  const confirm = await req(`${API}/auth/mfa/confirm`, { method: 'POST', headers: auth, body: JSON.stringify({ totp: totp(key) }) })
+  if (confirm.status !== 204) throw new Error(`mfa confirm: ${confirm.status} ${await confirm.text()}`)
+  return { email, key }
+}

@@ -11,7 +11,8 @@ import pytest
 from cimh_common.outbox import new_event
 from cimh_common.testing import AsyncMongoMock
 from identity_svc.audit_consumer import entry_from_event, make_handler
-from identity_svc.jobs import DELETED, Jobs
+from identity_svc.jobs import Jobs
+from identity_svc.privacy import DELETED
 from identity_svc.store import Store
 
 NOW = datetime(2026, 11, 7, 12, 0, tzinfo=UTC)
