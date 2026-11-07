@@ -44,6 +44,7 @@ def main() -> int:
     ap.add_argument("--base", default="http://localhost:18001")
     ap.add_argument("--mongo", required=True)
     ap.add_argument("--service-secret", default="dev-notification-secret")
+    ap.add_argument("--public", help="public HTTPS base for the browser-cookie steps (Secure cookies)")
     a = ap.parse_args()
 
     run = uuid.uuid4().hex[:8]
@@ -55,9 +56,10 @@ def main() -> int:
     check(svc.status_code == 200, "notification-svc gets a service token", svc)
     sh = {"Authorization": "Bearer " + svc.json()["token"]}
 
-    def claim(email: str, event_type: str = "user.registered") -> str:
+    def claim(email: str, kind: str = "verify_email") -> str:
+        # codeRef = the temp document id (the event may already have been relayed out of the outbox).
         acc = db.accounts.find_one({"email": email})
-        ref = next(e for e in reversed(acc["outbox"]) if e["type"] == event_type)["payload"]["codeRef"]
+        ref = db.temp.find_one({"accountId": acc["id"], "kind": kind})["id"]
         r = c.get(f"/internal/codes/{ref}", headers=sh)
         check(r.status_code == 200, f"claim code for {email}", r)
         again = c.get(f"/internal/codes/{ref}", headers=sh)
@@ -113,7 +115,7 @@ def main() -> int:
     r = c.post(f"/admin/accounts/{acc['id']}/approve", headers={**ah, "If-Match": '"2"'}, json={"organisationId": org})
     check(r.status_code == 200 and r.json()["status"] == "ACTIVE", "admin approves member", r)
 
-    web = httpx.Client(base_url=a.base + API, timeout=10)
+    web = httpx.Client(base_url=(a.public or a.base) + API, timeout=10)
     r = web.post("/auth/login", json={"email": member, "password": pw})
     check(r.status_code == 200 and "access_token" in web.cookies, "member web login sets cookies", r)
     me = web.get("/me")
