@@ -1,0 +1,587 @@
+asyncapi: 3.0.0
+info:
+  title: CIMH Stores Platform events
+  version: 1.0.0-draft
+  description: |
+    Kafka events between services (TAD §5.3). Every message uses the standard envelope; `payload` differs per type.
+    Key = entity id. Producers: idempotent, acks=all. Consumers: one group per service, idempotent by `eventId`.
+    Failed messages go to `<topic>.retry` (1 min → 5 min → 30 min) then `<topic>.dlq`.
+    Schemas are registered in Apicurio with BACKWARD compatibility; breaking changes bump `version`.
+
+defaultContentType: application/json
+
+servers:
+  kafka:
+    host: kafka1:9092,kafka2:9092,kafka3:9092
+    protocol: kafka
+    description: Internal Docker network only.
+
+channels:
+  identityUserEvents:
+    address: identity.user.events
+    description: Account lifecycle. Compacted. Key = userId.
+    messages:
+      userRegistered: { $ref: '#/components/messages/userRegistered' }
+      userVerified: { $ref: '#/components/messages/userVerified' }
+      userApproved: { $ref: '#/components/messages/userApproved' }
+      userRejected: { $ref: '#/components/messages/userRejected' }
+      userSuspended: { $ref: '#/components/messages/userSuspended' }
+      userReactivated: { $ref: '#/components/messages/userReactivated' }
+      userRoleChanged: { $ref: '#/components/messages/userRoleChanged' }
+      userProfileUpdated: { $ref: '#/components/messages/userProfileUpdated' }
+      userDeleted: { $ref: '#/components/messages/userDeleted' }
+      userPasswordResetRequested: { $ref: '#/components/messages/userPasswordResetRequested' }
+      userEmailChangeRequested: { $ref: '#/components/messages/userEmailChangeRequested' }
+  catalogProductEvents:
+    address: catalog.product.events
+    description: Product changes. Compacted. Key = productId.
+    messages:
+      productCreated: { $ref: '#/components/messages/productUpserted' }
+      productUpdated: { $ref: '#/components/messages/productUpserted' }
+      productDeleted: { $ref: '#/components/messages/productDeleted' }
+      productImageAdded: { $ref: '#/components/messages/productImageAdded' }
+  inventoryStockEvents:
+    address: inventory.stock.events
+    description: Stock changes and reservation results. Key = productId.
+    messages:
+      stockChanged: { $ref: '#/components/messages/stockChanged' }
+      stockLow: { $ref: '#/components/messages/stockLow' }
+      stockReserved: { $ref: '#/components/messages/stockReserved' }
+      stockReservationFailed: { $ref: '#/components/messages/stockReservationFailed' }
+      stockReleased: { $ref: '#/components/messages/stockReleased' }
+      unitStowed: { $ref: '#/components/messages/unitMoved' }
+      unitPicked: { $ref: '#/components/messages/unitMoved' }
+  orderEvents:
+    address: order.events
+    description: Request lifecycle. Key = orderId.
+    messages:
+      orderSubmitted: { $ref: '#/components/messages/orderSubmitted' }
+      orderStatusChanged: { $ref: '#/components/messages/orderStatusChanged' }
+      orderQuoted: { $ref: '#/components/messages/orderQuoted' }
+      orderAgreementRequested: { $ref: '#/components/messages/orderAgreementRequested' }
+      orderAccepted: { $ref: '#/components/messages/orderAccepted' }
+      orderProbonoApproved: { $ref: '#/components/messages/orderProbonoApproved' }
+      orderShipped: { $ref: '#/components/messages/orderShipped' }
+      orderCancelled: { $ref: '#/components/messages/orderCancelled' }
+  documentEvents:
+    address: document.events
+    description: Files generated or uploaded. Key = orderId.
+    messages:
+      documentStored: { $ref: '#/components/messages/documentStored' }
+      documentDeleted: { $ref: '#/components/messages/documentDeleted' }
+  mediaJobs:
+    address: media.jobs
+    description: Image processing jobs. Key = productId.
+    messages:
+      imageProcess: { $ref: '#/components/messages/imageProcess' }
+  mediaResults:
+    address: media.results
+    description: Image processing results. Key = productId.
+    messages:
+      imageProcessed: { $ref: '#/components/messages/imageProcessed' }
+  auditEvents:
+    address: audit.events
+    description: Security-relevant actions from every service → identity-svc auditlog. Key = entity id. Retention 30 d.
+    messages:
+      auditRecorded: { $ref: '#/components/messages/auditRecorded' }
+
+operations:
+  identityPublishes:
+    action: send
+    channel: { $ref: '#/channels/identityUserEvents' }
+    summary: identity-svc (via outbox relay)
+  orderConsumesIdentity:
+    action: receive
+    channel: { $ref: '#/channels/identityUserEvents' }
+    summary: order-svc (block carts of suspended users)
+  notificationConsumesIdentity:
+    action: receive
+    channel: { $ref: '#/channels/identityUserEvents' }
+    summary: notification-svc (verification, approval emails)
+  catalogPublishes:
+    action: send
+    channel: { $ref: '#/channels/catalogProductEvents' }
+  inventoryConsumesCatalog:
+    action: receive
+    channel: { $ref: '#/channels/catalogProductEvents' }
+  inventoryPublishes:
+    action: send
+    channel: { $ref: '#/channels/inventoryStockEvents' }
+  catalogConsumesStock:
+    action: receive
+    channel: { $ref: '#/channels/inventoryStockEvents' }
+    summary: catalog-svc updates product.inStock
+  orderConsumesStock:
+    action: receive
+    channel: { $ref: '#/channels/inventoryStockEvents' }
+    summary: order-svc updates line reservation status
+  notificationConsumesStock:
+    action: receive
+    channel: { $ref: '#/channels/inventoryStockEvents' }
+    summary: low-stock and reservation-failed emails
+  orderPublishes:
+    action: send
+    channel: { $ref: '#/channels/orderEvents' }
+  inventoryConsumesOrders:
+    action: receive
+    channel: { $ref: '#/channels/orderEvents' }
+    summary: reserve on accepted / probono_approved, release on cancelled, mark picked on shipped
+  documentConsumesOrders:
+    action: receive
+    channel: { $ref: '#/channels/orderEvents' }
+    summary: generate CIMH quote, payment agreement, invoice, commercial invoice PDFs
+  notificationConsumesOrders:
+    action: receive
+    channel: { $ref: '#/channels/orderEvents' }
+  documentPublishes:
+    action: send
+    channel: { $ref: '#/channels/documentEvents' }
+  orderConsumesDocuments:
+    action: receive
+    channel: { $ref: '#/channels/documentEvents' }
+    summary: attach files to orders.files[]
+  catalogPublishesMedia:
+    action: send
+    channel: { $ref: '#/channels/mediaJobs' }
+  mediaWorkerConsumes:
+    action: receive
+    channel: { $ref: '#/channels/mediaJobs' }
+  mediaWorkerPublishes:
+    action: send
+    channel: { $ref: '#/channels/mediaResults' }
+  catalogConsumesMedia:
+    action: receive
+    channel: { $ref: '#/channels/mediaResults' }
+  servicesPublishAudit:
+    action: send
+    channel: { $ref: '#/channels/auditEvents' }
+  identityConsumesAudit:
+    action: receive
+    channel: { $ref: '#/channels/auditEvents' }
+
+components:
+  messageTraits:
+    envelope:
+      headers:
+        type: object
+        properties:
+          traceparent: { type: string, description: Optional W3C trace context }
+
+  schemas:
+    Envelope:
+      type: object
+      required: [eventId, type, version, occurredAt, correlationId, payload]
+      properties:
+        eventId: { type: string, description: ULID; also the dedup key }
+        type: { type: string }
+        version: { type: integer, minimum: 1 }
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        actorId: { type: [string, 'null'] }
+        payload: { type: object }
+    Actor:
+      type: object
+      required: [id, role]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string }
+    UserRef:
+      type: object
+      required: [userId, email, firstname, lastname, role, status]
+      properties:
+        userId: { type: string }
+        email: { type: string }
+        firstname: { type: string }
+        lastname: { type: string }
+        role: { type: string, enum: [user, staff, admin] }
+        status: { type: string }
+        isCimh: { type: boolean }
+        organisationId: { type: [string, 'null'] }
+    Line:
+      type: object
+      required: [lineId, productId, qty]
+      properties:
+        lineId: { type: string }
+        productId: { type: string }
+        qty: { type: integer }
+        choice: { type: [string, 'null'], enum: [CIMH, SUPPLIER, null] }
+
+  messages:
+    userRegistered:
+      name: user.registered
+      traits: [ { $ref: '#/components/messageTraits/envelope' } ]
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    required: [codeRef]
+                    properties: { codeRef: { type: string, description: temp document id; the code itself is never in an event } }
+    userVerified:
+      name: user.verified
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { $ref: '#/components/schemas/UserRef' } } } ] }
+    userApproved:
+      name: user.approved
+      description: Also emitted for @cimh.edu.bb auto-activation (auto=true).
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    properties: { auto: { type: boolean }, approvedBy: { $ref: '#/components/schemas/Actor' } }
+    userRejected:
+      name: user.rejected
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    required: [reason]
+                    properties: { reason: { type: string } }
+    userSuspended:
+      name: user.suspended
+      description: Consumers must stop acting for this user; identity has already revoked sessions.
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { $ref: '#/components/schemas/UserRef' } } } ] }
+    userPasswordResetRequested:
+      name: user.password_reset_requested
+      description: notification-svc claims the code once via identity GET /internal/codes/{codeRef} and emails it.
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    required: [codeRef]
+                    properties: { codeRef: { type: string, description: temp document id; the code itself is never in an event } }
+    userEmailChangeRequested:
+      name: user.email_change_requested
+      description: The code goes to newEmail (claimed via GET /internal/codes/{codeRef}).
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    required: [codeRef, newEmail]
+                    properties:
+                      codeRef: { type: string }
+                      newEmail: { type: string }
+    userReactivated:
+      name: user.reactivated
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { $ref: '#/components/schemas/UserRef' } } } ] }
+    userRoleChanged:
+      name: user.role_changed
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - type: object
+                    required: [previousRole]
+                    properties: { previousRole: { type: string } }
+    userProfileUpdated:
+      name: user.profile_updated
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { $ref: '#/components/schemas/UserRef' } } } ] }
+    userDeleted:
+      name: user.deleted
+      description: Tombstone (value has userId only). Consumers remove personal data copies.
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties: { payload: { type: object, required: [userId], properties: { userId: { type: string } } } }
+
+    productUpserted:
+      name: product.created / product.updated
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [productId, name, type, sellable, probono, active, threshold]
+                properties:
+                  productId: { type: string }
+                  name: { type: string }
+                  type: { type: string, enum: [MET, RAD, EQUIP, SUPP, MISC, PRO] }
+                  sellable: { type: boolean }
+                  probono: { type: boolean }
+                  probonoMaxPerRequest: { type: [integer, 'null'] }
+                  active: { type: boolean }
+                  threshold: { type: integer }
+                  changed: { type: array, items: { type: string }, description: Changed field names (updated only) }
+    productDeleted:
+      name: product.deleted
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { type: object, required: [productId], properties: { productId: { type: string } } } } } ] }
+    productImageAdded:
+      name: product.image_added
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { type: object, required: [productId, fileId, url], properties: { productId: { type: string }, fileId: { type: string }, url: { type: string } } }
+
+    stockChanged:
+      name: stock.changed
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [productId, available, reserved]
+                properties:
+                  productId: { type: string }
+                  available: { type: integer }
+                  reserved: { type: integer }
+    stockLow:
+      name: stock.low
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { type: object, required: [productId, available, threshold], properties: { productId: { type: string }, available: { type: integer }, threshold: { type: integer } } }
+    stockReserved:
+      name: stock.reserved
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, lines]
+                properties:
+                  orderId: { type: string }
+                  lines: { type: array, items: { type: object, required: [lineId, units], properties: { lineId: { type: string }, units: { type: array, items: { type: string } } } } }
+    stockReservationFailed:
+      name: stock.reservation_failed
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, lines]
+                properties:
+                  orderId: { type: string }
+                  lines: { type: array, items: { type: object, required: [lineId, requested, available], properties: { lineId: { type: string }, requested: { type: integer }, available: { type: integer } } } }
+    stockReleased:
+      name: stock.released
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { type: object, required: [orderId, units], properties: { orderId: { type: string }, units: { type: array, items: { type: string } } } }
+    unitMoved:
+      name: unit.stowed / unit.picked
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [barcode, productId, by]
+                properties:
+                  barcode: { type: string }
+                  productId: { type: string }
+                  shelf: { type: [string, 'null'] }
+                  orderId: { type: [string, 'null'] }
+                  reason: { type: [string, 'null'] }
+                  by: { type: string }
+
+    orderSubmitted:
+      name: order.submitted
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, type, customer, lines]
+                properties:
+                  orderId: { type: string }
+                  type: { type: string, enum: [PAID, PROBONO] }
+                  customer: { type: string }
+                  organisationId: { type: [string, 'null'] }
+                  currency: { type: [string, 'null'], enum: [BBD, USD, null] }
+                  lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
+                  splitFrom: { type: [string, 'null'], description: Sibling request id when a mixed cart was split }
+    orderStatusChanged:
+      name: order.quoting_started / order.agreement_rejected / order.declined / order.purchasing / order.probono_rejected / order.delivered / order.expired / order.quote_revised
+      description: Generic transition event; `type` carries the specific name.
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, from, to]
+                properties:
+                  orderId: { type: string }
+                  orderType: { type: string, enum: [PAID, PROBONO] }
+                  customer: { type: string }
+                  from: { type: string }
+                  to: { type: string }
+                  reason: { type: [string, 'null'] }
+    orderQuoted:
+      name: order.quoted
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, quoteVersion, expiresAt, currency]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  quoteVersion: { type: integer }
+                  expiresAt: { type: string, format: date-time }
+                  currency: { type: string, enum: [BBD, USD] }
+                  cimhLineIds: { type: array, items: { type: string }, description: Lines offered from CIMH stock (document-svc renders the CIMH quote PDF) }
+    orderAgreementRequested:
+      name: order.agreement_requested
+      description: Customer chose options; document-svc generates the agreement PDF (kind agreement).
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, quoteVersion, lines, total, currency]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  quoteVersion: { type: integer }
+                  lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
+                  total: { type: string, description: 'Money, 2 decimals' }
+                  currency: { type: string, enum: [BBD, USD] }
+    orderAccepted:
+      name: order.accepted
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, quoteVersion, lines]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  quoteVersion: { type: integer }
+                  lines: { type: array, items: { $ref: '#/components/schemas/Line' }, description: inventory reserves lines with choice=CIMH }
+    orderProbonoApproved:
+      name: order.probono_approved
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { type: object, required: [orderId, lines], properties: { orderId: { type: string }, lines: { type: array, items: { $ref: '#/components/schemas/Line' } } } }
+    orderShipped:
+      name: order.shipped
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, carrier]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  carrier: { type: string, enum: [FEDEX, DHL, HAND] }
+                  tracking: { type: [string, 'null'] }
+                  notifyCustomer: { type: boolean }
+    orderCancelled:
+      name: order.cancelled
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, reason, auto]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  reason: { type: string }
+                  auto: { type: boolean, description: true when cancelled by quote expiry }
+
+    documentStored:
+      name: document.generated / document.uploaded
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, fileId, kind, name, mime, size, sha256]
+                properties:
+                  orderId: { type: string }
+                  fileId: { type: string }
+                  kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
+                  name: { type: string }
+                  mime: { type: string }
+                  size: { type: integer }
+                  sha256: { type: string }
+    documentDeleted:
+      name: document.deleted
+      payload: { allOf: [ { $ref: '#/components/schemas/Envelope' }, { properties: { payload: { type: object, required: [orderId, fileId], properties: { orderId: { type: string }, fileId: { type: string }, reason: { type: string } } } } } ] }
+
+    imageProcess:
+      name: image.process
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { type: object, required: [productId, sourcePath, removeBackground], properties: { productId: { type: string }, sourcePath: { type: string }, removeBackground: { type: boolean } } }
+    imageProcessed:
+      name: image.processed
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [productId, ok]
+                properties:
+                  productId: { type: string }
+                  ok: { type: boolean }
+                  fileId: { type: string }
+                  url: { type: string }
+                  w: { type: integer }
+                  h: { type: integer }
+                  error: { type: string }
+
+    auditRecorded:
+      name: audit.recorded
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [action, entity, actor]
+                properties:
+                  action: { type: string }
+                  entity: { type: object, required: [type, id], properties: { type: { type: string }, id: { type: string } } }
+                  actor: { $ref: '#/components/schemas/Actor' }
+                  from: {}
+                  to: {}
+                  reason: { type: [string, 'null'] }
+                  ip: { type: [string, 'null'] }

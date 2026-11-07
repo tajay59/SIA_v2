@@ -58,3 +58,7 @@ git.txt
 /stationConfig.py
 /StockInventory.code-workspace
 docs/manual/diagrams/*.bkp
+
+# Reinstall with: npx skills update -p (tracked in skills-lock.json)
+.claude/skills/design-taste-frontend/
+.claude/settings.local.json

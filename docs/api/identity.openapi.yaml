@@ -1,0 +1,753 @@
+openapi: 3.1.0
+info:
+  title: identity-svc API
+  version: 1.0.0-draft
+  description: |
+    Accounts, registration and approval, login/tokens, profile, organisations, roles, audit log.
+    Owns collections `accounts`, `temp`, `organisations`, `auditlog` (BSD §5.1–5.4).
+servers:
+  - url: /api/identity/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: auth
+  - name: me
+  - name: admin-accounts
+  - name: organisations
+  - name: audit
+  - name: internal
+  - name: ops
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new account
+      description: Creates the account as PENDING_VERIFICATION and emails a 6-digit code. Rate limited 5/min/IP. Always returns 202 (even if the email exists) so emails can't be enumerated.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '202': { description: Accepted; check email for the code. }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
+
+  /auth/verify:
+    post:
+      tags: [auth]
+      summary: Verify email with the 6-digit code
+      description: Moves the account to PENDING_APPROVAL, or to ACTIVE for @cimh.edu.bb. Max 5 attempts per code.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, pattern: '^\d{6}$' }
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { $ref: '#/components/schemas/AccountStatus' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
+
+  /auth/verify/resend:
+    post:
+      tags: [auth]
+      summary: Resend the verification code (max 3 per hour)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '202': { description: Accepted }
+        '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in
+      description: |
+        Only ACTIVE accounts receive tokens. Web: tokens set as HttpOnly cookies plus a readable `csrf_token` cookie.
+        Mobile (`client=mobile`): tokens returned in the body. 5 failed attempts lock the account for 15 min (increasing).
+        Admins with MFA enabled must send `totp`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 1, maxLength: 256 }
+                totp: { type: string, pattern: '^\d{6}$' }
+                client: { type: string, enum: [web, mobile], default: web }
+      responses:
+        '200':
+          description: Logged in
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403':
+          description: Account not ACTIVE (code ACCOUNT_PENDING_VERIFICATION, ACCOUNT_PENDING_APPROVAL, ACCOUNT_REJECTED, ACCOUNT_SUSPENDED, ACCOUNT_LOCKED, MFA_REQUIRED)
+          content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } }
+        '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token for a new access + refresh token (rotation)
+      description: Reusing an already-rotated refresh token revokes the whole session family (401, code TOKEN_REUSE).
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string, description: Mobile only; web uses the refresh cookie. }
+      responses:
+        '200':
+          description: New tokens
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Log out (revokes the current session)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      responses:
+        '204': { description: Logged out; cookies cleared. }
+
+  /auth/password/forgot:
+    post:
+      tags: [auth]
+      summary: Request a password-reset code (always 202)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '202': { description: Accepted }
+        '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
+
+  /auth/password/reset:
+    post:
+      tags: [auth]
+      summary: Reset the password with the emailed code
+      description: Revokes all existing sessions of the account.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code, newPassword]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, pattern: '^\d{6}$' }
+                newPassword: { $ref: '#/components/schemas/Password' }
+      responses:
+        '204': { description: Password changed }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /auth/mfa/setup:
+    post:
+      tags: [auth]
+      summary: Start TOTP setup (admin)
+      responses:
+        '200':
+          description: Provisioning data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [otpauthUri]
+                properties:
+                  otpauthUri: { type: string }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+
+  /auth/mfa/confirm:
+    post:
+      tags: [auth]
+      summary: Confirm TOTP setup with a first code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [totp], properties: { totp: { type: string, pattern: '^\d{6}$' } } }
+      responses:
+        '204': { description: MFA enabled }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /.well-known/jwks.json:
+    get:
+      tags: [auth]
+      summary: Public keys for verifying access tokens (EdDSA)
+      security: []
+      responses:
+        '200':
+          description: JWKS
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys: { type: array, items: { type: object } }
+
+  /me:
+    get:
+      tags: [me]
+      summary: Current account
+      responses:
+        '200':
+          description: Own account
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+    patch:
+      tags: [me]
+      summary: Update own profile
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                firstname: { type: string, maxLength: 100 }
+                lastname: { type: string, maxLength: 100 }
+                phone: { type: [string, 'null'], maxLength: 40 }
+                department: { type: [string, 'null'] }
+                country: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
+                addresses:
+                  type: array
+                  maxItems: 10
+                  items: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
+                image: { type: [string, 'null'], description: File id of an uploaded profile image }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /me/email:
+    post:
+      tags: [me]
+      summary: Change email (sends a code to the new address; applied after /auth/verify with kind change_email)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newEmail, password]
+              properties:
+                newEmail: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '202': { description: Code sent to the new address }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+
+  /me/password:
+    post:
+      tags: [me]
+      summary: Change password (revokes other sessions)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { $ref: '#/components/schemas/Password' }
+      responses:
+        '204': { description: Changed }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /admin/accounts:
+    get:
+      tags: [admin-accounts]
+      summary: List accounts (staff read, admin full)
+      description: '**Roles:** staff, admin. Default sort createdAt ascending for PENDING_APPROVAL (oldest first).'
+      parameters:
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/AccountStatus' } }
+        - { name: role, in: query, schema: { $ref: './common.yaml#/components/schemas/Role' } }
+        - { name: organisationId, in: query, schema: { type: string } }
+        - { name: q, in: query, description: Name or email prefix, schema: { type: string, maxLength: 100 } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page of accounts
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/AccountSummary' } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+
+  /admin/accounts/{accountId}:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    get:
+      tags: [admin-accounts]
+      summary: Get an account (staff, admin)
+      responses:
+        '200':
+          description: Account
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /admin/accounts/{accountId}/approve:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Approve a PENDING_APPROVAL account (admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [organisationId]
+              properties:
+                organisationId: { type: string, description: Existing organisation id (create one first via POST /organisations) }
+                role: { $ref: './common.yaml#/components/schemas/Role' }
+      responses:
+        '200': { description: ACTIVE, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /admin/accounts/{accountId}/deny:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Deny a PENDING_APPROVAL account (admin; reason required)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonBody' }
+      responses:
+        '200': { description: REJECTED, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /admin/accounts/bulk-decision:
+    post:
+      tags: [admin-accounts]
+      summary: Approve or deny several pending accounts (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [decisions]
+              properties:
+                decisions:
+                  type: array
+                  maxItems: 100
+                  items:
+                    type: object
+                    required: [accountId, version, decision]
+                    properties:
+                      accountId: { type: string }
+                      version: { type: integer }
+                      decision: { type: string, enum: [approve, deny] }
+                      organisationId: { type: string }
+                      role: { $ref: './common.yaml#/components/schemas/Role' }
+                      reason: { type: string, maxLength: 500 }
+      responses:
+        '207':
+          description: Per-item result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [results]
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      required: [accountId, ok]
+                      properties:
+                        accountId: { type: string }
+                        ok: { type: boolean }
+                        error: { $ref: './common.yaml#/components/schemas/Problem' }
+
+  /admin/accounts/{accountId}/suspend:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Suspend an ACTIVE account and revoke its sessions (admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: SUSPENDED, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /admin/accounts/{accountId}/reactivate:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Reactivate a SUSPENDED account (admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '200': { description: ACTIVE, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /admin/accounts/{accountId}/role:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    put:
+      tags: [admin-accounts]
+      summary: Change role (admin; cannot demote the last admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { $ref: './common.yaml#/components/schemas/Role' }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /organisations:
+    get:
+      tags: [organisations]
+      summary: List or search organisations (staff, admin)
+      parameters:
+        - { name: q, in: query, schema: { type: string, maxLength: 100 } }
+        - { name: emailDomain, in: query, schema: { type: string } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/Organisation' } }
+    post:
+      tags: [organisations]
+      summary: Create an organisation (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OrganisationInput' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Organisation' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /organisations/{organisationId}:
+    parameters:
+      - { name: organisationId, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [organisations]
+      summary: Get an organisation (staff, admin; a user may read their own)
+      responses:
+        '200': { description: Organisation, content: { application/json: { schema: { $ref: '#/components/schemas/Organisation' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    patch:
+      tags: [organisations]
+      summary: Update an organisation (admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/OrganisationInput' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Organisation' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /organisations/{organisationId}/merge:
+    parameters:
+      - { name: organisationId, in: path, required: true, description: The duplicate to merge away, schema: { type: string } }
+    post:
+      tags: [organisations]
+      summary: Merge a duplicate organisation into another (admin)
+      description: Moves member accounts and future request visibility to the target; the source gets mergedInto and active=false.
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [targetId], properties: { targetId: { type: string } } }
+      responses:
+        '200': { description: Merged, content: { application/json: { schema: { $ref: '#/components/schemas/Organisation' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /audit:
+    get:
+      tags: [audit]
+      summary: Search the audit log (admin)
+      parameters:
+        - { name: entityType, in: query, schema: { type: string } }
+        - { name: entityId, in: query, schema: { type: string } }
+        - { name: actorId, in: query, schema: { type: string } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page of entries (newest first)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items: { type: array, items: { $ref: '#/components/schemas/AuditEntry' } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+
+  /internal/service-token:
+    post:
+      tags: [internal]
+      summary: Issue a short-lived service token (internal network only; not routed by nginx)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [service, secret]
+              properties:
+                service: { type: string, enum: [catalog, inventory, order, document, notification, media] }
+                secret: { type: string }
+      responses:
+        '200':
+          description: Token (5 min)
+          content:
+            application/json:
+              schema: { type: object, required: [token, expiresIn], properties: { token: { type: string }, expiresIn: { type: integer } } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+
+  /internal/accounts/{accountId}:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    get:
+      tags: [internal]
+      summary: Account summary for other services (service token)
+      responses:
+        '200': { description: Summary, content: { application/json: { schema: { $ref: '#/components/schemas/AccountSummary' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /internal/codes/{codeRef}:
+    parameters:
+      - { name: codeRef, in: path, required: true, description: temp document id from the event's codeRef, schema: { type: string } }
+    get:
+      tags: [internal]
+      summary: Claim a one-time code for emailing (service token; notification-svc only)
+      description: |
+        Returns the plain 6-digit code ONCE; the sealed copy (`temp.codeEnc`) is removed on read, so a
+        second call returns 404. Codes never travel in Kafka events (topics are retained/compacted).
+      responses:
+        '200':
+          description: Code to send
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, kind, accountId, expiresAt]
+                properties:
+                  code: { type: string, pattern: '^\d{6}$' }
+                  kind: { type: string, enum: [verify_email, reset_password, change_email] }
+                  accountId: { type: string }
+                  email: { type: [string, 'null'], description: New address (change_email only) }
+                  expiresAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /health/live:
+    get:
+      tags: [ops]
+      security: []
+      responses: { '200': { description: Alive, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } } }
+  /health/ready:
+    get:
+      tags: [ops]
+      security: []
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
+
+components:
+  parameters:
+    AccountId:
+      name: accountId
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    AccountStatus:
+      type: string
+      enum: [PENDING_VERIFICATION, PENDING_APPROVAL, ACTIVE, REJECTED, EXPIRED, SUSPENDED]
+    Password:
+      type: string
+      minLength: 12
+      maxLength: 256
+      description: Checked against known-breached passwords (k-anonymity).
+    ReasonBody:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [firstname, lastname, email, password, organisationText, country]
+      properties:
+        firstname: { type: string, maxLength: 100 }
+        lastname: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        password: { $ref: '#/components/schemas/Password' }
+        organisationText: { type: string, maxLength: 200, description: Free text; an admin links it to an organisation on approval. Optional for @cimh.edu.bb. }
+        department: { type: [string, 'null'], maxLength: 100 }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        phone: { type: [string, 'null'], maxLength: 40 }
+    LoginResponse:
+      type: object
+      required: [account]
+      properties:
+        account: { $ref: '#/components/schemas/Account' }
+        accessToken: { type: string, description: Mobile only }
+        refreshToken: { type: string, description: Mobile only }
+        expiresIn: { type: integer, example: 900 }
+    AccountSummary:
+      type: object
+      required: [id, firstname, lastname, email, role, status, isCimh]
+      properties:
+        id: { type: string }
+        firstname: { type: string }
+        lastname: { type: string }
+        email: { type: string, format: email }
+        role: { $ref: './common.yaml#/components/schemas/Role' }
+        status: { $ref: '#/components/schemas/AccountStatus' }
+        isCimh: { type: boolean }
+        organisationId: { type: [string, 'null'] }
+        organisationName: { type: [string, 'null'] }
+        organisationText: { type: [string, 'null'] }
+        createdAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+    Account:
+      allOf:
+        - $ref: '#/components/schemas/AccountSummary'
+        - type: object
+          required: [version]
+          properties:
+            version: { type: integer }
+            phone: { type: [string, 'null'] }
+            department: { type: [string, 'null'] }
+            country: { type: [string, 'null'] }
+            addresses: { type: array, items: { $ref: './common.yaml#/components/schemas/ShippingAddress' } }
+            image: { type: [string, 'null'] }
+            defaults:
+              type: [object, 'null']
+              properties: { site: { type: string }, location: { type: string }, shelf: { type: string } }
+            mfaEnabled: { type: boolean }
+            verifiedAt: { type: [string, 'null'], format: date-time }
+            approvedAt: { type: [string, 'null'], format: date-time }
+            statusHistory: { type: array, items: { $ref: './common.yaml#/components/schemas/StatusChange' }, description: staff/admin only }
+    OrganisationInput:
+      type: object
+      additionalProperties: false
+      required: [name, country]
+      properties:
+        name: { type: string, maxLength: 200 }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        type: { type: string, enum: [met_service, hydro_service, government, academic, other] }
+        emailDomains: { type: array, items: { type: string } }
+        aliases: { type: array, items: { type: string } }
+        active: { type: boolean }
+    Organisation:
+      allOf:
+        - $ref: '#/components/schemas/OrganisationInput'
+        - type: object
+          required: [id, version, createdAt]
+          properties:
+            id: { type: string }
+            version: { type: integer }
+            mergedInto: { type: [string, 'null'] }
+            memberCount: { type: integer }
+            createdAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+    AuditEntry:
+      type: object
+      required: [id, at, actor, action, entity]
+      properties:
+        id: { type: string }
+        at: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        actor: { $ref: './common.yaml#/components/schemas/Actor' }
+        action: { type: string }
+        entity: { type: object, required: [type, id], properties: { type: { type: string }, id: { type: string } } }
+        from: {}
+        to: {}
+        reason: { type: [string, 'null'] }
+        correlationId: { type: string }

@@ -1,0 +1,100 @@
+openapi: 3.1.0
+info:
+  title: document-svc API
+  version: 1.0.0-draft
+  description: |
+    File uploads and permission-checked downloads. Generated PDFs (CIMH quotes, invoices, commercial invoices,
+    Pro Bono invoices, label batches) are created from events and appear here as files.
+    Owns no collection: metadata is attached to `orders.files[]` (BSD §5.10); bytes live on `/srv/sia-data/protected`.
+servers:
+  - url: /api/documents/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: files
+  - name: ops
+
+paths:
+  /files:
+    post:
+      tags: [files]
+      summary: Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while AWAITING_AGREEMENT)
+      description: PDF, JPEG, PNG, WebP; type checked from content (magic bytes); ≤ 20 MB; images re-encoded.
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, requestId, kind]
+              properties:
+                file: { type: string, format: binary }
+                requestId: { type: string }
+                kind: { type: string, enum: [supplier_quote, signed_agreement, upload, commercial_invoice] }
+      responses:
+        '201':
+          description: Stored (attached to the request asynchronously via document.uploaded)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/File' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '413': { description: Too large }
+        '415': { description: Unsupported type }
+
+  /files/{fileId}:
+    parameters: [ { name: fileId, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [files]
+      summary: Download a file
+      description: |
+        Allowed for staff/admin, or a customer who owns the request or belongs to its organisation (checked with order-svc).
+        The response body is streamed by nginx via `X-Accel-Redirect`; the service returns only headers.
+      parameters:
+        - { name: disposition, in: query, schema: { type: string, enum: [inline, attachment], default: inline } }
+      responses:
+        '200':
+          description: File bytes
+          headers:
+            X-Accel-Redirect: { description: 'Internal path (consumed by nginx, never seen by clients)', schema: { type: string } }
+            Content-Disposition: { schema: { type: string } }
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            text/csv: { schema: { type: string } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    delete:
+      tags: [files]
+      summary: Soft-delete an uploaded file (staff, admin; generated documents cannot be deleted)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3 } } } } }
+      responses:
+        '204': { description: Deleted (audit logged) }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /health/live:
+    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+  /health/ready:
+    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+
+components:
+  schemas:
+    File:
+      type: object
+      required: [id, requestId, kind, name, mime, size, sha256, uploadedAt]
+      properties:
+        id: { type: string }
+        requestId: { type: string }
+        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
+        name: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        sha256: { type: string }
+        uploadedBy: { $ref: './common.yaml#/components/schemas/Actor' }
+        uploadedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }

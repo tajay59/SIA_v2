@@ -1,0 +1,615 @@
+openapi: 3.1.0
+info:
+  title: order-svc API
+  version: 1.0.0-draft
+  description: |
+    Cart, order requests (PAID and PROBONO), supplier and CIMH quotes, acceptance, purchasing, picking, shipping.
+    Owns `orders` (BSD §5.10). Status flows: TAD §7.2.
+    **Visibility:** a customer sees their own requests and their organisation's (read); only the requester or an admin
+    may accept, decline or cancel. `@cimh.edu.bb` accounts get 403 (CIMH_CANNOT_REQUEST) on cart and request endpoints.
+    Every state-changing call needs `If-Match` with the request `version`; an illegal transition returns 409 ORDER_ILLEGAL_TRANSITION.
+servers:
+  - url: /api/orders/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: cart
+  - name: requests
+  - name: customer-actions
+  - name: staff-actions
+  - name: internal
+  - name: ops
+
+paths:
+  /cart:
+    get:
+      tags: [cart]
+      summary: My cart (created empty on first use)
+      responses:
+        '200': { description: Cart, content: { application/json: { schema: { $ref: '#/components/schemas/Cart' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+    delete:
+      tags: [cart]
+      summary: Empty my cart
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      responses:
+        '204': { description: Emptied }
+
+  /cart/lines/{productId}:
+    parameters: [ { name: productId, in: path, required: true, schema: { type: string } } ]
+    put:
+      tags: [cart]
+      summary: Set the quantity of a product in my cart
+      description: Pro Bono items are capped at `probonoMaxPerRequest` (422 PROBONO_LIMIT_EXCEEDED).
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [qty], properties: { qty: { type: integer, minimum: 1, maximum: 9999 } } } } }
+      responses:
+        '200': { description: Cart, content: { application/json: { schema: { $ref: '#/components/schemas/Cart' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+    delete:
+      tags: [cart]
+      summary: Remove a product from my cart
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      responses:
+        '200': { description: Cart, content: { application/json: { schema: { $ref: '#/components/schemas/Cart' } } } }
+
+  /requests:
+    post:
+      tags: [requests]
+      summary: Submit my cart as order request(s)
+      description: |
+        Validates every line against the catalogue, saves product snapshots, empties the cart.
+        A cart with both paid and Pro Bono lines creates **two** requests (PAID + PROBONO).
+        `currency` is required when the cart contains paid lines.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IdempotencyKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [shipTo]
+              properties:
+                currency: { $ref: './common.yaml#/components/schemas/Currency' }
+                shipTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
+                billTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
+                notes: { type: [string, 'null'], maxLength: 2000 }
+      responses:
+        '201':
+          description: Created request(s)
+          content:
+            application/json:
+              schema: { type: object, required: [requests], properties: { requests: { type: array, minItems: 1, maxItems: 2, items: { $ref: '#/components/schemas/Request' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+    get:
+      tags: [requests]
+      summary: List requests visible to me
+      description: Customers see `scope=mine` (default) or `scope=organisation`. Staff/admin see all and may use every filter (the staff queue).
+      parameters:
+        - { name: scope, in: query, schema: { type: string, enum: [mine, organisation, all], default: mine } }
+        - { name: status, in: query, style: form, explode: false, schema: { type: array, items: { $ref: '#/components/schemas/RequestStatus' } } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/RequestType' } }
+        - { name: year, in: query, schema: { type: integer, minimum: 2020 } }
+        - { name: customer, in: query, description: staff/admin or same organisation, schema: { type: string } }
+        - { name: organisationId, in: query, description: staff/admin only, schema: { type: string } }
+        - { name: q, in: query, description: Request id or organisation/customer name prefix (staff), schema: { type: string, maxLength: 100 } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, waiting], default: newest } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page of request summaries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/RequestSummary' } } }
+
+  /requests/{requestId}:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    get:
+      tags: [requests]
+      summary: Request detail (fields filtered by role; supplier names and POs are staff-only)
+      responses:
+        '200':
+          description: Request
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /requests/{requestId}/agreement:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [customer-actions]
+      summary: Choose options and get the payment agreement (requester or admin) - QUOTED → AWAITING_AGREEMENT
+      description: |
+        Every line offered by both CIMH stock and a supplier needs a choice; lines with only one option default to it.
+        Locks the choices, computes the total, and generates the **agreement PDF** asynchronously
+        (`order.agreement_requested` → document-svc; it appears in `agreement.fileId` / `files[]` with kind `agreement`).
+        Calling again while AWAITING_AGREEMENT replaces the choices and the agreement (the old one becomes invalid).
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quoteVersion, choices]
+              properties:
+                quoteVersion: { type: integer, description: Must equal the latest quote version (409 QUOTE_OUTDATED) }
+                choices:
+                  type: array
+                  items: { type: object, required: [lineId, choice], properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } }
+      responses:
+        '200': { description: AWAITING_AGREEMENT, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /requests/{requestId}/accept:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [customer-actions]
+      summary: Accept with the signed agreement (requester or admin) - AWAITING_AGREEMENT → ACCEPTED
+      description: |
+        The customer downloads the agreement, signs it, uploads it with `POST /api/documents/v1/files` (kind `signed_agreement`),
+        then calls this with the returned file id. This is the **commitment to pay** the agreement total. Records user, time, IP,
+        choices and the signed file. CIMH-chosen lines are reserved asynchronously (`order.accepted` → inventory); a failed
+        reservation flags the line for requote.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quoteVersion, signedAgreementFileId]
+              properties:
+                quoteVersion: { type: integer }
+                signedAgreementFileId: { type: string, description: 'File of kind signed_agreement on this request (422 AGREEMENT_REQUIRED otherwise)' }
+      responses:
+        '200': { description: ACCEPTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /requests/{requestId}/reject-agreement:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Reject the signed agreement (staff; reason required) - ACCEPTED → AWAITING_AGREEMENT
+      description: Releases any reserved stock; the customer is emailed to upload a correctly signed copy.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: AWAITING_AGREEMENT, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/decline:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [customer-actions]
+      summary: Decline the quote (requester or admin) - QUOTED → DECLINED → CANCELLED
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: Declined, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/cancel:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [customer-actions]
+      summary: Cancel (requester, staff or admin) - allowed up to ACCEPTED (PAID, incl. AWAITING_AGREEMENT) or APPROVED (PROBONO); releases reserved stock
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: CANCELLED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/start-quoting:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: SUBMITTED → QUOTING (staff); checks CIMH stock for every line
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '200': { description: 'QUOTING; lines carry `cimhAvailable`', content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+
+  /requests/{requestId}/quote-draft:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    put:
+      tags: [staff-actions]
+      summary: Save the draft quote while QUOTING (staff)
+      description: Supplier quotes (with uploaded file ids) and, for lines with `cimhAvailable`, the CIMH option. `exchangeRate` is required when the request currency is USD and a CIMH option exists. CIMH prices are computed by the server (cost + admin fee).
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [supplierQuotes]
+              properties:
+                supplierQuotes: { type: array, items: { $ref: '#/components/schemas/SupplierQuoteInput' } }
+                cimh:
+                  type: [object, 'null']
+                  properties:
+                    lineIds: { type: array, items: { type: string }, description: Lines to offer from CIMH stock (subset of cimhAvailable) }
+                    exchangeRate: { type: [string, 'null'], pattern: '^\d+(\.\d{1,6})?$', description: BBD per 1 USD }
+      responses:
+        '200': { description: Draft saved, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /requests/{requestId}/send-quote:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: QUOTING → QUOTED, or revise while QUOTED (staff); new quote version, expiry now + 30 days
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '200': { description: QUOTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { description: Draft incomplete (every line needs a supplier price or a CIMH option) }
+
+  /requests/{requestId}/purchase-orders:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Verify the signed agreement, record purchase orders and move ACCEPTED → PURCHASING (staff)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agreementVerified, purchaseOrders]
+              properties:
+                agreementVerified: { const: true, description: 'Staff confirm the signed agreement is valid (422 AGREEMENT_NOT_VERIFIED otherwise)' }
+                purchaseOrders:
+                  type: array
+                  items: { type: object, required: [supplier, poNumber, lineIds], properties: { supplier: { type: string }, poNumber: { type: string }, lineIds: { type: array, items: { type: string } } } }
+      responses:
+        '200': { description: PURCHASING, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/approve:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Approve a PROBONO request, SUBMITTED → APPROVED (staff); reserves stock
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '200': { description: APPROVED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/reject:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Reject a PROBONO request, SUBMITTED → REJECTED (staff; reason required)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: REJECTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/picks:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Pick a scanned unit against a line (staff); PROBONO APPROVED → PICKING on first pick
+      description: 'Delegates to inventory-svc /pick with orderId; the unit must be reserved for this request. Only CIMH-stock (choice CIMH) and Pro Bono lines can be picked; supplier lines ship direct (409 LINE_NOT_PICKABLE).'
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 64 } }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [lineId, unit], properties: { lineId: { type: string }, unit: { type: string } } } } }
+      responses:
+        '200': { description: Picked, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /requests/{requestId}/ship:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Record shipment, PURCHASING/PICKING → SHIPPED (staff)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShipmentInput' } } }
+      responses:
+        '200': { description: SHIPPED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /requests/{requestId}/deliver:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: SHIPPED → DELIVERED (staff); triggers invoice generation
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, properties: { invoiceNumber: { type: string }, deliveredAt: { type: string, format: date-time } } } } }
+      responses:
+        '200': { description: DELIVERED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /internal/requests/{requestId}/access:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    get:
+      tags: [internal]
+      summary: May this user see this request's files? (document-svc; service token)
+      parameters:
+        - { name: user, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Answer, content: { application/json: { schema: { type: object, required: [allowed], properties: { allowed: { type: boolean } } } } } }
+
+  /internal/requests/{requestId}/files:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [internal]
+      summary: Attach file metadata to a request (document-svc; normally via document.events)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/FileRef' } } }
+      responses:
+        '204': { description: Attached }
+
+  /health/live:
+    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+  /health/ready:
+    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+
+components:
+  parameters:
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, example: ORD0b6b3ecc3b5d4b7bb2cffd4531e1e4b0 }
+  schemas:
+    RequestType:
+      type: string
+      enum: [PAID, PROBONO]
+    RequestStatus:
+      type: string
+      enum: [SUBMITTED, QUOTING, QUOTED, AWAITING_AGREEMENT, ACCEPTED, DECLINED, PURCHASING, APPROVED, REJECTED, PICKING, SHIPPED, DELIVERED, CANCELLED]
+    LineChoice:
+      type: string
+      enum: [CIMH, SUPPLIER]
+    Carrier:
+      type: string
+      enum: [FEDEX, DHL, HAND]
+    ReasonBody:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    ProductSnapshot:
+      type: object
+      required: [name, type, probono]
+      properties:
+        name: { type: string }
+        make: { type: [string, 'null'] }
+        modelname: { type: [string, 'null'] }
+        modelnumber: { type: [string, 'null'] }
+        type: { type: string }
+        probono: { type: boolean }
+        image: { type: [string, 'null'] }
+    Cart:
+      type: object
+      required: [lines, version]
+      properties:
+        version: { type: integer }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [productId, qty, product]
+            properties:
+              productId: { type: string }
+              qty: { type: integer }
+              product: { $ref: '#/components/schemas/ProductSnapshot' }
+              available: { type: boolean, description: Product still active and sellable }
+        hasPaidLines: { type: boolean }
+        hasProbonoLines: { type: boolean }
+        updatedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+    Line:
+      type: object
+      required: [lineId, productId, qty, product]
+      properties:
+        lineId: { type: string }
+        productId: { type: string }
+        product: { $ref: '#/components/schemas/ProductSnapshot' }
+        qty: { type: integer }
+        cimhAvailable: { type: [boolean, 'null'] }
+        choice: { oneOf: [ { $ref: '#/components/schemas/LineChoice' }, { type: 'null' } ] }
+        reservation:
+          type: [object, 'null']
+          properties:
+            status: { type: string, enum: [NONE, RESERVED, FAILED, RELEASED] }
+            units: { type: array, items: { type: string }, description: staff only }
+        picked:
+          type: array
+          items: { type: object, properties: { barcode: { type: string }, pickedBy: { type: string }, pickedDate: { type: string, format: date-time } } }
+    SupplierQuoteInput:
+      type: object
+      required: [supplier, lines, fileIds]
+      properties:
+        supplier: { type: string, maxLength: 200 }
+        lines:
+          type: array
+          items: { type: object, required: [lineId, unitPrice], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' } } }
+        fileIds: { type: array, items: { type: string } }
+    SupplierQuote:
+      type: object
+      required: [id, version, lines, total, expiresAt]
+      properties:
+        id: { type: string }
+        version: { type: integer }
+        supplier: { type: string, description: staff/admin only }
+        lines:
+          type: array
+          items: { type: object, required: [lineId, unitPrice, total], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' }, total: { $ref: './common.yaml#/components/schemas/Money' } } }
+        total: { $ref: './common.yaml#/components/schemas/Money' }
+        fileIds: { type: array, items: { type: string } }
+        expiresAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        sentAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+    CimhQuote:
+      type: object
+      required: [version, lines, total]
+      properties:
+        version: { type: integer }
+        exchangeRate: { type: [string, 'null'], description: BBD per USD (USD requests) }
+        lines:
+          type: array
+          items:
+            type: object
+            required: [lineId, unitPrice, total]
+            properties:
+              lineId: { type: string }
+              unitCostBBD: { $ref: './common.yaml#/components/schemas/Money' }
+              adminFee: { $ref: './common.yaml#/components/schemas/Money' }
+              unitPrice: { $ref: './common.yaml#/components/schemas/Money' }
+              total: { $ref: './common.yaml#/components/schemas/Money' }
+        total: { $ref: './common.yaml#/components/schemas/Money' }
+        fileId: { type: [string, 'null'] }
+    ShipmentInput:
+      type: object
+      required: [carrier, date]
+      properties:
+        carrier: { $ref: '#/components/schemas/Carrier' }
+        tracking: { type: [string, 'null'], maxLength: 100, description: Required unless carrier is HAND }
+        note: { type: [string, 'null'], maxLength: 300, description: e.g. who hand-delivered }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
+        date: { type: string, format: date }
+        notifyCustomer: { type: boolean, default: true }
+    FileRef:
+      type: object
+      required: [id, kind, name, mime, size]
+      properties:
+        id: { type: string }
+        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload] }
+        name: { type: string }
+        mime: { type: string }
+        size: { type: integer }
+        uploadedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        url: { type: string, description: 'Download path: /api/documents/v1/files/{id}' }
+    RequestSummary:
+      type: object
+      required: [id, type, status, customer, submittedAt, lineCount, version]
+      properties:
+        id: { type: string }
+        type: { $ref: '#/components/schemas/RequestType' }
+        status: { $ref: '#/components/schemas/RequestStatus' }
+        customer: { type: string }
+        customerName: { type: string }
+        organisationId: { type: [string, 'null'] }
+        organisationName: { type: [string, 'null'] }
+        currency: { oneOf: [ { $ref: './common.yaml#/components/schemas/Currency' }, { type: 'null' } ] }
+        lineCount: { type: integer }
+        quoteExpiresAt: { type: [string, 'null'], format: date-time }
+        submittedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        updatedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        waitingDays: { type: integer, description: Days in current status (staff queue) }
+        version: { type: integer }
+    Request:
+      allOf:
+        - $ref: '#/components/schemas/RequestSummary'
+        - type: object
+          required: [lines, history]
+          properties:
+            lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
+            shipTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
+            billTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
+            notes: { type: [string, 'null'] }
+            quotes: { type: array, items: { $ref: '#/components/schemas/SupplierQuote' }, description: All versions; latest last }
+            cimhQuote: { oneOf: [ { $ref: '#/components/schemas/CimhQuote' }, { type: 'null' } ] }
+            acceptance:
+              type: [object, 'null']
+              properties:
+                quoteVersion: { type: integer }
+                choices: { type: array, items: { type: object, properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } } }
+                signedAgreementFileId: { type: string }
+                by: { $ref: './common.yaml#/components/schemas/Actor' }
+                at: { $ref: './common.yaml#/components/schemas/Timestamp' }
+            agreement:
+              type: [object, 'null']
+              properties:
+                quoteVersion: { type: integer }
+                choices: { type: array, items: { type: object, properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } } }
+                total: { $ref: './common.yaml#/components/schemas/Money' }
+                fileId: { type: [string, 'null'], description: Generated agreement PDF to download and sign }
+                signedFileId: { type: [string, 'null'] }
+                verified: { type: [object, 'null'], description: staff verification }
+                rejections: { type: array, items: { type: object, properties: { reason: { type: string }, at: { type: string, format: date-time } } } }
+            decline: { type: [object, 'null'] }
+            purchaseOrders: { type: array, items: { type: object }, description: staff/admin only }
+            shipping:
+              type: [object, 'null']
+              properties:
+                carrier: { $ref: '#/components/schemas/Carrier' }
+                tracking: { type: [string, 'null'] }
+                trackingUrl: { type: [string, 'null'], description: Public carrier tracking page }
+                note: { type: [string, 'null'] }
+                date: { type: string, format: date }
+            files: { type: array, items: { $ref: '#/components/schemas/FileRef' } }
+            cancellation: { type: [object, 'null'] }
+            history: { type: array, items: { $ref: './common.yaml#/components/schemas/StatusChange' } }
+            allowedActions:
+              type: array
+              description: Actions the caller may take now (drives UI buttons)
+              items: { type: string, enum: [agreement, accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, deliver] }

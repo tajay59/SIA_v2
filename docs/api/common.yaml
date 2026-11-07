@@ -1,0 +1,177 @@
+openapi: 3.1.0
+info:
+  title: "CIMH Stores Platform: shared components"
+  version: 1.0.0-draft
+  description: Shared schemas, parameters, headers and responses referenced by every service spec.
+paths: {}
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: access_token
+      description: Web (SHOP/SIA). HttpOnly cookie; state-changing requests must also send the X-CSRF-Token header.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (EdDSA)
+      description: SIA Mobile and service-to-service calls.
+
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: Opaque cursor from a previous page's `nextCursor`.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Client-generated unique key (UUID/ULID). Repeats within 24 h return the first result. Required on scan endpoints.
+      schema: { type: string, maxLength: 64 }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409.
+      schema: { type: string, example: '"7"' }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie).
+      schema: { type: string }
+
+  headers:
+    TraceId:
+      description: Correlation id for this request (also in every log line).
+      schema: { type: string }
+    ETag:
+      description: Current resource version, e.g. `"7"`.
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unauthorized:
+      description: Missing, expired or revoked token.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Forbidden:
+      description: Authenticated but not allowed (role, ownership, account status, @cimh.edu.bb restriction).
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    NotFound:
+      description: Resource does not exist or is not visible to the caller.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Conflict:
+      description: State conflict (stale If-Match version, illegal status transition, duplicate).
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unprocessable:
+      description: Validation failed.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    TooManyRequests:
+      description: Rate limit exceeded. See Retry-After.
+      headers:
+        Retry-After: { schema: { type: integer } }
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+    Unavailable:
+      description: A dependency is unavailable; nothing was written.
+      content: { application/problem+json: { schema: { $ref: '#/components/schemas/Problem' } } }
+
+  schemas:
+    Problem:
+      type: object
+      description: RFC 9457 problem details.
+      required: [type, title, status, traceId]
+      properties:
+        type: { type: string, format: uri, example: 'https://errors.cimh.edu.bb/order/illegal-transition' }
+        title: { type: string, example: Illegal status transition }
+        status: { type: integer, example: 409 }
+        detail: { type: string }
+        code: { type: string, description: Stable machine-readable code, example: ORDER_ILLEGAL_TRANSITION }
+        traceId: { type: string }
+        errors:
+          type: array
+          description: Field-level validation errors (422).
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string, example: 'lines[0].qty' }
+              message: { type: string }
+
+    PageMeta:
+      type: object
+      required: [nextCursor]
+      properties:
+        nextCursor: { type: [string, 'null'], description: null when there are no more items }
+
+    Money:
+      type: string
+      pattern: '^-?\d{1,12}\.\d{2}$'
+      description: Decimal amount as a string with 2 decimals (never a float).
+      example: '1250.00'
+    Currency:
+      type: string
+      enum: [BBD, USD]
+    Timestamp:
+      type: string
+      format: date-time
+      description: UTC, ISO-8601.
+    Role:
+      type: string
+      enum: [user, staff, admin]
+    Actor:
+      type: object
+      required: [id, name, role]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        role: { type: string, description: 'user | staff | admin | service' }
+    StatusChange:
+      type: object
+      required: [to, by, at]
+      properties:
+        from: { type: [string, 'null'] }
+        to: { type: string }
+        by: { $ref: '#/components/schemas/Actor' }
+        at: { $ref: '#/components/schemas/Timestamp' }
+        reason: { type: [string, 'null'] }
+    Address:
+      type: object
+      required: [line1, city, country]
+      properties:
+        line1: { type: string, maxLength: 200 }
+        line2: { type: [string, 'null'], maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        parish: { type: [string, 'null'], maxLength: 100 }
+        country: { type: string, pattern: '^[A-Z]{2}$', description: ISO 3166-1 alpha-2 }
+        zip: { type: [string, 'null'], maxLength: 20 }
+        organisation: { type: [string, 'null'], maxLength: 200 }
+        attention: { type: [string, 'null'], maxLength: 200 }
+    Contact:
+      type: object
+      required: [firstname, lastname, email]
+      properties:
+        firstname: { type: string, maxLength: 100 }
+        lastname: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        tel: { type: [string, 'null'], maxLength: 40 }
+    ShippingAddress:
+      allOf:
+        - $ref: '#/components/schemas/Address'
+        - $ref: '#/components/schemas/Contact'
+    Health:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ok, degraded] }
+        checks:
+          type: object
+          additionalProperties: { type: string, enum: [ok, fail] }

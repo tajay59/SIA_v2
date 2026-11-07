@@ -1,0 +1,160 @@
+# CLAUDE.md: CIMH Stores Platform
+
+Context for Claude Code. **Read this first; don't re-derive what's here.**
+
+## ⚠️ Maintenance rule (mandatory)
+After **every completed task** (code, docs, config), update this file before finishing:
+1. **Status** table: what changed.
+2. **Progress log**: one line, newest first (`YYYY-MM-DD: what`).
+3. **Decisions**: add any new decision, or move a question there once it's answered.
+4. **Manual**: when any doc in `docs/` is created or changed, update the matching chapter in `docs/manual/src/*.md`, then rebuild with `python docs/manual/build.py` (needs `pip install markdown`). New diagrams go in `diagrams/_generate.py` (helpers: `states()`, `sequence()`, `flow()` for journeys, `sitemap()`), exported with `--svg-theme dark`.
+Keep it terse. Detail lives in `docs/`; this file only points to it.
+
+## What this is
+**Team: one developer working with Claude Code. No deadline; phases end on exit criteria.**
+Rebuild of CIMH's stores system to production grade (target: 1M registered users).
+- **SHOP** (`SHOP/SIA-STORE`): customer web store (Vue 3, legacy JS). Build output in `SHOP/store/` (served by nginx). `SHOP/SIA-STORE` **is** a git repo (has the owner's uncommitted WIP in `src/stores`, `src/views`; don't commit it).
+- **v2** (`v2/`): the new monorepo (git, branch `main`, no remote yet). See `v2/README.md` and `v2/CONTRIBUTING.md`. Venv `v2/.venv`; dev stack `docker compose -f deploy/compose.dev.yml [--profile kafka]` on ports 18000 (hello) / 18001 (identity) / 19090/19093/18025 (9090 and 27018 are taken by other software on this PC).
+- **SIA** (`SIA/`): legacy **Flask** API (`SIA/app/views.py` ~3.7k lines, `functions.py` = Mongo layer) + staff Vue app (`SIA/src`). Git repo.
+- **SIA Mobile**: Android (Kotlin/Compose) at `C:\Users\tedwards\AndroidStudioProjects\StockInventoryApp`.
+- Root also holds unrelated clutter (`product photos/`, `LOCAL/`, `fake_products.json` 564 MB, PDFs). **Ignore it.**
+
+## Docs (source of truth; read only the part you need)
+| File | Content |
+|---|---|
+| `docs/PRD.md` | Features as user stories with IDs (A*, C*, I*, O*, D*, N*, M*, P*) |
+| `docs/TRD.md` | Stack/versions; requirement IDs `TR-*`; hardware; memory budget |
+| `docs/TAD.md` | Services, events/topics, workflows, security, deployment, ADRs 0001–0015 |
+| `docs/BSD.md` | **Field-level schemas, indexes, validators, access matrix, retention, legacy→v2 mapping** (check here before touching data) |
+| `docs/api/` | **API contract (source of truth for endpoints and events)**: `README.md` (conventions, roles, error codes, endpoint catalogue, legacy→v2 mapping), `common.yaml`, `<service>.openapi.yaml` ×5 (OpenAPI 3.1), `events.asyncapi.yaml` (AsyncAPI 3.0). Validate with `openapi-spec-validator <file>` and `npx @asyncapi/cli validate`. **Quote any YAML flow-mapping value that contains `,` `:` `[` `{`** |
+| `docs/APD.md` | **Screens and flows**: S-nn SHOP, A-nn SIA, M-nn Mobile (routes = file-based `src/pages`), guards, global error behaviour, journeys J-01–J-11, email deep links |
+| `docs/DESIGN_BRIEF.md` | **Visual system**: tokens (light/dark, contrast-checked), Inter + JetBrains Mono (self-hosted), 4px grid, radius 4/8/12, status chip mapping, components, screen layouts, Vuetify 4 theme code, Material 3 mapping |
+| `docs/SECURITY.md` | **Threat model**: assets A1–A9, actors, trust boundaries TB1–TB8, STRIDE threats T-01–T-41 with controls and status, legacy findings, secrets and rotation, Barbados DPA 2019, security testing, residual risks R1–R6 |
+| `docs/MIGRATION_PLAN.md` | **Legacy → v2 data move**: single cut-over (freeze, dump, migrate M01–M09, verify, switch all routes; legacy read-only 30 d, rollback ≤ 48 h), field mapping per collection, checks, dry runs DR-1–3, runbook |
+| `docs/INFRASTRUCTURE.md` | **Ops blueprint**: machines, VLAN/IPs/DNS, firewall, `deploy/` layout, per-container limits (≈25 GB prod), Mongo RS/Kafka/Redis/nginx/ClamAV config, Docker secrets, backups, 4 environments, first-build checklist, DR |
+| `docs/TEST_STRATEGY.md` | **Testing**: levels (unit ≥90% domain, testcontainers, Schemathesis, generated authz/IDOR matrix 100% endpoints, Playwright J-01–J-11, k6, chaos), CI gates, severities, go-live exit criteria, RTM via `@req` tags |
+| `docs/IMPLEMENTATION_PLAN.md` | **Build order**: P0 legacy fixes → P1 foundations → P2 identity → P3 catalogue → P4 inventory → P5 orders/quotes/agreements → P6 documents/notifications → P7 web → P8 mobile → P9 hardening (k6, chaos, Claude pen test, DR-1–3, UAT) → P10 cut-over; **~40 weeks (34–46) for 1 developer + Claude Code, phases in sequence**; milestones MS1–MS9; scope = Musts + Shoulds; no deadline |
+| `docs/DOCUMENTATION_INDEX.md` | All 32 docs and their status |
+| `docs/manual/index.html` | Manual, the **only rendered output** (readers never see .md). Built by `docs/manual/build.py` from `docs/manual/src/*.md` (build inputs). Diagrams: `docs/manual/diagrams/*.drawio` (`_generate.py`) → `images/*.svg` |
+
+## Target architecture (decided)
+- **Microservices (FastAPI, Python latest):** identity, catalog, inventory, order, document, notification + media-worker (GPU, rembg) + one outbox relay per service.
+- **MongoDB** replica set: primary on main host (priority 10) + 2 × Raspberry Pi 5 secondaries. One database `inventory`. **Existing collection names kept.**
+  Ownership:
+  - identity: `accounts`, `temp`, `organisations`*, `auditlog`*
+  - catalog: `product`, `xuser` (view), `misc`
+  - inventory: `storage`, `history`
+  - order: `orders` (incl. carts as `status: CART`)
+
+  (* = new.) A service only touches the collections it owns. Transactions are allowed.
+- **Kafka** (KRaft ×3) between services; HTTP only for immediate questions (order→catalog, order→inventory availability, document→order access, notification→catalog). Outbox stored on the changed document. Envelope: `eventId, type, version, occurredAt, correlationId, actorId, payload`. Key = entity id. Retry topics, then DLQ.
+- **Redis**: revocation, rate limits, idempotency keys, processed-event IDs, locks.
+- **nginx** at the edge; **local file volume** `/srv/sia-data` + `X-Accel-Redirect`. **Docker Compose only.**
+- **Monitoring:** Prometheus + Alertmanager only (**no Grafana, Loki or Sentry**).
+- **Frontends:** Vue 3 + TypeScript + **Vuetify 4** + file-based routing + **Zod 4** + Pinia; API clients generated from OpenAPI. **Android min 11.**
+- **Auth:** EdDSA JWT (access 15 min, refresh 7 d, a new refresh issued on every use), JWKS, Argon2id, cookies + CSRF (web), Bearer (mobile).
+- **Hardware:** host with 16 cores / **32 GB** / 2 × 6 GB GPU (budget **29.5–31.5 GB incl. ClamAV**, very tight; 64 GB upgrade strongly recommended; every container has `mem_limit`). Staging runs on the host, on demand. Backups use restic to another CIMH site. Mail goes through the CIMH mail server. CI is GitHub Actions + GHCR (deploys by a self-hosted runner on the host).
+
+## Business rules (decided)
+- Roles: `admin`, `staff`, `user` only.
+- Registration: verify email → **admin approval** → ACTIVE. `@cimh.edu.bb` accounts skip approval and **cannot request items**.
+- Organisation is entered as free text; the admin links it to an `organisations` record. **Same-org users can see each other's requests**; only the requester or an admin can act on them.
+- **No payments.** Paid request flow: SUBMITTED → QUOTING → QUOTED → **AWAITING_AGREEMENT** → ACCEPTED → PURCHASING → SHIPPED → DELIVERED (DECLINED/expired → CANCELLED).
+- **Acceptance = signed agreement:** the customer chooses options → the system generates an agreement PDF (total) → the customer downloads, signs and uploads it (`signed_agreement`) → ACCEPTED. Staff verify the signature (`agreementVerified` is required for purchase orders) or reject it (back to AWAITING_AGREEMENT).
+- **Supplier items ship direct** to the customer: never stowed and never tracked as units. Only CIMH-stock and Pro Bono lines are picked.
+- **CIMH stock quote:** offered only for lines where stock covers the **full** quantity. Priced at catalogue cost (BBD) + admin fee; for USD requests staff enter the exchange rate. The customer picks CIMH or supplier per line. Stock is reserved at acceptance.
+- **Pro Bono** (free items; the old name "NCI" is retired; legacy code still says `ncicart`/`nciStore`): SUBMITTED → APPROVED → PICKING → SHIPPED → DELIVERED, with no quote. Staff can set `probonoMaxPerRequest` per item. A mixed cart is split into a PAID and a PROBONO request. Field `product.probono`; request type `PROBONO`; events `order.probono_*`.
+- Currency is BBD or USD, one per request. Quotes are valid 30 days.
+- Carriers: FedEx, DHL, hand delivery. **Tracking numbers are entered manually; no carrier APIs.**
+- Customers never see prices on product pages.
+- Brand: logo blue `#0084C8` (4.09:1 on white, so **not for normal text**); interactive primary `#006FA8` light / `#5CC2FF` dark; Pro Bono badge `#F5C400` with ink text only.
+- `product.probono` is set explicitly at product creation. Migration: legacy `sellable "probono"` → `sellable: true, probono: true`; `"yes"` → `true`; `"no"` → `false`. Product `type` values are codes `MET RAD EQUIP SUPP MISC PRO`. Carts left inactive are emptied after 180 days. Backups: 30 daily + 12 monthly.
+
+## Implementation decisions (made while building; docs updated)
+- **Codes never travel in Kafka.** `temp` keeps `codeHash` + a sealed `codeEnc`; notification-svc claims it **once** via `GET /internal/codes/{codeRef}` (5th sync HTTP call). New events `user.password_reset_requested`, `user.email_change_requested` (codeRef only).
+- **Admin without MFA**: may log in, but every endpoint except `/auth/mfa/*`, `GET /me`, `/auth/logout` returns 403 `MFA_REQUIRED` (token claim `mfa`). **Service tokens** are refused on user endpoints.
+- First admins come from migration; dev bootstrap = promote a CIMH account in the dev DB (`tools/e2e/identity_smoke.py`).
+- Org name uniqueness via `nameKey` (lower-cased) instead of a collation index. HIBP fail-open (TRD). Missing `If-Match` → 428 `PRECONDITION_REQUIRED`.
+
+## Staging-lite server (demo, shared)
+- `ssh kw-server` (84.247.187.64, Contabo, Ubuntu 22.04, 4 cores / 6 GB, **shared with live stacks**: mms, printit, kreativwrist). Our stack: `/opt/sia-staging`, compose project `sia-staging`, deploy with `v2/deploy/staging-lite/deploy.sh` (from `v2/`).
+- https://sia.hashiz.store (status page + identity API), https://store.hashiz.store (placeholder). Edge = `printit-nginx` (owns 80/443, loads `/srv/edge-sites/*.conf`; ours: `cimh-stores-staging.conf`) → `sia-gateway` alias on `kong-net`. Always `nginx -t` before reload.
+- Cert `sia.hashiz.store` (both names) is **standalone**: certbot's global pre/post hooks **stop/start printit-nginx** (all sites blip ~10 s) on every certbot run, so never run certbot casually; webroot can't work here.
+- Secrets only in `/opt/sia-staging/secrets` (generated on the server). **Synthetic data only** (DPA). ~1.5 GB RAM left on the box; keep `mem_limit`s.
+- Pre-existing issue (not ours): https://www.yanacreations.com has no 443 server block, so it serves the printitdesigns cert.
+
+## Reference data: `inventory` db on **172.16.0.203:27017** (MongoDB 8.0.26, standalone, authSource=admin)
+**Use this DB as the reference going forward.** The credentials came from the user in chat and are **never stored in files**; ask for them, or read them from the environment variable `MURI`. The local `127.0.0.1` copy is **generated test data** (840k products); ignore it.
+Counts: `accounts` 65 (56 user / 6 staff / 3 admin; 9 `@cimh.edu.bb`), `product` 83 (MET 49, EQUIP 19, RAD 12, PRO 3; sellable yes 48 / no 32 / probono 3), `storage` 697 (no duplicate barcodes), `orders` 39, `history` 860 (stow, pick, orderpick), `misc` 12, `temp` 0, `products` 0 (drop). The `xuser` view shows MET/RAD/PRO/EQUIP with sellable yes/probono. Orders also have `billedto`, `total`, `shippingestimate`; `shipping.method` is free text. Read-only via pymongo; **never print documents (personal data)**; this account can't read `system.views` (use `listCollections`).
+
+## Project skills (`.claude/skills/`; `skills-lock.json` tracks the CLI-installed ones)
+| Skill | Use for | Notes |
+|---|---|---|
+| `design-taste-frontend` (Leonxlnx/taste-skill) | Marketing and landing pages, visual polish, "looks generic" | Built for **company websites**. For SHOP/SIA app screens, apply its general principles only (one system, equal edges, real content, no violet); its page plans don't fit Vuetify apps. Needs Node 22+ and Chrome/Edge |
+| `web-design-guidelines` (vercel-labs) | Reviewing UI code (a11y, UX) | Fetches the rules from GitHub each run |
+| `writing-guidelines` (vercel-labs) | Reviewing docs and prose | Fetches the rules from GitHub each run |
+| `design-md-library` (local wrapper around VoltAgent/awesome-design-md) | Design Brief, design tokens, screen design | Read 2–3 references only; never copy another brand's identity |
+
+Update CLI skills: `npx skills update -p`.
+
+## Environment and gotchas
+- Windows 11; use the Bash tool (Git Bash) or PowerShell. **Bash heredocs containing `'''` or nested quotes break**: write scripts to the scratchpad with the Write tool, then run them.
+- `SIA/sia_env` venv is broken (points at a missing Python). Use system Python 3.13 or a scratch venv.
+- draw.io CLI: `"C:\Program Files\draw.io\draw.io.exe" -x -f svg --svg-theme dark -o images/X.svg diagrams/X.drawio`. **Always use `--svg-theme dark`**; the manual cards are `#121212`. **Exception: `28-design-tokens` → `--svg-theme light`** (dark mode recolours swatches; the diagram draws its own dark background). Don't regenerate a `.drawio` file that has been hand-edited.
+- **Secrets:** `SIA/.env` holds real credentials, and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
+- Commit or push only when asked. P0 fixes are committed in SIA (`3ad5fa0`, `4a5881b`).
+- Customer quotation PDFs and `Spares.db` are untracked now but **still in SIA git history**: purge (`git filter-repo`) before SIA is ever pushed anywhere.
+
+## Status
+| Area | State |
+|---|---|
+| Legacy hot-fixes (Phase 0) | **Code done and committed**: earlier fixes + JWT on the 10 open routes (staff-only for image add/delete, upload, rembg, QR batch, barcode images, staff product lookups; owner-or-staff for `user/items`), `cost`/serials stripped from public `singleproduct/ext`, SIA frontend sends JWT CSRF header on decode/upload, customer files/DB untracked, SHOP log untracked. **Not tested against a running legacy app.** Remaining (owner): deploy, verify TLS, rotate secrets + `svc_migrate_ro`, archive customer files on the server, purge history |
+| PRD / TRD / TAD | Drafted; all open questions resolved |
+| Manual (HTML + 23 dark diagrams) | Drafted |
+| BSD | Drafted; all questions resolved; mapping checked against the reference DB |
+| Manual | Data chapter rebuilt from the BSD; build pipeline in place |
+| API Spec (`docs/api/`) | Drafted, all files validated; no open questions |
+| APD | Drafted; all questions resolved (one cart per user; no staff assignment; Pro Bono catalogue public) |
+| Design Brief | Drafted; all questions resolved (no official brand guide, so the brief is the reference; SHOP home hero image generated with OpenArt.ai, the only generated image) |
+| Security (`docs/SECURITY.md`) | Drafted; all decisions made: R1–R3 accepted; VLAN, admin MFA (Must), and TR-SEC-6 to TR-SEC-12 added to the TRD |
+| Migration Plan | Drafted; all questions resolved (BBD; paid-open → SUBMITTED; files in `SIA/app/`; self-stow → assignedTo). **Strangler replaced by a single data cut-over** |
+| Infrastructure Plan | Drafted; resolved: VLAN/IPs/DNS from CIMH IT before deploy (gate), **self-hosted GitHub runner** (deploy jobs only, outbound), Pi LUKS manual unlock; **open: 64 GB upgrade (decide by DR-2)** |
+| Test Strategy | Drafted; resolved: no external UAT orgs (staff play customers with test accounts), device Samsung Galaxy Note 10+ (SM-N975U1) + Android 11 emulator, **Claude runs the pen test** on staging under a written scope/authorisation (ASVS L2 + ZAP + T-xx probes; SECURITY R7: not independent) |
+| Implementation Plan | Drafted; no start date or deadline; **one developer + Claude Code**. **All 12 planning docs drafted, so the next step is to build Phase P0** |
+| ADR files `docs/adr/` | Not written (summaries in TAD §11) |
+| v2 Foundations (Phase 1) | **Code done** (commit `d70d666`): `py-common` (auth/JWKS, authz, errors, outbox+relay, idempotent consumer+retry/DLQ, lock, logs, metrics, `create_app`), `hello-svc` + hardened image, `deploy/` (dev stack verified incl. alert email to Mailpit; staging/prod compose; deploy.sh with cosign + rollback; TR-OBS-3 rules), GitHub Actions (CI + manual prod deploy, **never run on GitHub**), authz matrix 113 endpoints + gate + generator, transition tables + generator, seed script, `web-ui`, `web-api` (generated), `event-schemas` (41). 122 Python tests (97% cov), 13 vitest, mypy strict + ruff clean. Remaining (owner/CIMH IT): GitHub repo + branch protection + runner, provisioning INFRASTRUCTURE §10 steps 1–9, staging/prod first deploy, restore test |
+| Identity (Phase 2) | **Backend done** (`99bb73a`, `ffb3bcd`): identity-svc all 30 endpoints of the contract + `/internal/codes`; outbox relay process verified against real Kafka; e2e smoke `tools/e2e/identity_smoke.py` (27 steps) passes on real Mongo RS + Redis. 252 tests, 92% cov. **Not done:** screens S-13…S-19, A-16…A-21 and mobile login (no web apps exist yet; do with P7 or next), scheduler for PENDING_VERIFICATION→EXPIRED and 90-day deletion (TR-PRIV-1), `audit.events` consumer, account deletion (`user.deleted`) |
+| Rotate secrets; archive customer files on the server | To do (owner) |
+
+## Progress log (newest first)
+- 2026-11-07: Staging-lite live on sia/store.hashiz.store (kw-server); e2e smoke passes over public HTTPS.
+- 2026-11-07: P2 identity backend + outbox relay built and verified end to end; contract gaps fixed (code claim endpoint, 2 events, error codes) in API/BSD/TAD/manual (diagrams 03, 13).
+- 2026-11-07: P1 code built in `v2/` (monorepo, py-common, hello-svc, deploy, CI, test tooling, web packages); infra/GitHub steps left for the owner.
+- 2026-11-07: P0 code committed in SIA (remaining open routes secured, customer files untracked) and SIA-STORE (log untracked).
+- 2026-11-07: Re-planned for 1 developer + Claude Code, no deadline: ~40 weeks, sequential phases, scope Musts + Shoulds.
+- 2026-11-07: Implementation Plan drafted (P0–P10, ~24 weeks, Gantt diagram 31); manual ch. 16. All planning documents done.
+- 2026-11-07: Pen test will be performed by Claude against staging (written scope required).
+- 2026-11-07: Test answers: staff-run UAT, Note 10+ test device, internal security assessment instead of pen test (SECURITY R7).
+- 2026-11-07: Test Strategy drafted; diagram 30; manual ch. 15.
+- 2026-11-06: Infra questions: self-hosted runner, manual LUKS unlock, CIMH IT provides network before deploy; 64 GB still open.
+- 2026-11-06: Infrastructure and Environment Plan drafted; manual ch. 14.
+- 2026-11-06: Migration questions resolved.
+- 2026-11-06: Data Migration Plan drafted (single cut-over replaces strangler; TAD §9.5, manual ch. 7 and diagram 22 updated); manual ch. 13.
+- 2026-11-06: Security decisions applied: TR-AUTH-9 admin MFA Must; new TR-SEC-6–12 (ClamAV, Kafka SASL/ACL + Redis ACL, container hardening, cosign, LUKS, mobile pinning/app lock, VLAN); memory now 29.5–31.5 GB.
+- 2026-11-06: Security and Threat Model drafted (41 STRIDE threats, trust-boundary diagram 29); manual ch. 6 extended (generated from SECURITY.md).
+- 2026-11-06: Design Brief questions resolved: brief is the brand reference; home hero image via OpenArt.ai (rules in §7).
+- 2026-11-06: Design Brief drafted (contrast-checked tokens, components, screen looks, Vuetify/M3 theme); diagram 28 design tokens; manual chapter 12.
+- 2026-11-06: APD questions resolved: one cart per user, no request assignee, Pro Bono catalogue public.
+- 2026-11-06: APD drafted (all screens, 11 journeys); 4 journey diagrams (24–27); manual chapter 11 App flows.
+- 2026-11-06: Added signed-agreement acceptance (status AWAITING_AGREEMENT, events agreement_requested/rejected) and direct shipping of supplier items across PRD/TAD/BSD/API/manual/diagrams.
+- 2026-11-06: API Specification: 5 OpenAPI specs + common + AsyncAPI events + README, all validated; manual chapter 10 (API).
+- 2026-11-06: Reference DB switched to 172.16.0.203 (real data); NCI renamed to **Pro Bono** in all docs and diagrams; BSD/TRD/TAD/PRD/manual updated with real counts and mappings.
+- 2026-11-06: BSD questions: Pro Bono rule from code; DB check found 1 storage barcode × 8 docs and `sellable` values yes/no/probono. Manual Data chapter + `build.py` + `src/`.
+- 2026-11-06: BSD drafted (misc gets a `kind` field; shelves split to one doc each; carts stored as orders with status CART; storage gets `reservedFor`).
+- 2026-11-06: Added project skills: taste-skill, web-design-guidelines, writing-guidelines, design-md-library.
+- 2026-11-06: Created CLAUDE.md.
+- 2026-11-06: Manual: HTML single page; diagrams switched to dark theme.
+- 2026-11-06: Manual created (23 draw.io diagrams), converted to `index.html`; `.md` chapters removed.
+- 2026-11-06: TAD drafted. TRD finalized (Sentry and Grafana removed; Prometheus kept).
+- 2026-11-06: PRD finalized (replica set on host + 2 Pis, new collections, CIMH stock quote, Pro Bono limits, BBD/USD).
+- 2026-11-06: Phase-0 security hot-fixes applied to the legacy Flask app (uncommitted).

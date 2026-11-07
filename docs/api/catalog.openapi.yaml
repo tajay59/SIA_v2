@@ -1,0 +1,499 @@
+openapi: 3.1.0
+info:
+  title: catalog-svc API
+  version: 1.0.0-draft
+  description: |
+    Products, search, Pro Bono items, product images and reference data (departments, types, projects,
+    fees, email lists, settings, and the site/location/shelf records stored in `misc`).
+    Owns `product`, `xuser` (view), `misc` (BSD §5.5–5.7).
+    **Field visibility:** customers (role `user`, or anonymous) only ever receive `ProductPublic`;
+    staff/admin receive `ProductStaff` (adds cost, threshold, serials).
+servers:
+  - url: /api/catalog/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: products
+  - name: images
+  - name: reference
+  - name: settings
+  - name: internal
+  - name: ops
+
+paths:
+  /products:
+    get:
+      tags: [products]
+      summary: Browse products
+      description: |
+        Anonymous and customers: sellable, active products only (from the `xuser` view; today types MET, RAD, PRO, EQUIP).
+        Staff/admin: all products, including `sellable=false` and inactive with `includeInactive=true`.
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/ProductType' } }
+        - { name: department, in: query, schema: { type: string } }
+        - { name: project, in: query, schema: { type: string } }
+        - { name: probono, in: query, description: Filter to Pro Bono items, schema: { type: boolean } }
+        - { name: inStock, in: query, schema: { type: boolean } }
+        - { name: includeInactive, in: query, description: staff/admin only, schema: { type: boolean, default: false } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page of products
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { oneOf: [ { $ref: '#/components/schemas/ProductPublic' }, { $ref: '#/components/schemas/ProductStaff' } ] }
+    post:
+      tags: [products]
+      summary: Create a product (staff, admin)
+      description: '`probono` must be set explicitly. `id` is generated unless supplied (legacy-style ids allowed for imports).'
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProductInput' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/ProductStaff' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /products/search:
+    get:
+      tags: [products]
+      summary: Full-text search (name, make, model name/number, keywords; staff also serials)
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2, maxLength: 100 } }
+        - { name: type, in: query, schema: { $ref: '#/components/schemas/ProductType' } }
+        - { name: department, in: query, schema: { type: string } }
+        - { name: probono, in: query, schema: { type: boolean } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Ranked results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties:
+                      items:
+                        type: array
+                        items: { oneOf: [ { $ref: '#/components/schemas/ProductPublic' }, { $ref: '#/components/schemas/ProductStaff' } ] }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /products/{productId}:
+    parameters: [ { $ref: '#/components/parameters/ProductId' } ]
+    get:
+      tags: [products]
+      summary: Product detail
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '200':
+          description: Product (public or staff view by role)
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content:
+            application/json:
+              schema: { oneOf: [ { $ref: '#/components/schemas/ProductPublic' }, { $ref: '#/components/schemas/ProductStaff' } ] }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    patch:
+      tags: [products]
+      summary: Update a product (staff, admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ProductPatch' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/ProductStaff' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+    delete:
+      tags: [products]
+      summary: Deactivate a product (soft delete; staff, admin)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Deactivated }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /products/{productId}/images:
+    parameters: [ { $ref: '#/components/parameters/ProductId' } ]
+    post:
+      tags: [images]
+      summary: Upload product images (staff, admin)
+      description: JPEG/PNG/WebP, ≤ 20 MB each, max 10 per request. Processing (resize, WebP, EXIF strip, optional background removal) is asynchronous via media-worker; images appear when `product.image_added` is published.
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files: { type: array, maxItems: 10, items: { type: string, format: binary } }
+                removeBackground: { type: boolean, default: false }
+      responses:
+        '202':
+          description: Accepted for processing
+          content:
+            application/json:
+              schema: { type: object, required: [jobIds], properties: { jobIds: { type: array, items: { type: string } } } }
+        '413': { description: File too large }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /products/{productId}/images/{fileId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProductId' }
+      - { name: fileId, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [images]
+      summary: Make an image primary (staff, admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [primary], properties: { primary: { const: true } } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/ProductStaff' } } } }
+    delete:
+      tags: [images]
+      summary: Remove an image (staff, admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      responses:
+        '204': { description: Removed }
+
+  /reference:
+    get:
+      tags: [reference]
+      summary: Departments, product types and active projects (public)
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        '200':
+          description: Reference data
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [departments, types, projects]
+                properties:
+                  departments: { type: array, items: { type: string } }
+                  types: { type: array, items: { type: object, required: [key, label], properties: { key: { $ref: '#/components/schemas/ProductType' }, label: { type: string } } } }
+                  projects: { type: array, items: { $ref: '#/components/schemas/Project' } }
+
+  /reference/departments:
+    put:
+      tags: [reference]
+      summary: Replace the department list (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [values], properties: { values: { type: array, items: { type: string } } } } } }
+      responses:
+        '204': { description: Saved }
+
+  /reference/projects:
+    post:
+      tags: [reference]
+      summary: Create a project (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /reference/projects/{code}:
+    parameters: [ { name: code, in: path, required: true, schema: { type: string } } ]
+    patch:
+      tags: [reference]
+      summary: Rename or deactivate a project (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, properties: { name: { type: string }, active: { type: boolean } } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Project' } } } }
+
+  /settings/fees:
+    get:
+      tags: [settings]
+      summary: Fee settings (staff, admin)
+      responses:
+        '200': { description: Fees, content: { application/json: { schema: { $ref: '#/components/schemas/Fees' } } } }
+    put:
+      tags: [settings]
+      summary: Update fees (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Fees' } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Fees' } } } }
+
+  /settings/email-lists:
+    get:
+      tags: [settings]
+      summary: Staff notification lists (admin)
+      responses:
+        '200': { description: Lists, content: { application/json: { schema: { $ref: '#/components/schemas/EmailLists' } } } }
+    put:
+      tags: [settings]
+      summary: Replace notification lists (admin; members must be staff/admin accounts)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EmailLists' } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/EmailLists' } } } }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /settings/general:
+    get:
+      tags: [settings]
+      summary: Workflow settings (staff, admin)
+      responses:
+        '200': { description: Settings, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+    put:
+      tags: [settings]
+      summary: Update workflow settings (admin)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+
+  /internal/products/summaries:
+    post:
+      tags: [internal]
+      summary: Bulk product snapshots for order-svc (service token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [ids], properties: { ids: { type: array, maxItems: 200, items: { type: string } } } }
+      responses:
+        '200':
+          description: Found products (missing ids omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/ProductStaff' } }
+
+  /internal/places:
+    get:
+      tags: [internal]
+      summary: Site/location/shelf records for inventory-svc (service token)
+      parameters:
+        - { name: kind, in: query, schema: { type: string, enum: [site, location, shelf] } }
+        - { name: site, in: query, schema: { type: string } }
+        - { name: location, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Places
+          content:
+            application/json:
+              schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Place' } } } }
+    put:
+      tags: [internal]
+      summary: Create or update a place record (service token; inventory-svc only)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/Place' } } }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Place' } } } }
+
+  /health/live:
+    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+  /health/ready:
+    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+
+components:
+  parameters:
+    ProductId:
+      name: productId
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    ProductType:
+      type: string
+      enum: [MET, RAD, EQUIP, SUPP, MISC, PRO]
+    Image:
+      type: object
+      required: [fileId, url, primary]
+      properties:
+        fileId: { type: string }
+        url: { type: string, description: Public URL under /media/products/ }
+        w: { type: integer }
+        h: { type: integer }
+        primary: { type: boolean }
+    ProductPublic:
+      type: object
+      required: [id, name, type, department, probono, inStock, images]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: [string, 'null'] }
+        details: { type: [string, 'null'] }
+        make: { type: [string, 'null'] }
+        modelname: { type: [string, 'null'] }
+        modelnumber: { type: [string, 'null'] }
+        type: { $ref: '#/components/schemas/ProductType' }
+        department: { type: string }
+        project: { type: [string, 'null'] }
+        probono: { type: boolean, description: Pro Bono (free) item }
+        probonoMaxPerRequest: { type: [integer, 'null'], minimum: 1 }
+        unitquantity: { type: [integer, 'null'] }
+        weight: { type: [number, 'null'] }
+        dimension: { type: [string, 'null'] }
+        images: { type: array, items: { $ref: '#/components/schemas/Image' } }
+        inStock: { type: boolean, description: Display only; "In stock" vs "On request" }
+    ProductStaff:
+      allOf:
+        - $ref: '#/components/schemas/ProductPublic'
+        - type: object
+          required: [sellable, active, threshold, version]
+          properties:
+            sellable: { type: boolean }
+            active: { type: boolean }
+            cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: BBD }
+            threshold: { type: integer }
+            sn: { type: [string, 'null'] }
+            sn1: { type: [string, 'null'] }
+            keywords: { type: array, items: { type: string } }
+            number: { type: [integer, 'null'] }
+            stockCount: { type: [integer, 'null'], description: Available units (from inventory events) }
+            version: { type: integer }
+            createdAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+            updatedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+    ProductInput:
+      type: object
+      additionalProperties: false
+      required: [name, type, department, sellable, probono, threshold]
+      properties:
+        id: { type: string, maxLength: 64 }
+        name: { type: string, maxLength: 200 }
+        description: { type: [string, 'null'], maxLength: 5000 }
+        details: { type: [string, 'null'], maxLength: 5000 }
+        make: { type: [string, 'null'], maxLength: 100 }
+        modelname: { type: [string, 'null'], maxLength: 100 }
+        modelnumber: { type: [string, 'null'], maxLength: 100 }
+        type: { $ref: '#/components/schemas/ProductType' }
+        department: { type: string }
+        project: { type: [string, 'null'] }
+        sellable: { type: boolean }
+        probono: { type: boolean, description: Required. Pro Bono implies sellable=true. }
+        probonoMaxPerRequest: { type: [integer, 'null'], minimum: 1 }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
+        threshold: { type: integer, minimum: 0 }
+        unitquantity: { type: [integer, 'null'], minimum: 1 }
+        weight: { type: [number, 'null'], minimum: 0 }
+        dimension: { type: [string, 'null'], maxLength: 100 }
+        sn: { type: [string, 'null'], maxLength: 100 }
+        sn1: { type: [string, 'null'], maxLength: 100 }
+        keywords: { type: array, maxItems: 50, items: { type: string, maxLength: 50 } }
+    ProductPatch:
+      type: object
+      additionalProperties: false
+      description: Any subset of ProductInput fields (except id).
+      properties:
+        name: { type: string, maxLength: 200 }
+        description: { type: [string, 'null'] }
+        details: { type: [string, 'null'] }
+        make: { type: [string, 'null'] }
+        modelname: { type: [string, 'null'] }
+        modelnumber: { type: [string, 'null'] }
+        type: { $ref: '#/components/schemas/ProductType' }
+        department: { type: string }
+        project: { type: [string, 'null'] }
+        sellable: { type: boolean }
+        probono: { type: boolean }
+        probonoMaxPerRequest: { type: [integer, 'null'], minimum: 1 }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
+        threshold: { type: integer, minimum: 0 }
+        unitquantity: { type: [integer, 'null'] }
+        weight: { type: [number, 'null'] }
+        dimension: { type: [string, 'null'] }
+        sn: { type: [string, 'null'] }
+        sn1: { type: [string, 'null'] }
+        keywords: { type: array, items: { type: string } }
+    Project:
+      type: object
+      required: [code, name, active]
+      properties:
+        code: { type: string, maxLength: 50 }
+        name: { type: string, maxLength: 200 }
+        active: { type: boolean }
+    Fees:
+      type: object
+      required: [types]
+      properties:
+        types:
+          type: array
+          items:
+            type: object
+            required: [name, fee]
+            properties:
+              name: { type: string, example: admin }
+              fee: { $ref: './common.yaml#/components/schemas/Money' }
+    EmailListMember:
+      type: object
+      required: [accountId]
+      properties:
+        accountId: { type: string }
+        email: { type: string, format: email, readOnly: true }
+        firstname: { type: string, readOnly: true }
+        lastname: { type: string, readOnly: true }
+    EmailLists:
+      type: object
+      required: [registration, order, invoice, cancellation, lowStock]
+      properties:
+        registration: { type: array, items: { $ref: '#/components/schemas/EmailListMember' } }
+        order: { type: array, items: { $ref: '#/components/schemas/EmailListMember' } }
+        invoice: { type: array, items: { $ref: '#/components/schemas/EmailListMember' } }
+        cancellation: { type: array, items: { $ref: '#/components/schemas/EmailListMember' } }
+        lowStock: { type: array, items: { $ref: '#/components/schemas/EmailListMember' } }
+    Settings:
+      type: object
+      required: [quoteValidityDays, quoteReminderDays, approvalReminderHours, purgeAfterDays]
+      properties:
+        quoteValidityDays: { type: integer, minimum: 1, default: 30 }
+        quoteReminderDays: { type: integer, minimum: 0, default: 3 }
+        approvalReminderHours: { type: integer, minimum: 1, default: 48 }
+        purgeAfterDays: { type: integer, minimum: 1, default: 90 }
+        cartInactivityDays: { type: integer, minimum: 1, default: 180 }
+    Place:
+      type: object
+      required: [kind, barcode, name, active]
+      properties:
+        kind: { type: string, enum: [site, location, shelf] }
+        barcode: { type: string }
+        name: { type: string }
+        site: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        number: { type: [integer, 'null'], description: Shelf number }
+        country: { type: [string, 'null'] }
+        address: { type: [string, 'null'] }
+        description: { type: [string, 'null'] }
+        active: { type: boolean }

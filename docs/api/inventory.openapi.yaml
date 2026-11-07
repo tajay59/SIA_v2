@@ -1,0 +1,463 @@
+openapi: 3.1.0
+info:
+  title: inventory-svc API
+  version: 1.0.0-draft
+  description: |
+    Sites, locations, shelves, storage units, stow, pick, relocate, assignment, stock levels, history and reservations.
+    Owns `storage`, `history` (BSD §5.8–5.9); place records live in `misc` via catalog-svc.
+    **All public endpoints require role staff or admin.** Scan endpoints require `Idempotency-Key`.
+servers:
+  - url: /api/inventory/v1
+security:
+  - cookieAuth: []
+  - bearerAuth: []
+tags:
+  - name: places
+  - name: units
+  - name: scans
+  - name: stock
+  - name: internal
+  - name: ops
+
+paths:
+  /sites:
+    get:
+      tags: [places]
+      summary: List sites
+      responses:
+        '200': { description: Sites, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Site' } } } } } } }
+    post:
+      tags: [places]
+      summary: Register a site
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SiteInput' } } }
+      responses:
+        '201': { description: Created (barcode generated), content: { application/json: { schema: { $ref: '#/components/schemas/Site' } } } }
+
+  /sites/{site}/locations:
+    parameters: [ { name: site, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [places]
+      summary: Locations of a site (with shelf counts)
+      parameters:
+        - { name: withShelves, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: Locations, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Location' } } } } } } }
+    post:
+      tags: [places]
+      summary: Create a location in a site
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string } } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Location' } } } }
+
+  /locations/{location}/shelves:
+    parameters: [ { name: location, in: path, required: true, schema: { type: string } } ]
+    post:
+      tags: [places]
+      summary: Add shelves to a location (QR codes generated)
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [count], properties: { count: { type: integer, minimum: 1, maximum: 200 } } } } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Shelf' } } } } } } }
+
+  /shelves/{barcode}:
+    parameters: [ { name: barcode, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [places]
+      summary: Validate a scanned shelf
+      responses:
+        '200': { description: Shelf, content: { application/json: { schema: { $ref: '#/components/schemas/Shelf' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /shelves/{barcode}/units:
+    parameters: [ { name: barcode, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [units]
+      summary: Units stowed on a shelf (lookup)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page of units
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/Unit' } } }
+
+  /units/{barcode}:
+    parameters: [ { name: barcode, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [units]
+      summary: A unit, with product summary and current location
+      responses:
+        '200': { description: Unit, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /labels:
+    post:
+      tags: [units]
+      summary: Create unit records and a printable label batch for a product
+      description: Generates N unit barcodes (storage documents, not yet stowed) and a PDF/CSV label file via document-svc.
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId, quantity]
+              properties:
+                productId: { type: string }
+                quantity: { type: integer, minimum: 1, maximum: 500 }
+                format: { type: string, enum: [pdf, csv], default: pdf }
+                serials: { type: array, items: { type: string }, description: 'Optional, one per unit' }
+      responses:
+        '201':
+          description: Units created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [barcodes, fileId]
+                properties:
+                  barcodes: { type: array, items: { type: string } }
+                  fileId: { type: string, description: Download via documents API }
+
+  /stow:
+    post:
+      tags: [scans]
+      summary: Stow a unit on a shelf
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [unit, shelf], properties: { unit: { type: string }, shelf: { type: string } } } } }
+      responses:
+        '200': { description: Stowed, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /pick:
+    post:
+      tags: [scans]
+      summary: Pick a unit off its shelf (with a reason, or for a request)
+      description: When `orderId` is set the unit must be reserved for that request (409 UNIT_NOT_RESERVED_FOR_ORDER otherwise). Without `orderId`, a reserved unit cannot be picked.
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [unit]
+              properties:
+                unit: { type: string }
+                reason: { type: string, maxLength: 300 }
+                orderId: { type: string }
+              oneOf:
+                - required: [reason]
+                - required: [orderId]
+      responses:
+        '200': { description: Picked, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /relocate:
+    post:
+      tags: [scans]
+      summary: Move a stowed unit to another shelf
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [unit, toShelf], properties: { unit: { type: string }, toShelf: { type: string } } } } }
+      responses:
+        '200': { description: Moved, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
+  /assign:
+    post:
+      tags: [scans]
+      summary: Issue a unit to a person (self-stow / who has what)
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [unit, accountId], properties: { unit: { type: string }, accountId: { type: string } } } } }
+      responses:
+        '200': { description: Assigned, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+
+  /unassign:
+    post:
+      tags: [scans]
+      summary: Return an issued unit (then stow it)
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [unit], properties: { unit: { type: string } } } } }
+      responses:
+        '200': { description: Unassigned, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+
+  /products/{productId}/stock:
+    parameters: [ { name: productId, in: path, required: true, schema: { type: string } } ]
+    get:
+      tags: [stock]
+      summary: Stock for a product (counts and locations)
+      responses:
+        '200': { description: Stock, content: { application/json: { schema: { $ref: '#/components/schemas/ProductStock' } } } }
+
+  /stock/low:
+    get:
+      tags: [stock]
+      summary: Products at or below their threshold
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/ProductStock' } } }
+
+  /assignments:
+    get:
+      tags: [stock]
+      summary: Who has what (units issued to people)
+      parameters:
+        - { name: accountId, in: query, schema: { type: string } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/Unit' } } }
+
+  /history:
+    get:
+      tags: [stock]
+      summary: Movement history
+      parameters:
+        - { name: unit, in: query, schema: { type: string } }
+        - { name: user, in: query, schema: { type: string } }
+        - { name: operation, in: query, schema: { $ref: '#/components/schemas/Operation' } }
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { $ref: './common.yaml#/components/parameters/Cursor' }
+        - { $ref: './common.yaml#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Page (newest first)
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: './common.yaml#/components/schemas/PageMeta'
+                  - type: object
+                    required: [items]
+                    properties: { items: { type: array, items: { $ref: '#/components/schemas/HistoryEntry' } } }
+
+  /internal/availability:
+    post:
+      tags: [internal]
+      summary: Is the full quantity available for each line? (order-svc; service token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [lines]
+              properties:
+                lines: { type: array, maxItems: 200, items: { type: object, required: [lineId, productId, qty], properties: { lineId: { type: string }, productId: { type: string }, qty: { type: integer, minimum: 1 } } } }
+      responses:
+        '200':
+          description: Per-line answer
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lines]
+                properties:
+                  lines: { type: array, items: { type: object, required: [lineId, available, fullQuantity], properties: { lineId: { type: string }, available: { type: integer }, fullQuantity: { type: boolean } } } }
+
+  /internal/reservations:
+    post:
+      tags: [internal]
+      summary: Reserve units for request lines (transaction; normally triggered by events, exposed for staff retries)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orderId, lines]
+              properties:
+                orderId: { type: string }
+                lines: { type: array, items: { type: object, required: [lineId, productId, qty], properties: { lineId: { type: string }, productId: { type: string }, qty: { type: integer } } } }
+      responses:
+        '200':
+          description: Reserved
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [lines]
+                properties:
+                  lines: { type: array, items: { type: object, required: [lineId, units], properties: { lineId: { type: string }, units: { type: array, items: { type: string } } } } }
+        '409': { description: Insufficient stock; nothing reserved (code RESERVATION_FAILED) }
+
+  /internal/reservations/{orderId}:
+    parameters: [ { name: orderId, in: path, required: true, schema: { type: string } } ]
+    delete:
+      tags: [internal]
+      summary: Release all units reserved for a request (idempotent)
+      responses:
+        '204': { description: Released }
+
+  /health/live:
+    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+  /health/ready:
+    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+
+components:
+  parameters:
+    ScanKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique per scan (device-generated ULID); replays from the mobile offline queue return the first result.
+      schema: { type: string, maxLength: 64 }
+  schemas:
+    Operation:
+      type: string
+      enum: [stow, pick, relocate, assign, unassign, reserve, release, adjust]
+    SiteInput:
+      type: object
+      required: [name, country]
+      properties:
+        name: { type: string }
+        country: { type: string, pattern: '^[A-Z]{2}$' }
+        address: { type: string }
+        description: { type: string }
+    Site:
+      allOf:
+        - $ref: '#/components/schemas/SiteInput'
+        - type: object
+          required: [barcode, active]
+          properties:
+            barcode: { type: string }
+            active: { type: boolean }
+            qrUrl: { type: string }
+    Location:
+      type: object
+      required: [barcode, name, site, active]
+      properties:
+        barcode: { type: string }
+        name: { type: string }
+        site: { type: string }
+        description: { type: [string, 'null'] }
+        active: { type: boolean }
+        shelfCount: { type: integer }
+        shelves: { type: array, items: { $ref: '#/components/schemas/Shelf' } }
+    Shelf:
+      type: object
+      required: [barcode, number, site, location]
+      properties:
+        barcode: { type: string }
+        number: { type: integer }
+        site: { type: string }
+        siteName: { type: string }
+        location: { type: string }
+        locationName: { type: string }
+        qrUrl: { type: string }
+    Unit:
+      type: object
+      required: [barcode, product, stowed, picked]
+      properties:
+        barcode: { type: string }
+        product: { type: string }
+        productName: { type: string }
+        serial: { type: [string, 'null'] }
+        site: { type: [string, 'null'] }
+        siteName: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        locationName: { type: [string, 'null'] }
+        shelf: { type: [string, 'null'] }
+        shelfNumber: { type: [integer, 'null'] }
+        stowed: { type: boolean }
+        stowBy: { type: [string, 'null'] }
+        stowDate: { type: [string, 'null'], format: date-time }
+        picked: { type: boolean }
+        pickedBy: { type: [string, 'null'] }
+        pickedDate: { type: [string, 'null'], format: date-time }
+        pickedReason: { type: [string, 'null'] }
+        orderId: { type: [string, 'null'], description: Request the unit was picked for }
+        reservedFor: { type: [string, 'null'] }
+        assignedTo: { type: [string, 'null'] }
+        images: { type: array, items: { type: string } }
+    ProductStock:
+      type: object
+      required: [productId, available, reserved, picked, threshold, byLocation]
+      properties:
+        productId: { type: string }
+        productName: { type: string }
+        available: { type: integer }
+        reserved: { type: integer }
+        picked: { type: integer }
+        assigned: { type: integer }
+        threshold: { type: integer }
+        byLocation:
+          type: array
+          items:
+            type: object
+            required: [site, location, shelf, count]
+            properties:
+              site: { type: string }
+              location: { type: string }
+              shelf: { type: string }
+              count: { type: integer }
+    HistoryEntry:
+      type: object
+      required: [unit, operation, user, date]
+      properties:
+        unit: { type: string }
+        operation: { $ref: '#/components/schemas/Operation' }
+        reason: { type: [string, 'null'] }
+        site: { type: [string, 'null'] }
+        location: { type: [string, 'null'] }
+        shelf: { type: [string, 'null'] }
+        from: { type: [object, 'null'] }
+        user: { type: string }
+        orderId: { type: [string, 'null'] }
+        date: { $ref: './common.yaml#/components/schemas/Timestamp' }
