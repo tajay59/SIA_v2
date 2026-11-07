@@ -103,6 +103,7 @@ Update CLI skills: `npx skills update -p`.
 - `SIA/sia_env` (old copy) venv is broken (points at a missing Python). Use system Python 3.13 or a scratch venv.
 - draw.io CLI: `"C:\Program Files\draw.io\draw.io.exe" -x -f svg --svg-theme dark -o images/X.svg diagrams/X.drawio`. **Always use `--svg-theme dark`**; the manual cards are `#121212`. **Exception: `28-design-tokens` → `--svg-theme light`** (dark mode recolours swatches; the diagram draws its own dark background). Don't regenerate a `.drawio` file that has been hand-edited.
 - **Secrets:** `legacy/sia/.env` (and old `SIA/.env`) hold real credentials. **`git.txt` in the root holds a GitHub token: owner must revoke it** (git-ignored), and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
+- **Never `git add -A` / `git add .`**: `legacy/shop` holds the owner's uncommitted WIP. Stage explicit paths.
 - Commit or push only when asked. P0 fixes are committed in SIA (`3ad5fa0`, `4a5881b`).
 - Customer quotation PDFs and `Spares.db` are untracked now but **still in SIA git history**: purge (`git filter-repo`) before SIA is ever pushed anywhere.
 
