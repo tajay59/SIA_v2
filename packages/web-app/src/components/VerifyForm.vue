@@ -6,6 +6,7 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { ApiError, type AccountStatus, call, identity } from '../api'
 import { useNotify } from '../notify'
+import { useInitialFocus } from '../focus'
 import { code as codeSchema, email as emailSchema, rule } from '../validation'
 
 const props = defineProps<{ email?: string; editableEmail?: boolean; submitLabel?: string; noResend?: boolean }>()
@@ -17,6 +18,8 @@ const code = ref('')
 const busy = ref(false)
 const error = ref<string | null>(null)
 const cooldown = ref(0)
+const codeField = ref<{ focus: () => void } | null>(null)
+useInitialFocus(codeField)
 let timer: ReturnType<typeof setInterval> | undefined
 
 function startCooldown(seconds = 60) {
@@ -79,10 +82,10 @@ async function resend() {
       We sent a 6-digit code to <strong>{{ email }}</strong>. It is valid for 15 minutes.
     </p>
     <v-otp-input
+      ref="codeField"
       v-model="code"
       length="6"
       type="number"
-      autofocus
       :error="!!error"
       aria-label="6-digit code"
       @finish="verify"

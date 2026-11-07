@@ -45,3 +45,9 @@ branch = true
 [tool.coverage.report]
 fail_under = 90
 show_missing = true
+# Process entry points only wire real Mongo/Redis/Kafka clients together; they are exercised by the
+# integration tests, the platform rehearsal and the browser journeys, not by unit tests (TEST_STRATEGY §3).
+exclude_also = [
+  "if __name__ == .__main__.:",
+  "async def main[(]",
+]

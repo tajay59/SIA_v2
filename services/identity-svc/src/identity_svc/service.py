@@ -619,6 +619,7 @@ class IdentityService:
         self, filters: dict[str, Any], cursor: str | None, limit: int | None
     ) -> tuple[list[dict[str, Any]], str | None]:
         q: dict[str, Any] = {k: v for k, v in filters.items() if v and k in ("status", "role", "organisationId")}
+        q["deletedAt"] = {"$exists": False}  # purged accounts wait only for their tombstone to be published
         text = filters.get("q")
         if text:
             import re

@@ -170,9 +170,9 @@ auth/         shared token-checking library (from packages/)
 | **Responsibilities** | Registration, email verification, admin approval, login/logout, token issue/refresh/revoke, password reset, profile, roles, suspension, organisations, audit log |
 | **Owns** | `accounts`, `temp`, `organisations`, `auditlog` |
 | **Public API** | `/api/identity/v1/*`: auth, accounts, admin/approvals, organisations, audit |
-| **Publishes events** | `identity.user.events`: `user.registered`, `user.verified`, `user.approved`, `user.rejected`, `user.suspended`, `user.reactivated`, `user.role_changed`, `user.profile_updated`, `user.deleted` |
+| **Publishes events** | `identity.user.events`: `user.registered`, `user.verified`, `user.approved`, `user.rejected`, `user.suspended`, `user.reactivated`, `user.role_changed`, `user.profile_updated`, `user.approval_pending`, `user.deleted` |
 | **Consumes** | `audit.events` (from all services) → writes to `auditlog` |
-| **Scheduled jobs** | Expire unverified accounts (24 h); remind admins of approvals pending > 48 h; delete `REJECTED`/`EXPIRED` accounts after 90 days |
+| **Scheduled jobs** | Expire unverified accounts (24 h); remind admins of approvals pending > 48 h (`user.approval_pending`, once per account); delete `REJECTED`/`EXPIRED` accounts after 90 days in two phases (strip personal data and queue `user.deleted` on the document, then remove it once published). Process `identity-jobs` (`python -m identity_svc.jobs`), one leader via a Redis lock; consumer process `identity-audit-consumer` |
 | **Special** | Holds the **private signing key**. Publishes its public keys at `/.well-known/jwks.json` so other services can verify tokens. `@cimh.edu.bb` accounts skip approval |
 
 ### 4.2 catalog-svc

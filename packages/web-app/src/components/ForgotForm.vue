@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 import { ApiError, call, identity } from '../api'
 import { useNotify } from '../notify'
+import { useInitialFocus } from '../focus'
 import { email as emailSchema, rule } from '../validation'
 
 const props = defineProps<{ initialEmail?: string }>()
@@ -11,6 +12,8 @@ const notify = useNotify()
 const email = ref(props.initialEmail ?? '')
 const valid = ref(false)
 const busy = ref(false)
+const field = ref<{ focus: () => void } | null>(null)
+useInitialFocus(field)
 
 async function submit() {
   busy.value = true
@@ -33,8 +36,8 @@ async function submit() {
       v-model="email"
       label="Email"
       type="email"
+      ref="field"
       autocomplete="email"
-      autofocus
       :rules="[rule(emailSchema)]"
     />
     <v-btn type="submit" color="primary" size="large" block :loading="busy" :disabled="!valid">Send reset code</v-btn>

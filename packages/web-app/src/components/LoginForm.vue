@@ -4,12 +4,13 @@
  * Account-state errors route or explain: unverified → verify screen, awaiting approval → pending screen,
  * rejected/suspended/locked → message.
  */
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, type Account } from '../api'
 import { useNotify } from '../notify'
 import { useSession } from '../session'
 import { code as codeSchema, email as emailSchema, rule } from '../validation'
+import { useInitialFocus } from '../focus'
 import PasswordField from './PasswordField.vue'
 
 const props = defineProps<{
@@ -33,6 +34,9 @@ const busy = ref(false)
 const formError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
 const valid = ref(false)
+const emailField = ref<{ focus: () => void } | null>(null)
+const totpField = ref<{ focus: () => void } | null>(null)
+useInitialFocus(emailField)
 
 const MESSAGES: Record<string, string> = {
   ACCOUNT_PENDING_APPROVAL: 'Your email is verified. An administrator still has to approve your account; you will get an email.',
@@ -52,6 +56,7 @@ async function submit() {
     else if (out.kind === 'mfa') {
       step.value = 'mfa'
       totp.value = ''
+      void nextTick(() => totpField.value?.focus())
     } else if (out.code === 'ACCOUNT_PENDING_VERIFICATION') {
       await router.push({ path: props.verifyPath, query: { email: email.value.trim() } })
     } else if (out.code === 'ACCOUNT_PENDING_APPROVAL' && props.pendingPath) {
@@ -90,9 +95,9 @@ function back() {
         v-model="email"
         label="Email"
         type="email"
+        ref="emailField"
         name="email"
         autocomplete="username"
-        autofocus
         :rules="[rule(emailSchema)]"
         :error-messages="fieldErrors.email"
       />
@@ -110,10 +115,10 @@ function back() {
     <template v-else>
       <p class="t-body">{{ title }}</p>
       <v-otp-input
+        ref="totpField"
         v-model="totp"
         length="6"
         type="number"
-        autofocus
         :error="!!fieldErrors.totp"
         aria-label="6-digit code"
         @finish="submit"

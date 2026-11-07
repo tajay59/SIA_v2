@@ -21,8 +21,10 @@ bash redis/render-acl.sh "$SEC"
 [[ -s "$SEC/pki/kafka-broker.pem" ]] || cp "$SEC/pki/sia-host.cimh.local.pem" "$SEC/pki/kafka-broker.pem"
 chown 999 "$SEC/mongo_keyfile" "$SEC/redis_users.acl" "$SEC/redis_exporter" "$SEC/pki/sia-host.cimh.local.pem"
 chown 1000 "$SEC/pki/kafka-broker.pem" "$SEC"/kafka_*
+# kafka-setup (uid 1000) reads every Kafka password; services (uid 10001) read their own from a copy.
+for k in relay identity; do install -m 400 -o 10001 "$SEC/kafka_$k" "$SEC/app_kafka_$k"; done
 chown 10001 "$SEC"/mongo_url_* "$SEC"/redis_url_* "$SEC/jwt_private_key" "$SEC/data_key" "$SEC/code_pepper" \
-  "$SEC/service_secrets" "$SEC/kafka_relay"
+  "$SEC/service_secrets"
 chmod 444 "$SEC/pki/ca.pem"
 echo "   -> copy new secrets (and pki/ca.key, then delete it here) into the CIMH password manager"
 

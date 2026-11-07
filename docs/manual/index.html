@@ -1091,7 +1091,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <td><code>auditlog</code> ✚</td>
 <td>identity</td>
 <td><code>svc_identity</code></td>
-<td>find, <strong>insert only</strong></td>
+<td>find, <strong>insert</strong> (update only to anonymise purged accounts)</td>
 <td>—</td>
 <td>+2M/yr</td>
 </tr>
@@ -1310,7 +1310,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <p>Products, units, sites, locations and shelves keep their legacy barcode formats.</p>
 <h2 id="44-collections-at-a-glance">4.4 Collections at a glance</h2>
 <h3 id="accounts"><code>accounts</code></h3>
-<p><code>id</code> (unique) · <code>email</code> (unique, case-insensitive) · <code>passwordHash</code> (Argon2id; legacy hash upgraded at next login) · <code>firstname</code>, <code>lastname</code>, <code>phone</code> · <code>role</code> · <strong><code>status</code></strong> · <code>isCimh</code> · <code>organisationText</code> (typed) → <strong><code>organisationId</code></strong> (set at approval) · <code>department</code>, <code>country</code> · <code>addresses[]</code> (max 10) · <code>defaults{site, location, shelf}</code> (staff) · <code>verifiedAt</code>, <code>approvedBy/At</code>, <code>rejection</code> · <code>statusHistory[]</code> · <code>failedLogins</code> · <code>mfa</code> · <code>outbox[]</code>.
+<p><code>id</code> (unique) · <code>email</code> (unique, case-insensitive) · <code>passwordHash</code> (Argon2id; legacy hash upgraded at next login) · <code>firstname</code>, <code>lastname</code>, <code>phone</code> · <code>role</code> · <strong><code>status</code></strong> · <code>isCimh</code> · <code>organisationText</code> (typed) → <strong><code>organisationId</code></strong> (set at approval) · <code>department</code>, <code>country</code> · <code>addresses[]</code> (max 10) · <code>defaults{site, location, shelf}</code> (staff) · <code>verifiedAt</code>, <code>approvedBy/At</code>, <code>rejection</code> · <code>statusHistory[]</code> · <code>failedLogins</code> · <code>mfa</code> · <code>approvalReminderAt</code> · <code>deletedAt</code> (purge in progress) · <code>outbox[]</code>.
 Removed: <code>cart</code> (moves to <code>orders</code>), <code>emailconfirmed</code>, <code>registered</code>, <code>timestamp</code>, <code>password</code>.
 Rule: an <code>ACTIVE</code> non-CIMH account must have an <code>organisationId</code>.</p>
 <h3 id="temp"><code>temp</code></h3>

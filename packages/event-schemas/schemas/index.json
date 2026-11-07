@@ -31,6 +31,7 @@
   "stock.reserved": "stock.reserved.v1.json",
   "unit.picked": "unit.picked.v1.json",
   "unit.stowed": "unit.stowed.v1.json",
+  "user.approval_pending": "user.approval_pending.v1.json",
   "user.approved": "user.approved.v1.json",
   "user.deleted": "user.deleted.v1.json",
   "user.email_change_requested": "user.email_change_requested.v1.json",
