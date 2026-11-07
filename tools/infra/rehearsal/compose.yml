@@ -1,0 +1,151 @@
+# Production platform rehearsal on one Docker host (P1 exit criteria, INFRASTRUCTURE §10 steps 4-9).
+# Driven by tools/infra/rehearsal/run.sh; never run by hand against real data.
+#
+# What is real: the service definitions of deploy/compose.prod.yml (via `extends`), deploy/mongo/*,
+# deploy/redis/*, deploy/kafka/*, deploy/backup/*, deploy/pki and make-secrets.sh, the identity-svc image.
+# What differs: the three "machines" share one Docker network; Pi members are mongo2/mongo3 containers;
+# secrets come from a prepared volume (Docker Desktop bind mounts lose file ownership, and mongod refuses a
+# keyfile it doesn't own); data is in named volumes; the restic repository is a local volume.
+name: sia-rehearsal
+
+services:
+  mongo1:
+    extends: { file: ../../../deploy/compose.prod.yml, service: mongo1 }
+    secrets: !reset []
+    ports: !reset []
+    volumes: !override
+      - mongo1:/data/db
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: m1 } }
+    networks: !override { data: { aliases: [sia-host.cimh.local] } }
+
+  mongo2: &pi
+    extends: { file: ../../../deploy/compose.prod.yml, service: mongo1 }
+    secrets: !reset []
+    command: ["mongod", "--config", "/etc/mongod.conf", "--wiredTigerCacheSizeGB", "0.25"]
+    ports: !reset []
+    volumes: !override
+      - mongo2:/data/db
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: m2 } }
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--tls", "--tlsCAFile", "/run/secrets/ca.pem", "--host", "sia-pi-a.cimh.local", "--eval", "db.adminCommand('ping').ok"]
+    networks: !override { data: { aliases: [sia-pi-a.cimh.local] } }
+    mem_limit: 768m
+  mongo3:
+    <<: *pi
+    volumes: !override
+      - mongo3:/data/db
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: m3 } }
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--tls", "--tlsCAFile", "/run/secrets/ca.pem", "--host", "sia-pi-b.cimh.local", "--eval", "db.adminCommand('ping').ok"]
+    networks: !override { data: { aliases: [sia-pi-b.cimh.local] } }
+
+  redis:
+    extends: { file: ../../../deploy/compose.prod.yml, service: redis }
+    secrets: !reset []
+    volumes: !override
+      - redis:/data
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: redis } }
+
+  kafka1: &k
+    extends: { file: ../../../deploy/compose.prod.yml, service: kafka1 }
+    secrets: !reset []
+    environment: { KAFKA_HEAP_OPTS: "-Xms256m -Xmx256m", LOG_DIR: /tmp/kafka-logs }
+    mem_limit: 640m
+    volumes: !override
+      - kafka1:/var/lib/kafka/data
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+  kafka2:
+    <<: *k
+    extends: { file: ../../../deploy/compose.prod.yml, service: kafka2 }
+    volumes: !override
+      - kafka2:/var/lib/kafka/data
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+  kafka3:
+    <<: *k
+    extends: { file: ../../../deploy/compose.prod.yml, service: kafka3 }
+    volumes: !override
+      - kafka3:/var/lib/kafka/data
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+
+  kafka-setup:
+    extends: { file: ../../../deploy/compose.prod.yml, service: kafka-setup }
+    secrets: !reset []
+    volumes: !override
+      - ../../../deploy/kafka:/setup:ro
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+
+  identity-svc:
+    extends: { file: ../../../deploy/compose.prod.yml, service: identity-svc }
+    secrets: !reset []
+    image: ${IDENTITY_IMAGE:-cimh/identity-svc:rehearsal}
+    environment: { HIBP_ENABLED: "false" }
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: app } }
+    deploy: { replicas: 1 }
+    ports: ["127.0.0.1:18101:8000"]
+    networks: [data, app, edge]
+
+  outbox-relay-identity:
+    extends: { file: ../../../deploy/compose.prod.yml, service: outbox-relay-identity }
+    secrets: !reset []
+    image: ${IDENTITY_IMAGE:-cimh/identity-svc:rehearsal}
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: app } }
+
+  # Kafka client used by run.sh to read what the relay published, as the `identity` consumer principal.
+  kafka-client:
+    image: apache/kafka:3.9.0
+    profiles: [tools]
+    entrypoint: ["bash", "-c"]
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+    networks: [data]
+
+  backup:
+    build: { context: ../../../deploy/backup }
+    image: cimh/backup:rehearsal
+    profiles: [tools]
+    user: "999"
+    environment:
+      MONGO_URI_FILE: /run/secrets/mongo_url_backup
+      RESTIC_REPOSITORY: /restic
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_CACHE_DIR: /tmp/restic-cache
+      TARGET_URI_FILE: /run/secrets/mongo_url_restore
+    volumes:
+      - restic:/restic
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: backup } }
+    networks: [data]
+
+  # The restore target (stands in for staging's single-node replica set).
+  mongo-restore:
+    image: mongo:8.0.26
+    command: ["--replSet", "rs1", "--bind_ip_all"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "try { if (db.hello().isWritablePrimary) quit(0); rs.initiate({_id:'rs1',members:[{_id:0,host:'mongo-restore:27017'}]}) } catch (e) {} quit(1)"]
+      interval: 3s
+      retries: 40
+    networks: [data]
+    mem_limit: 768m
+
+configs:
+  mongod-conf: { file: ../../../deploy/mongo/mongod.conf }
+  redis-conf: { file: ../../../deploy/redis/redis.conf }
+  kafka-ssl-client: { file: ../../../deploy/kafka/ssl-client.properties }
+
+volumes:
+  secrets: { external: true, name: "${SECRETS_VOLUME:-sia-rehearsal-secrets}" }
+  mongo1: {}
+  mongo2: {}
+  mongo3: {}
+  redis: {}
+  kafka1: {}
+  kafka2: {}
+  kafka3: {}
+  restic: {}
+
+networks:
+  data: { internal: true }
+  app: { internal: true }
+  edge: {}
+  smtp: {}

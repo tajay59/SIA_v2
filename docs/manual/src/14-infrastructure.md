@@ -239,7 +239,7 @@ Prometheus scrapes: services `/metrics`, node-exporters (host, Pis), mongodb-exp
 
 Detailed steps go in the Backup and Disaster Recovery Plan (Documentation Index #23).
 
-## 14.1213a Decisions
+## 14.12a Decisions
 - Pis unlock LUKS **manually after a reboot** (ops enters the passphrase over SSH via `dropbear-initramfs`). **Confirmed.** Consequence: after a power cut, ops must unlock both Pis; with only the host up, the replica set has **no majority, so no primary and no writes at all** (the platform is effectively down) until at least one Pi is unlocked, so this is in the Operations Run Book and a reboot alert pages ops.
 - Staging has its own small ClamAV only while testing uploads; otherwise uploads in staging use a ClamAV mock.
 
@@ -251,3 +251,22 @@ Detailed steps go in the Backup and Disaster Recovery Plan (Documentation Index 
 | 2 | How does CI reach the host? | **Resolved:** **self-hosted GitHub Actions runner** on sia-host (outbound-only; deploy jobs only). |
 | 3 | Pi LUKS unlock after reboot? | **Resolved:** manual passphrase (§12a). |
 | 4 | Will the host be upgraded to **64 GB** before go-live? | **Open: undecided.** The plan works at 32 GB with the limits in §4.1 and no spare replicas; decide by migration rehearsal DR-2, after load tests show real usage. |
+
+## 14.14 Implementation status (P1 code, 2026-11-07)
+
+Everything in §4–§7 and §10 steps 4–9 exists as code in `deploy/`; only the hardware and network steps (1–3) are left.
+
+| Piece | File(s) |
+|---|---|
+| Private CA, server/client certs (PKCS#8 for Kafka; CA keyUsage + leaf AKI for Python 3.13 strict verification) | `deploy/pki/make-certs.sh` |
+| All Docker secrets, incl. connection URLs as secrets (`MONGO_URL_FILE`, `REDIS_URL_FILE`) | `deploy/scripts/make-secrets.sh` |
+| Replica set: TLS required, keyfile, SCRAM-SHA-256; init and per-service roles | `deploy/mongo/mongod.conf`, `init-replset.js`, `roles.js` |
+| Redis ACL per service (key patterns from the code), default user off | `deploy/redis/redis.conf`, `render-acl.sh` |
+| Kafka ×3 KRaft: CLIENT = SASL_SSL/SCRAM-SHA-512, INTERNAL and CONTROLLER = mTLS, StandardAuthorizer, no ACL = deny | `compose.prod.yml`, `deploy/kafka/setup.sh` |
+| Pis and nightly backup (mongodump `--oplog` from the secondary → restic, manifest of counts) | `compose.pi.yml`, `deploy/backup/` |
+| Restore with count verification against the manifest | `deploy/backup/restore.sh` |
+| First build, steps 4–8 | `deploy/scripts/provision.sh` |
+
+**Implementation notes.** The first Kafka SCRAM user can't be added through the official image's start script, so `kafka-setup` connects over the mTLS INTERNAL listener as the broker certificate (a super user) and creates every SCRAM user, topic and ACL. The Kafka image writes its config at start, so `/opt/kafka/config` is a tmpfs owned by uid 1000 and `LOG_DIR=/tmp/kafka-logs`; the root filesystem stays read-only. Compose (non-swarm) mounts secret files with the host owner and mode, so `provision.sh` gives each file to the uid that reads it; mongod refuses a keyfile it doesn't own. The localhost exception allows only `createUser`, so `roles.js` creates root first; `provision.sh` passes the user passwords to it on stdin.
+
+**Rehearsal.** `tools/infra/rehearsal/run.sh` runs §10 steps 4–9 on one Docker host with the real files (`extends` from `compose.prod.yml`) and checks 26 assertions: 1 primary + 2 secondaries, failover to a Pi and fail-back to sia-host (priority 10), TLS required, per-service Mongo/Redis/Kafka permissions (allowed and denied), identity-svc → outbox relay → Kafka over SASL_SSL, backup from a secondary and a verified restore. CI runs it on every push to `main` (job `rehearsal`).

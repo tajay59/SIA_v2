@@ -1,28 +1,269 @@
-# Production on sia-host (project sia-prod). See INFRASTRUCTURE §4.1 for the full service table;
-# real services are added here phase by phase. Images are always pinned by digest and cosign-verified
-# by deploy.sh before `docker compose up`.
+# Production on sia-host (project sia-prod). INFRASTRUCTURE §4.1 is the service table; services are added
+# here phase by phase. Application images are pinned by digest and cosign-verified by deploy.sh before
+# `docker compose up`. Platform images are pinned by version.
+#
+# First start (INFRASTRUCTURE §10, steps 4-8): deploy/scripts/provision.sh prod
+# Secrets: deploy/secrets/ (deploy/scripts/make-secrets.sh, deploy/pki/make-certs.sh, deploy/redis/render-acl.sh).
 name: sia-prod
 
-x-service: &service
+x-hardening: &hardening
   restart: unless-stopped
   read_only: true
   tmpfs: [/tmp]
-  user: "10001"
   cap_drop: [ALL]
   security_opt: ["no-new-privileges:true"]
-  logging: { driver: local }
+  logging: { driver: local, options: { max-size: 50m, max-file: "10" } }
+
+x-service: &service
+  <<: *hardening
+  user: "10001"
   networks: [app, data]
 
+x-kafka: &kafka
+  <<: *hardening
+  image: apache/kafka:3.9.0
+  user: "1000"
+  # The image renders server.properties into /opt/kafka/config at start; the root fs stays read-only.
+  tmpfs: [/tmp, "/opt/kafka/config:uid=1000,gid=1000"]
+  mem_limit: 1536m
+  cpus: 1.0
+  networks: [data]
+  secrets: [ca.pem, kafka.pem]
+  healthcheck:
+    test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9094 --command-config /etc/kafka/ssl-client.properties >/dev/null 2>&1"]
+    interval: 15s
+    timeout: 20s
+    start_period: 60s
+    retries: 10
+  configs: [{ source: kafka-ssl-client, target: /etc/kafka/ssl-client.properties }]
+  environment: &kafka-env
+    KAFKA_PROCESS_ROLES: broker,controller
+    CLUSTER_ID: ${KAFKA_CLUSTER_ID:?generated once by provision.sh}
+    KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka1:9093,2@kafka2:9093,3@kafka3:9093
+    KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CLIENT:SASL_SSL,INTERNAL:SSL,CONTROLLER:SSL
+    KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+    KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+    KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-512
+    KAFKA_LISTENER_NAME_CLIENT_SCRAM___SHA___512_SASL_JAAS_CONFIG: "org.apache.kafka.common.security.scram.ScramLoginModule required;"
+    KAFKA_SSL_KEYSTORE_TYPE: PEM
+    KAFKA_SSL_KEYSTORE_LOCATION: /run/secrets/kafka.pem
+    KAFKA_SSL_TRUSTSTORE_TYPE: PEM
+    KAFKA_SSL_TRUSTSTORE_LOCATION: /run/secrets/ca.pem
+    KAFKA_LISTENER_NAME_INTERNAL_SSL_CLIENT_AUTH: required
+    KAFKA_LISTENER_NAME_CONTROLLER_SSL_CLIENT_AUTH: required
+    KAFKA_SSL_PRINCIPAL_MAPPING_RULES: "RULE:^CN=([^,]+),.*$$/$$1/,DEFAULT"
+    KAFKA_AUTHORIZER_CLASS_NAME: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+    KAFKA_SUPER_USERS: "User:admin;User:${KAFKA_BROKER_CN:-sia-host.cimh.local}"
+    KAFKA_ALLOW_EVERYONE_IF_NO_ACL_FOUND: "false"
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+    KAFKA_MIN_INSYNC_REPLICAS: 2
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+    KAFKA_LOG_RETENTION_HOURS: 168
+    KAFKA_LOG_DIRS: /var/lib/kafka/data
+    KAFKA_HEAP_OPTS: "-Xms1g -Xmx1g"
+    LOG_DIR: /tmp/kafka-logs           # GC/server logs; read-only root fs (data is in KAFKA_LOG_DIRS)
+
 services:
+  # ---------------------------------------------------------------- data
+  mongo1:
+    <<: *hardening
+    image: mongo:8.0.26
+    user: "999"
+    command: ["mongod", "--config", "/etc/mongod.conf", "--wiredTigerCacheSizeGB", "6"]
+    configs: [{ source: mongod-conf, target: /etc/mongod.conf }]
+    secrets:
+      - ca.pem
+      - { source: mongo-host.pem, target: mongo.pem }
+      - mongo_keyfile   # host file: owner 999, mode 0400 (provision.sh); mongod refuses anything looser
+    volumes: ["${MONGO_DATA:-/srv/mongo}:/data/db"]
+    ports: ["${VLAN_IP:?VLAN IP of sia-host}:27017:27017"]   # replication with the Pis, VLAN only
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--tls", "--tlsCAFile", "/run/secrets/ca.pem", "--host", "${MONGO_SELF:-sia-host.cimh.local}", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    mem_limit: 8g
+    cpus: 4.0
+    networks: { data: { aliases: ["${MONGO_SELF:-sia-host.cimh.local}"] } }
+
+  redis:
+    <<: *hardening
+    image: redis:7.4.2-alpine
+    user: "999"
+    command: ["redis-server", "/etc/redis/redis.conf"]
+    configs: [{ source: redis-conf, target: /etc/redis/redis.conf }]
+    secrets: [redis_users.acl]
+    volumes: ["${REDIS_DATA:-/srv/redis}:/data"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli --user exporter --pass \"$$(cat /run/secrets/redis_exporter)\" --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+    mem_limit: 512m
+    cpus: 0.5
+    networks: [data]
+
+  kafka1:
+    <<: *kafka
+    hostname: kafka1
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 1
+      KAFKA_LISTENERS: CLIENT://:9092,INTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: CLIENT://kafka1:9092,INTERNAL://kafka1:9094
+    volumes: ["${KAFKA_DATA:-/srv/kafka}/1:/var/lib/kafka/data"]
+  kafka2:
+    <<: *kafka
+    hostname: kafka2
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 2
+      KAFKA_LISTENERS: CLIENT://:9092,INTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: CLIENT://kafka2:9092,INTERNAL://kafka2:9094
+    volumes: ["${KAFKA_DATA:-/srv/kafka}/2:/var/lib/kafka/data"]
+  kafka3:
+    <<: *kafka
+    hostname: kafka3
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: 3
+      KAFKA_LISTENERS: CLIENT://:9092,INTERNAL://:9094,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: CLIENT://kafka3:9092,INTERNAL://kafka3:9094
+    volumes: ["${KAFKA_DATA:-/srv/kafka}/3:/var/lib/kafka/data"]
+
+  kafka-setup:
+    image: apache/kafka:3.9.0
+    restart: "no"
+    entrypoint: ["bash", "/setup/setup.sh"]
+    environment: { BOOTSTRAP: "kafka1:9094,kafka2:9094,kafka3:9094", REPLICATION: "3" }
+    volumes: ["./kafka:/setup:ro"]
+    secrets: [ca.pem, kafka.pem, kafka_admin, kafka_identity, kafka_catalog, kafka_inventory, kafka_order, kafka_document,
+              kafka_notification, kafka_media, kafka_relay, kafka_exporter]
+    depends_on:
+      kafka1: { condition: service_healthy }
+      kafka2: { condition: service_healthy }
+      kafka3: { condition: service_healthy }
+    networks: [data]
+    mem_limit: 512m
+
+  # ---------------------------------------------------------------- services
   hello-svc:
     <<: *service
-    image: ${REGISTRY:-ghcr.io/cimh}/hello-svc@${HELLO_SVC_DIGEST:?set by deploy.sh}
+    image: ${REGISTRY:-ghcr.io/tajay59}/hello-svc@${HELLO_SVC_DIGEST:?set by deploy.sh}
     env_file: [env/prod.env]
     mem_limit: 128m
     cpus: 0.25
-    deploy:
-      replicas: 1
+
+  identity-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/identity-svc@${IDENTITY_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/prod.env]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_identity
+      REDIS_URL_FILE: /run/secrets/redis_url_identity
+      JWT_PRIVATE_KEY_FILE: /run/secrets/jwt_private_key
+      DATA_KEY_FILE: /run/secrets/data_key
+      CODE_PEPPER_FILE: /run/secrets/code_pepper
+      SERVICE_SECRETS_FILE: /run/secrets/service_secrets
+    secrets: [ca.pem, mongo_url_identity, redis_url_identity, jwt_private_key, data_key, code_pepper, service_secrets]
+    depends_on: { redis: { condition: service_healthy }, mongo1: { condition: service_healthy } }
+    mem_limit: 256m
+    cpus: 0.5
+    deploy: { replicas: 2 }
+
+  outbox-relay-identity:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/identity-svc@${IDENTITY_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      RELAY_NAME: identity
+      RELAY_COLLECTIONS: accounts
+      RELAY_TOPICS: "user.=identity.user.events,audit.=audit.events"
+      MONGO_URL_FILE: /run/secrets/mongo_url_identity
+      REDIS_URL_FILE: /run/secrets/redis_url_relay
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: relay
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/kafka_relay
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_identity, redis_url_relay, kafka_relay]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+  # ---------------------------------------------------------------- monitoring
+  prometheus:
+    <<: *hardening
+    image: prom/prometheus:v3.1.0
+    user: "65534"
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=30d"]
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - "${PROM_DATA:-/srv/prometheus}:/prometheus"
+    networks: [data, app]
+    mem_limit: 1536m
+    cpus: 0.5
+
+  alertmanager:
+    <<: *hardening
+    image: prom/alertmanager:v0.28.0
+    user: "65534"
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
+    volumes: ["./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    tmpfs: [/tmp, /alertmanager]
+    secrets: [smtp_password]
+    networks: [data, smtp]
+    mem_limit: 128m
+    cpus: 0.1
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    read_only: true
+    pid: host
+    command: ["--path.rootfs=/host"]
+    volumes: ["/:/host:ro,rslave"]
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+configs:
+  mongod-conf: { file: ./mongo/mongod.conf }
+  redis-conf: { file: ./redis/redis.conf }
+  kafka-ssl-client: { file: ./kafka/ssl-client.properties }
+
+secrets:
+  ca.pem: { file: "${SECRETS:-./secrets}/pki/ca.pem" }
+  mongo-host.pem: { file: "${SECRETS:-./secrets}/pki/${MONGO_SELF:-sia-host.cimh.local}.pem" }
+  kafka.pem: { file: "${SECRETS:-./secrets}/pki/kafka-broker.pem" }   # copy of the host cert owned by uid 1000
+  mongo_keyfile: { file: "${SECRETS:-./secrets}/mongo_keyfile" }
+  redis_users.acl: { file: "${SECRETS:-./secrets}/redis_users.acl" }
+  redis_exporter: { file: "${SECRETS:-./secrets}/redis_exporter" }
+  mongo_url_identity: { file: "${SECRETS:-./secrets}/mongo_url_identity" }
+  redis_url_identity: { file: "${SECRETS:-./secrets}/redis_url_identity" }
+  redis_url_relay: { file: "${SECRETS:-./secrets}/redis_url_relay" }
+  jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }
+  data_key: { file: "${SECRETS:-./secrets}/data_key" }
+  code_pepper: { file: "${SECRETS:-./secrets}/code_pepper" }
+  service_secrets: { file: "${SECRETS:-./secrets}/service_secrets" }
+  smtp_password: { file: "${SECRETS:-./secrets}/smtp_password" }
+  kafka_admin: { file: "${SECRETS:-./secrets}/kafka_admin" }
+  kafka_identity: { file: "${SECRETS:-./secrets}/kafka_identity" }
+  kafka_catalog: { file: "${SECRETS:-./secrets}/kafka_catalog" }
+  kafka_inventory: { file: "${SECRETS:-./secrets}/kafka_inventory" }
+  kafka_order: { file: "${SECRETS:-./secrets}/kafka_order" }
+  kafka_document: { file: "${SECRETS:-./secrets}/kafka_document" }
+  kafka_notification: { file: "${SECRETS:-./secrets}/kafka_notification" }
+  kafka_media: { file: "${SECRETS:-./secrets}/kafka_media" }
+  kafka_relay: { file: "${SECRETS:-./secrets}/kafka_relay" }
+  kafka_exporter: { file: "${SECRETS:-./secrets}/kafka_exporter" }
 
 networks:
-  app: { external: true, name: sia-prod-app }
-  data: { external: true, name: sia-prod-data }
+  edge: { name: sia-prod-edge }
+  app: { name: sia-prod-app, internal: true }
+  data: { name: sia-prod-data, internal: true }
+  smtp: { name: sia-prod-smtp }   # egress to the CIMH mail relay only (host firewall, INFRASTRUCTURE §3.3)

@@ -105,6 +105,11 @@ Every error is an RFC 9457 **Problem**:
 | 429 | Rate limited |
 | 503 | A dependency is down; nothing was written; safe to retry |
 
+**Implicit responses.** To keep the specs readable, these are not repeated on every operation, but any
+operation may return them (all as `application/problem+json`): **401** and **403** if the operation is
+secured; **422** if it takes a body, query or path parameters; **400**, **429** and **503** always. Every
+other status must be listed on the operation. The Schemathesis contract tests apply exactly this rule.
+
 **Stable `code` values:**
 
 | Area | Codes |

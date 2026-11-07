@@ -39,6 +39,8 @@ jobs:
         run: pytest --cov --cov-report=xml
       - name: Authz matrix covers every endpoint
         run: python tools/authz/check_matrix.py
+      - name: API contracts valid
+        run: for f in docs/api/*.openapi.yaml; do openapi-spec-validator "$f"; done
       - uses: actions/upload-artifact@v4
         with: { name: coverage, path: coverage.xml }
 
@@ -52,8 +54,8 @@ jobs:
         with: { python-version: "${{ env.PYTHON_VERSION }}", cache: pip }
       - run: |
           pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -r requirements-dev.txt
-          # exit code 5 = no tests collected (none exist until services own data in P2)
-          pytest -m integration --no-cov || [ $? -eq 5 ]
+          # Real Mongo replica set, Redis and Kafka in containers (tests/integration).
+          pytest -m integration --no-cov
 
   web:
     name: web (lint, types, unit)
@@ -96,9 +98,7 @@ jobs:
     permissions: { contents: read, packages: write, id-token: write }
     strategy:
       matrix:
-        service: [hello-svc]
-    outputs:
-      digest: ${{ steps.build.outputs.digest }}
+        service: [hello-svc, identity-svc]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -125,13 +125,44 @@ jobs:
       - name: Cosign sign (keyless)
         run: cosign sign --yes ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
 
+  infra:
+    name: infra (scripts, compose files)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S warning deploy/*/*.sh deploy/scripts/*.sh tools/infra/rehearsal/run.sh
+      - name: compose files render
+        env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
+        run: |
+          for f in deploy/compose.prod.yml deploy/compose.pi.yml deploy/compose.dev.yml; do docker compose -f "$f" config -q; done
+          docker volume create sia-rehearsal-secrets && docker compose -f tools/infra/rehearsal/compose.yml config -q
+
+  rehearsal:
+    name: platform rehearsal (replica set, Kafka TLS/ACL, Redis ACL, backup/restore)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [infra]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tools/infra/rehearsal/run.sh
+
   deploy-staging:
-    needs: images
+    needs: [images, rehearsal]
     # Runs only once the self-hosted runner on the CIMH host exists: set repo variable SELF_HOSTED_RUNNER=true.
     if: vars.SELF_HOSTED_RUNNER == 'true'
     runs-on: [self-hosted, sia-host]
     environment: staging
+    strategy:
+      max-parallel: 1
+      matrix:
+        service: [hello-svc, identity-svc]
     steps:
       - uses: actions/checkout@v4
         with: { sparse-checkout: deploy }
-      - run: deploy/scripts/deploy.sh staging hello-svc "${{ needs.images.outputs.digest }}"
+      - name: Deploy the image built from this commit (by digest)
+        run: |
+          image=ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
+          digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest.Digest}}' | tr -d '"')
+          deploy/scripts/deploy.sh staging ${{ matrix.service }} "$digest"

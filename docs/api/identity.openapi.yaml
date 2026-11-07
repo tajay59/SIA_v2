@@ -246,8 +246,8 @@ paths:
               type: object
               additionalProperties: false
               properties:
-                firstname: { type: string, maxLength: 100 }
-                lastname: { type: string, maxLength: 100 }
+                firstname: { type: string, minLength: 1, maxLength: 100 }
+                lastname: { type: string, minLength: 1, maxLength: 100 }
                 phone: { type: [string, 'null'], maxLength: 40 }
                 department: { type: [string, 'null'] }
                 country: { type: [string, 'null'], pattern: '^[A-Z]{2}$' }
@@ -628,11 +628,13 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /health/live:
+    servers: [{ url: / }]   # served at the root, not under the API base path
     get:
       tags: [ops]
       security: []
       responses: { '200': { description: Alive, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } } }
   /health/ready:
+    servers: [{ url: / }]   # served at the root, not under the API base path
     get:
       tags: [ops]
       security: []
@@ -666,8 +668,8 @@ components:
       additionalProperties: false
       required: [firstname, lastname, email, password, organisationText, country]
       properties:
-        firstname: { type: string, maxLength: 100 }
-        lastname: { type: string, maxLength: 100 }
+        firstname: { type: string, minLength: 1, maxLength: 100 }
+        lastname: { type: string, minLength: 1, maxLength: 100 }
         email: { type: string, format: email }
         password: { $ref: '#/components/schemas/Password' }
         organisationText: { type: string, maxLength: 200, description: Free text; an admin links it to an organisation on approval. Optional for @cimh.edu.bb. }

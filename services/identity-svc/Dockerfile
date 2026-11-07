@@ -18,7 +18,7 @@ RUN groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app
  && rm -rf /usr/local/lib/python3.13/ensurepip
 COPY --from=build /opt/venv /opt/venv
 RUN rm -rf /opt/venv/lib/python3.13/site-packages/pip /opt/venv/lib/python3.13/site-packages/pip-*.dist-info /opt/venv/bin/pip*
-ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+ENV PATH=/opt/venv/bin:$PATH PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 HOME=/tmp
 ARG APP_VERSION=dev
 ENV APP_VERSION=$APP_VERSION
 USER 10001

@@ -2,7 +2,7 @@
 # Create every topic from TAD §5 (idempotent). Prod: REPLICATION=3, min.insync.replicas=2.
 set -euo pipefail
 B=${BOOTSTRAP:-kafka:9092}; R=${REPLICATION:-3}
-KT=/opt/kafka/bin/kafka-topics.sh
+KT="/opt/kafka/bin/kafka-topics.sh ${COMMAND_CONFIG:+--command-config $COMMAND_CONFIG}"
 until $KT --bootstrap-server "$B" --list >/dev/null 2>&1; do echo "waiting for kafka"; sleep 2; done
 mk() { # name partitions retention-ms|compact
   local name=$1 parts=$2 ret=$3 cfg

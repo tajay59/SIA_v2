@@ -11,3 +11,6 @@ types-PyYAML
 openapi-spec-validator>=0.7
 jsonschema>=4.23
 mongomock>=4.2
+testcontainers>=4.8
+schemathesis>=4.0
+aiokafka>=0.11

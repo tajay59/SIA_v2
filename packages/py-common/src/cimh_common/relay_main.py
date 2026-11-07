@@ -3,13 +3,14 @@
     python -m cimh_common.relay_main
 
 Environment:
-    MONGO_URL, MONGO_DB (default inventory)
-    REDIS_URL                      leader lock: only one relay per service publishes
+    MONGO_URL[_FILE], MONGO_DB (default inventory)
+    REDIS_URL[_FILE]                     leader lock: only one relay per service publishes
     KAFKA_BOOTSTRAP                e.g. kafka1:9092,kafka2:9092,kafka3:9092
     RELAY_NAME                     e.g. identity (lock key and client id)
     RELAY_COLLECTIONS              e.g. accounts            (comma-separated)
     RELAY_TOPICS                   e.g. user.=identity.user.events,audit.=audit.events
     KAFKA_SASL_USER / KAFKA_SASL_PASSWORD_FILE (optional; SCRAM-SHA-512 in prod, TR-SEC-7)
+    KAFKA_CA_FILE                  private CA for the brokers' TLS certificates
 """
 
 from __future__ import annotations
@@ -19,11 +20,13 @@ import contextlib
 import logging
 import os
 import signal
+import ssl
 from typing import Any
 
 from .locks import RedisLock
 from .logging import configure_logging
 from .outbox import OutboxRelay, topic_by_prefix
+from .settings import env_secret
 
 log = logging.getLogger("cimh.relay")
 
@@ -51,7 +54,9 @@ def kafka_kwargs() -> dict[str, Any]:
         pw_file = os.environ.get("KAFKA_SASL_PASSWORD_FILE", "")
         with open(pw_file, encoding="utf-8") as fh:
             password = fh.read().strip()
+        ca_file = os.environ.get("KAFKA_CA_FILE")
         kw.update(
+            ssl_context=ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context(),
             security_protocol="SASL_SSL",
             sasl_mechanism="SCRAM-SHA-512",
             sasl_plain_username=user,
@@ -93,8 +98,8 @@ async def main() -> None:
     name = os.environ.get("RELAY_NAME", "svc")
     configure_logging(f"outbox-relay-{name}", os.environ.get("LOG_LEVEL", "INFO"))
     topics = topic_by_prefix(parse_topics(os.environ["RELAY_TOPICS"]))
-    db: Any = AsyncMongoClient(os.environ["MONGO_URL"], tz_aware=True)[os.environ.get("MONGO_DB", "inventory")]
-    redis = from_url(os.environ["REDIS_URL"])
+    db: Any = AsyncMongoClient(env_secret("MONGO_URL"), tz_aware=True)[os.environ.get("MONGO_DB", "inventory")]
+    redis = from_url(env_secret("REDIS_URL"))
     names = [c.strip() for c in os.environ["RELAY_COLLECTIONS"].split(",") if c.strip()]
     collections = [db[n] for n in names]
 

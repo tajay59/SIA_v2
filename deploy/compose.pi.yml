@@ -1,0 +1,77 @@
+# Raspberry Pi replica-set members (INFRASTRUCTURE §4.4). One file for both Pis; the env file selects the role:
+#   Pi A:  docker compose -p sia-db-a --env-file env/pi-a.env -f compose.pi.yml up -d
+#   Pi B:  docker compose -p sia-db-b --env-file env/pi-b.env -f compose.pi.yml --profile backup up -d
+# Data lives on the LUKS-encrypted NVMe (/srv, TR-SEC-10). The Pis never run application services.
+name: ${PI_PROJECT:-sia-db}
+
+x-hardening: &hardening
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: { driver: local, options: { max-size: 50m, max-file: "10" } }
+
+services:
+  mongo:
+    <<: *hardening
+    image: mongo:8.0.26
+    user: "999"
+    command: ["mongod", "--config", "/etc/mongod.conf", "--wiredTigerCacheSizeGB", "3"]
+    configs: [{ source: mongod-conf, target: /etc/mongod.conf }]
+    secrets: [ca.pem, { source: member.pem, target: mongo.pem }, mongo_keyfile]
+    volumes: ["${MONGO_DATA:-/srv/mongo}:/data/db"]
+    ports: ["${VLAN_IP:?VLAN IP of this Pi}:27017:27017"]
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--tls", "--tlsCAFile", "/run/secrets/ca.pem", "--host", "${MONGO_SELF:?member host name}", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    mem_limit: 6g
+    networks: { db: { aliases: ["${MONGO_SELF}"] } }
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    restart: unless-stopped
+    read_only: true
+    pid: host
+    command: ["--path.rootfs=/host", "--collector.textfile.directory=/host/srv/backup-cache/metrics"]
+    volumes: ["/:/host:ro,rslave"]
+    ports: ["${VLAN_IP}:9100:9100"]
+    mem_limit: 64m
+
+  # Pi B only: nightly mongodump from this secondary -> restic at the other CIMH site (INFRASTRUCTURE §7).
+  backup:
+    profiles: [backup]
+    <<: *hardening
+    build: { context: ./backup }
+    image: cimh/backup:${BACKUP_IMAGE_TAG:-1}
+    user: "999"
+    environment:
+      MONGO_URI_FILE: /run/secrets/mongo_url_backup
+      RESTIC_REPOSITORY: ${RESTIC_REPOSITORY:?sftp:backup@other-site:/srv/restic/sia or rest:https://...}
+      RESTIC_PASSWORD_FILE: /run/secrets/restic_password
+      RESTIC_CACHE_DIR: /cache
+      METRICS_DIR: /metrics
+      BACKUP_AT: "02:00"
+    secrets: [ca.pem, mongo_url_backup, restic_password]
+    volumes:
+      - ${BACKUP_CACHE:-/srv/backup-cache}/restic:/cache
+      - ${BACKUP_CACHE:-/srv/backup-cache}/metrics:/metrics
+      - ${BACKUP_SSH:-/srv/backup-cache/ssh}:/home/backup/.ssh:ro   # SFTP key + known_hosts for the target
+    networks: [db, egress]
+    mem_limit: 512m
+
+configs:
+  mongod-conf: { file: ./mongo/mongod.conf }
+
+secrets:
+  ca.pem: { file: "${SECRETS:-./secrets}/pki/ca.pem" }
+  member.pem: { file: "${SECRETS:-./secrets}/pki/${MONGO_SELF}.pem" }
+  mongo_keyfile: { file: "${SECRETS:-./secrets}/mongo_keyfile" }
+  mongo_url_backup: { file: "${SECRETS:-./secrets}/mongo_url_backup" }
+  restic_password: { file: "${SECRETS:-./secrets}/restic_password" }
+
+networks:
+  db: {}
+  egress: {}

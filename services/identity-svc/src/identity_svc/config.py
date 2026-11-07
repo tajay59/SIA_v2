@@ -66,7 +66,7 @@ class Settings:
             code_pepper=_read_secret("CODE_PEPPER") or cls.code_pepper,
             service_secrets=_service_secrets(),
             hibp_enabled=env("HIBP_ENABLED", "true").lower() != "false",
-            mongo_url=env("MONGO_URL"),
-            redis_url=env("REDIS_URL"),
+            mongo_url=_read_secret("MONGO_URL"),
+            redis_url=_read_secret("REDIS_URL"),
             db_name=env("MONGO_DB", cls.db_name),
         )

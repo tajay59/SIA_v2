@@ -44,6 +44,11 @@ Shared schemas (Problem, Money, Address, paging) live in [common.yaml](../api/co
 
 Rate limits are 20 requests/s per IP for the API in general and 5/min on auth endpoints. Exceeding them returns `429` with `Retry-After`.
 
+**Implicit responses.** To keep the specs readable, these are not repeated on every operation, but any
+operation may return them (all as `application/problem+json`): **401** and **403** if the operation is
+secured; **422** if it takes a body, query or path parameters; **400**, **429** and **503** always. Every
+other status must be listed on the operation. The Schemathesis contract tests apply exactly this rule.
+
 ## 10.4 The request (order) API: state machine as endpoints
 
 | Endpoint (`/api/orders/v1/requests/{id}/…`) | Who | Paid flow | Pro Bono flow |

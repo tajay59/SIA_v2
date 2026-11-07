@@ -36,7 +36,7 @@ markers = [
   "integration: needs Docker (testcontainers); run with -m integration",
   "req(id): requirement covered (RTM)",
 ]
-testpaths = ["packages/py-common/tests", "services", "tools/tests"]
+testpaths = ["packages/py-common/tests", "services", "tools/tests", "tests/integration"]
 
 [tool.coverage.run]
 source = ["cimh_common", "hello_svc", "identity_svc"]

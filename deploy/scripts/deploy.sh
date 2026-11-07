@@ -8,7 +8,9 @@
 set -euo pipefail
 
 ENVIRONMENT=${1:?env}; SERVICE=${2:?service}; DIGEST=${3:?digest}
-REGISTRY=${REGISTRY:-ghcr.io/cimh}
+REGISTRY=${REGISTRY:-ghcr.io/tajay59}
+# Only images signed by this repository's CI on main are deployed (TR-SEC-9).
+COSIGN_IDENTITY=${COSIGN_IDENTITY:-^https://github.com/tajay59/SIA_v2/.github/workflows/ci.yml@refs/heads/main$}
 DEPLOY_DIR=$(cd "$(dirname "$0")/.." && pwd)
 COMPOSE_FILE="$DEPLOY_DIR/compose.${ENVIRONMENT}.yml"
 STATE_DIR=/srv/sia-deploy/${ENVIRONMENT}
@@ -22,7 +24,7 @@ mkdir -p "$STATE_DIR"
 IMAGE="${REGISTRY}/${SERVICE}@${DIGEST}"
 echo "Verifying signature of $IMAGE"
 cosign verify "$IMAGE" \
-  --certificate-identity-regexp "^https://github.com/cimh/stores/.github/workflows/ci.yml@refs/heads/main$" \
+  --certificate-identity-regexp "$COSIGN_IDENTITY" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
 
 PREVIOUS=$(cat "$STATE_DIR/$SERVICE.digest" 2>/dev/null || true)
