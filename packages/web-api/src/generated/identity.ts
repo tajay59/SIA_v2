@@ -1410,6 +1410,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/codes/{codeRef}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description temp document id from the event's codeRef */
+                codeRef: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Claim a one-time code for emailing (service token; notification-svc only)
+         * @description Returns the plain 6-digit code ONCE; the sealed copy (`temp.codeEnc`) is removed on read, so a
+         *     second call returns 404. Codes never travel in Kafka events (topics are retained/compacted).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    /** @description temp document id from the event's codeRef */
+                    codeRef: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Code to send */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            code: string;
+                            /** @enum {string} */
+                            kind: "verify_email" | "reset_password" | "change_email";
+                            accountId: string;
+                            /** @description New address (change_email only) */
+                            email?: string | null;
+                            expiresAt: components["schemas"]["Timestamp"];
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;

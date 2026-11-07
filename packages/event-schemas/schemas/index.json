@@ -33,6 +33,8 @@
   "unit.stowed": "unit.stowed.v1.json",
   "user.approved": "user.approved.v1.json",
   "user.deleted": "user.deleted.v1.json",
+  "user.email_change_requested": "user.email_change_requested.v1.json",
+  "user.password_reset_requested": "user.password_reset_requested.v1.json",
   "user.profile_updated": "user.profile_updated.v1.json",
   "user.reactivated": "user.reactivated.v1.json",
   "user.registered": "user.registered.v1.json",

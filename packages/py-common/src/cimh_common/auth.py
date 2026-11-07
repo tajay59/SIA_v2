@@ -50,6 +50,11 @@ class Principal:
         return self.role == "admin"
 
     @property
+    def mfa(self) -> bool:
+        """True if this session passed a second factor (claim `mfa`)."""
+        return bool(self.claims.get("mfa"))
+
+    @property
     def is_cimh(self) -> bool:
         """@cimh.edu.bb users skip approval and cannot request items."""
         return self.email.lower().endswith(CIMH_DOMAIN)

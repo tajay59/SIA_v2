@@ -33,7 +33,25 @@ def now() -> datetime:
 
 def organisations(rng: random.Random) -> list[dict[str, Any]]:
     names = ["Barbados Met Service", "Grenada Met Office", "Jamaica Met Service", "Belize NMS", "Guyana Hydromet"]
-    return [{"id": f"ORG{i:04d}", "name": n, "active": True, "createdAt": now()} for i, n in enumerate(names, 1)]
+    countries = ["BB", "GD", "JM", "BZ", "GY"]
+    return [
+        {
+            "id": f"ORG{i:04d}",
+            "name": n,
+            "nameKey": n.lower(),
+            "country": countries[i - 1],
+            "type": "met_service",
+            "emailDomains": [],
+            "aliases": [],
+            "active": True,
+            "mergedInto": None,
+            "createdBy": {"id": "seed", "name": "seed", "role": "service"},
+            "createdAt": now(),
+            "updatedAt": now(),
+            "version": 1,
+        }
+        for i, n in enumerate(names, 1)
+    ]
 
 
 def accounts(rng: random.Random, orgs: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -126,7 +144,9 @@ def carts(users: list[dict[str, Any]], prods: list[dict[str, Any]], rng: random.
     out = []
     for u in users:
         if u["role"] == "user" and u["status"] == "ACTIVE" and not u["isCimh"]:
-            lines = [{"productId": p["id"], "qty": rng.randint(1, 3)} for p in rng.sample(sellable, k=min(2, len(sellable)))]
+            lines = [
+                {"productId": p["id"], "qty": rng.randint(1, 3)} for p in rng.sample(sellable, k=min(2, len(sellable)))
+            ]
             out.append(
                 {
                     "id": f"CRT{u['id'][3:]}",

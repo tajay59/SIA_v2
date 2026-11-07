@@ -22,7 +22,7 @@ async def _jwks() -> dict[str, Any]:
 
 def _token(role: str) -> str:
     now = int(time.time())
-    claims = {"iss": "i", "aud": "a", "sub": "USR1", "role": role, "jti": "j", "iat": now, "exp": now + 60}
+    claims = {"iss": "i", "aud": "a", "sub": "USR1", "role": role, "jti": "j", "iat": now, "exp": now + 60, "mfa": True}
     return jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})
 
 

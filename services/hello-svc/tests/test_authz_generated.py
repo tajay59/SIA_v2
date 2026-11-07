@@ -48,6 +48,7 @@ def _headers(actor: str) -> dict[str, str]:
         "jti": "j",
         "iat": now,
         "exp": now + 60,
+        "mfa": True,
     }
     return {"Authorization": "Bearer " + jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})}
 

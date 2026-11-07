@@ -10,3 +10,4 @@ pyyaml>=6.0
 types-PyYAML
 openapi-spec-validator>=0.7
 jsonschema>=4.23
+mongomock>=4.2

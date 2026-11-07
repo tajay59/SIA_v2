@@ -225,3 +225,26 @@ def test_act_rules() -> None:
     with pytest.raises(ProblemError) as staff:
         ensure_can_act(STAFF, owner_id="USR1", org_id="ORG1")
     assert staff.value.status == 403
+
+
+def test_admin_without_mfa_is_refused_except_setup(verifier: TokenVerifier, keys: Keys) -> None:
+    from cimh_common.authz import authenticated_principal
+
+    app = create_app("t", token_verifier=verifier, configure_logs=False)
+
+    @app.get("/x")
+    async def x(p: Principal = Depends(current_principal)) -> dict[str, str]:
+        return {"ok": "1"}
+
+    @app.get("/setup")
+    async def setup(p: Principal = Depends(authenticated_principal)) -> dict[str, str]:
+        return {"ok": "1"}
+
+    c = TestClient(app)
+    no_mfa = bearer(keys.token("USR9", "admin", mfa=False))
+    r = c.get("/x", headers=no_mfa)
+    assert r.status_code == 403
+    assert r.json()["code"] == "MFA_REQUIRED"
+    assert c.get("/setup", headers=no_mfa).status_code == 200
+    assert c.get("/x", headers=bearer(keys.token("USR9", "admin"))).status_code == 200
+    assert c.get("/x", headers=bearer(keys.token("USR8", "staff", mfa=False))).status_code == 200

@@ -69,6 +69,27 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
+  identity-svc:
+    build:
+      context: ..
+      dockerfile: services/identity-svc/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/identity-svc:dev
+    <<: *hardening
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      COOKIE_SECURE: "false"          # dev runs over http
+      HIBP_ENABLED: "false"           # no internet calls from dev
+      SERVICE_SECRETS: "notification=dev-notification-secret,order=dev-order-secret"
+      LOG_LEVEL: DEBUG
+    ports: ["127.0.0.1:18001:8000"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 0.5
+
   prometheus:
     image: prom/prometheus:v3.1.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]

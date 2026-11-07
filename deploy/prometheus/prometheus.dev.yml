@@ -11,7 +11,7 @@ alerting:
 scrape_configs:
   - job_name: services
     static_configs:
-      - targets: ["hello-svc:8000"]
+      - targets: ["hello-svc:8000", "identity-svc:8000"]
         labels: { env: dev }
   - job_name: prometheus
     static_configs: [{ targets: ["localhost:9090"] }]

@@ -181,6 +181,24 @@ endpoints:
     - staff
     - admin
     ownership: public
+  GET /api/hello/v1/greeting:
+    roles:
+    - anonymous
+    - user
+    - staff
+    - admin
+    ownership: public
+  GET /api/hello/v1/staff-only:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+  GET /api/hello/v1/whoami:
+    roles:
+    - user
+    - staff
+    - admin
+    ownership: any
   GET /api/identity/v1/.well-known/jwks.json:
     roles:
     - anonymous
@@ -320,6 +338,11 @@ endpoints:
     - service
     ownership: service
     note: service token
+  GET /api/identity/v1/internal/codes/{codeRef}:
+    roles:
+    - service
+    ownership: service
+    note: service token; notification-svc only
   POST /api/identity/v1/internal/service-token:
     roles:
     - anonymous
@@ -367,10 +390,11 @@ endpoints:
     note: admin
   GET /api/identity/v1/organisations/{organisationId}:
     roles:
+    - user
     - staff
     - admin
-    ownership: staff
-    note: staff, admin; a user may read their own
+    ownership: same_org
+    note: staff/admin any; a user only their own organisation (else 404)
   PATCH /api/identity/v1/organisations/{organisationId}:
     roles:
     - admin
@@ -650,12 +674,3 @@ endpoints:
     - admin
     ownership: staff
     note: staff
-  GET /api/hello/v1/greeting:
-    roles: [anonymous, user, staff, admin]
-    ownership: public
-  GET /api/hello/v1/whoami:
-    roles: [user, staff, admin, service]
-    ownership: any
-  GET /api/hello/v1/staff-only:
-    roles: [staff, admin]
-    ownership: staff

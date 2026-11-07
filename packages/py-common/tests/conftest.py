@@ -34,6 +34,7 @@ class Keys:
             "jti": f"jti-{sub}-{now}",
             "iat": now,
             "exp": now + 900,
+            "mfa": True,
             "email": f"{sub.lower()}@example.org",
         }
         claims.update(extra)

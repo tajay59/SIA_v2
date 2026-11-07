@@ -35,10 +35,33 @@ async def optional_principal(request: Request) -> Principal | None:
     return principal
 
 
-async def current_principal(request: Request) -> Principal:
+async def authenticated_principal(request: Request) -> Principal:
+    """Any valid token, including an admin who has not set up MFA yet.
+
+    Use ONLY on the endpoints needed to finish MFA setup (/auth/mfa/*, GET /me, /auth/logout).
+    """
     principal = await optional_principal(request)
     if principal is None:
         raise unauthorized()
+    if principal.role == "service":
+        # Service tokens are for /internal/* (require_service) only, never user endpoints.
+        raise forbidden("Service tokens cannot call user endpoints")
+    return principal
+
+
+async def require_admin_mfa_setup(request: Request) -> Principal:
+    """Admin, MFA not required yet: only for /auth/mfa/setup and /auth/mfa/confirm."""
+    principal = await authenticated_principal(request)
+    if principal.role != "admin":
+        raise forbidden("Only admins use multi-factor sign-in")
+    return principal
+
+
+async def current_principal(request: Request) -> Principal:
+    """Any valid token. Admin tokens without MFA (TR-AUTH-9) are refused with MFA_REQUIRED."""
+    principal = await authenticated_principal(request)
+    if principal.is_admin and not principal.mfa:
+        raise forbidden("Set up multi-factor sign-in first", code="MFA_REQUIRED")
     return principal
 
 
@@ -48,9 +71,13 @@ def require_roles(*roles: Role) -> Callable[[Request], Awaitable[Principal]]:
         raise ValueError("require_roles needs at least one role")
 
     async def dependency(request: Request) -> Principal:
-        principal = await current_principal(request)
+        principal = await optional_principal(request)
+        if principal is None:
+            raise unauthorized()
         if principal.role not in allowed:
             raise forbidden(f"Requires role: {', '.join(sorted(allowed))}")
+        if principal.is_admin and not principal.mfa:
+            raise forbidden("Set up multi-factor sign-in first", code="MFA_REQUIRED")
         return principal
 
     return dependency
