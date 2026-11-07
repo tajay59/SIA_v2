@@ -1,0 +1,42 @@
+{
+  "name": "@cimh/web-app",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Vue app code for SHOP and SIA: auth store, API error handling, identity screens' forms.",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "scripts": {
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cimh/web-api": "*",
+    "@cimh/web-ui": "*",
+    "@mdi/js": "^7.4.47",
+    "qrcode": "^1.5.4"
+  },
+  "peerDependencies": {
+    "pinia": "^4.0.0",
+    "vue": "^3.5.0",
+    "vue-router": "^5.0.0",
+    "vuetify": "^4.0.0",
+    "zod": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.6",
+    "@vue/test-utils": "^2.5.1",
+    "jsdom": "^29.1.1",
+    "pinia": "^4.1.0",
+    "vite": "^8.3.6",
+    "vue": "^3.5.45",
+    "vue-router": "^5.4.0",
+    "vue-tsc": "^3.3.14",
+    "vuetify": "^4.3.2",
+    "zod": "^4.6.7"
+  }
+}

@@ -23,10 +23,19 @@ docker build -q -f services/identity-svc/Dockerfile --build-arg APP_VERSION="$(g
 echo "== ship image ($(docker image inspect cimh/identity-svc:$TAG --format '{{.Size}}' | awk '{printf "%d MB", $1/1e6}'))"
 docker save cimh/identity-svc:$TAG | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
 
+echo "== build web apps (SHOP -> store.hashiz.store, SIA -> sia.hashiz.store)"
+[[ -d node_modules ]] || npm ci --no-audit --no-fund
+VITE_SHOP_URL=https://store.hashiz.store npm run build -w @cimh/shop -w @cimh/sia >/dev/null
+
 echo "== copy stack files"
 ssh "$HOST" "mkdir -p $DIR/site $DIR/secrets && chmod 700 $DIR/secrets"
-scp -q "$HERE/compose.yml" "$HERE/gateway.conf" "$HERE/proxy.inc" "$HERE/edge-site.conf" "$HERE/edge-site-http.conf"   "$HERE/../kafka/create-topics.sh" "$HOST:$DIR/"
+scp -q "$HERE/compose.yml" "$HERE/gateway.conf" "$HERE/headers.inc" "$HERE/proxy.inc" "$HERE/edge-site.conf"   "$HERE/edge-site-http.conf" "$HERE/../kafka/create-topics.sh" "$HOST:$DIR/"
 scp -q -r "$HERE/site/." "$HOST:$DIR/site/"
+# Each app: unpack next to the live copy, then swap directories (no half-updated site is ever served).
+for pair in sia:web/sia/dist store:web/shop/dist; do
+  name=${pair%%:*}; dist=${pair#*:}
+  tar -C "$dist" -cf - . | ssh "$HOST" "set -e; cd $DIR/site; rm -rf .$name.new; mkdir .$name.new; tar -C .$name.new -xf -;     rm -rf .$name.old; [ -d $name ] && mv $name .$name.old; mv .$name.new $name"
+done
 
 echo "== secrets (created once, never overwritten, never leave the server)"
 ssh "$HOST" bash -s <<'EOF'
@@ -46,6 +55,8 @@ EOF
 
 echo "== start stack"
 ssh "$HOST" "cd $DIR && docker compose up -d --wait --wait-timeout 240 2>&1 | tail -5"
+# gateway.conf / headers.inc are bind mounts: reload nginx (after a config test) so changes take effect.
+ssh "$HOST" "cd $DIR && docker compose exec -T gateway nginx -t -q && docker compose exec -T gateway nginx -s reload"
 
 if [[ $EDGE == 1 ]]; then
   echo "== edge site + certificate"

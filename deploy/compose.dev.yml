@@ -76,7 +76,12 @@ services:
       args: { APP_VERSION: dev }
     image: cimh/identity-svc:dev
     <<: *hardening
+    # One worker: dev has no key files, so the process makes throw-away keys, and several workers would
+    # each make different ones (codes sealed by one couldn't be opened by another).
+    command: ["gunicorn", "identity_svc.main:build_app()", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000",
+              "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
     environment:
+      ALLOW_EPHEMERAL_KEYS: "true"
       MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
       REDIS_URL: redis://redis:6379/0
       COOKIE_SECURE: "false"          # dev runs over http

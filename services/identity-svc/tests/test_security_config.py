@@ -124,6 +124,13 @@ def test_settings_from_env_reads_secret_files(tmp_path: Path, monkeypatch: pytes
     monkeypatch.setenv("COOKIE_SECURE", "false")
     monkeypatch.setenv("HIBP_ENABLED", "false")
     monkeypatch.setenv("JWT_ISSUER", "https://id.test")
+    (tmp_path / "data").write_text(base64.b64encode(b"k" * 32).decode())
+    pem = Ed25519PrivateKey.generate().private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+    )
+    (tmp_path / "jwt").write_bytes(pem)
+    monkeypatch.setenv("DATA_KEY_FILE", str(tmp_path / "data"))
+    monkeypatch.setenv("JWT_PRIVATE_KEY_FILE", str(tmp_path / "jwt"))
     s = Settings.from_env()
     assert s.service_secrets == {"catalog": "c1", "order": "o1"}
     assert s.code_pepper == "p3pp3r"
@@ -139,3 +146,15 @@ def test_build_app_requires_urls(monkeypatch: pytest.MonkeyPatch) -> None:
         build_app(Settings())
     with pytest.raises(RuntimeError, match="REDIS_URL"):
         build_app(Settings(mongo_url="mongodb://127.0.0.1:1"))
+
+
+def test_refuses_to_start_without_keys_unless_dev_allows_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-process keys break multi-worker deployments (codes sealed by one worker can't be opened by another)."""
+    from identity_svc.config import Settings
+
+    for name in ("JWT_PRIVATE_KEY", "JWT_PRIVATE_KEY_FILE", "DATA_KEY", "DATA_KEY_FILE", "ALLOW_EPHEMERAL_KEYS"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(RuntimeError, match="JWT_PRIVATE_KEY, DATA_KEY not configured"):
+        Settings.from_env()
+    monkeypatch.setenv("ALLOW_EPHEMERAL_KEYS", "true")
+    assert Settings.from_env().private_key_pem is None

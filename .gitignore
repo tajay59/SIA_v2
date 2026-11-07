@@ -52,3 +52,8 @@ docs/manual/diagrams/*.bkp
 # Reinstall with: npx skills update -p (tracked in skills-lock.json)
 .claude/skills/design-taste-frontend/
 .claude/settings.local.json
+
+# Web build and browser-test output
+web/*/dist/
+test-results/
+playwright-report/

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SIA staging</title>
+<title>SIA staging status</title>
 <style>
   :root { --bg:#F5F7FA; --surface:#FFFFFF; --ink:#0F1A24; --muted:#53606C; --primary:#006FA8; --line:#E1E6EC; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0D1117; --surface:#161B22; --ink:#E6EDF3; --muted:#9AA7B4; --primary:#5CC2FF; --line:#2A323C; } }
@@ -20,13 +20,13 @@
 <body>
 <main>
   <div class="card">
-    <h1>SIA v2 staging</h1>
-    <p>Staff app for CIMH Stores. The screens arrive in a later phase; the identity API is live.</p>
+    <h1>Staging status</h1>
+    <p>Status of the staging services. Apps: <a href="/">SIA (staff)</a> · <a href="https://store.hashiz.store/">CIMH Stores (customers)</a>.</p>
     <p>Identity service: <strong id="status">checking…</strong></p>
     <p>Public keys: <a href="/api/identity/v1/.well-known/jwks.json"><code>/api/identity/v1/.well-known/jwks.json</code></a></p>
     <p>Synthetic test data only.</p>
   </div>
 </main>
-<script src="/status.js" defer></script>
+<script src="/status/status.js" defer></script>
 </body>
 </html>

@@ -4,14 +4,22 @@
   "workspaces": [
     "packages/web-ui",
     "packages/web-api",
-    "packages/event-schemas"
+    "packages/web-app",
+    "packages/event-schemas",
+    "web/shop",
+    "web/sia"
   ],
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "test": "npm test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
   }
