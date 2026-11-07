@@ -175,7 +175,7 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 |---|---|---|---|---|---|
 | T-39 | I | Lost/stolen staff phone | M | Tokens in Keystore; app lock with device credential after 5 min inactivity; admin can revoke sessions (suspend / logout-all) | ✅ (TR-SEC-11) |
 | T-40 | T | Replayed or tampered offline scans | L | Idempotency key per scan; server re-validates everything; queue holds no tokens | ✅ |
-| T-41 | I | Traffic interception on warehouse Wi-Fi | M | HTTPS only (`cleartextTrafficPermitted=false`); certificate pinning to the CIMH CA/Let's Encrypt intermediates | ✅ (TR-SEC-11) |
+| T-41 | I | Traffic interception on warehouse Wi-Fi | M | HTTPS only (`cleartextTrafficPermitted=false`); certificate pinning (built: ISRG Root X1, X2 and Root YE, pin set expiring 2027-12-31 so a CA change can't lock staff out; pins are roots rather than intermediates because Let's Encrypt rotates intermediates; CIMH CA added if production uses one) | ✅ (TR-SEC-11) |
 
 ## 6.9 Legacy application findings (Flask, running until cut-over)
 

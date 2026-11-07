@@ -2580,7 +2580,7 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of t
 <td>I</td>
 <td>Traffic interception on warehouse Wi-Fi</td>
 <td>M</td>
-<td>HTTPS only (<code>cleartextTrafficPermitted=false</code>); certificate pinning to the CIMH CA/Let's Encrypt intermediates</td>
+<td>HTTPS only (<code>cleartextTrafficPermitted=false</code>); certificate pinning (built: ISRG Root X1, X2 and Root YE, pin set expiring 2027-12-31 so a CA change can't lock staff out; pins are roots rather than intermediates because Let's Encrypt rotates intermediates; CIMH CA added if production uses one)</td>
 <td>✅ (TR-SEC-11)</td>
 </tr>
 </tbody>
@@ -4903,6 +4903,10 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td><strong>New:</strong> <code>/staff-only</code> (SIA)</td>
 <td>The "This app is for CIMH staff" screen of §2</td>
+</tr>
+<tr>
+<td><strong>SIA Mobile</strong> M-01 + session (<code>mobile/sia</code>)</td>
+<td>New app (id <code>bb.edu.cimh.sia</code>) next to the legacy one. Login with MFA code step, "staff only" for customers, admins without MFA sent to SIA web; refresh token sealed in the Android Keystore; app lock after 5 min (screen lock or strong biometric; no screen lock → signed out); HTTPS only with pinned Let's Encrypt roots. M-02 is a placeholder; M-03–M-11 come with P8. CI job <code>mobile</code> (unit, lint, debug + release build)</td>
 </tr>
 </tbody>
 </table>
@@ -7626,7 +7630,7 @@ rs.initiate({
 <tbody>
 <tr>
 <td>PR</td>
-<td>lint, type-check, unit, integration (testcontainers: Mongo RS, Redis, Kafka), contract (Schemathesis against <code>docs/api</code>), authz, component, SAST, dependency/secret scans, shellcheck + actionlint + compose render, SHOP/SIA build, <strong>Playwright journeys J-01, J-08, J-11</strong> (production builds against the dev stack), a11y on components</td>
+<td>lint, type-check, unit, integration (testcontainers: Mongo RS, Redis, Kafka), contract (Schemathesis against <code>docs/api</code>), authz, component, SAST, dependency/secret scans, shellcheck + actionlint + compose render, SHOP/SIA build, <strong>Playwright journeys J-01, J-08, J-11</strong> and the personal-data journey (production builds against the dev stack), <strong>SIA Mobile</strong> JVM unit tests + Android lint (warnings fail) + debug/release build, a11y on components</td>
 <td>Any failure; coverage below target; high/critical vulnerability; untested endpoint</td>
 </tr>
 <tr>

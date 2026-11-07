@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  TR-SEC-11: HTTPS only, and the CIMH API hosts are pinned to the Let's Encrypt roots (SPKI SHA-256,
+  computed from the published certificates and the served chain on 2026-11-07):
+  ISRG Root X1, ISRG Root X2 and ISRG Root YE (the "Generation Y" root, cross-signed by X2).
+  The pin set expires so that a hierarchy change can never lock staff out of a build nobody updated:
+  after the date the app falls back to normal certificate validation. Renew with each release.
+  Production adds its domain here once CIMH IT has the name (INFRASTRUCTURE §10).
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">hashiz.store</domain>
+        <domain includeSubdomains="true">cimh.edu.bb</domain>
+        <pin-set expiration="2027-12-31">
+            <pin digest="SHA-256">C5+lpZ7tcVwmwQIMcRtPbsQtWLABXhQzejna0wHFr8M=</pin>
+            <pin digest="SHA-256">diGVwiVYbubAI3RW4hB9xU8e/CH2GnkuvVFZE8zmgzI=</pin>
+            <pin digest="SHA-256">sCkq5UWXjg+7mKu9lMhhYF5bGLsy7VI/UNW3tccdR7w=</pin>
+        </pin-set>
+    </domain-config>
+</network-security-config>
