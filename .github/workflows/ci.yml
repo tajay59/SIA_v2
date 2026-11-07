@@ -127,6 +127,8 @@ jobs:
 
   deploy-staging:
     needs: images
+    # Runs only once the self-hosted runner on the CIMH host exists: set repo variable SELF_HOSTED_RUNNER=true.
+    if: vars.SELF_HOSTED_RUNNER == 'true'
     runs-on: [self-hosted, sia-host]
     environment: staging
     steps:
