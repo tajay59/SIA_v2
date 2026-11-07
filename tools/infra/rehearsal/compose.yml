@@ -57,12 +57,14 @@ services:
   kafka2:
     <<: *k
     extends: { file: ../../../deploy/compose.prod.yml, service: kafka2 }
+    secrets: !reset []
     volumes: !override
       - kafka2:/var/lib/kafka/data
       - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
   kafka3:
     <<: *k
     extends: { file: ../../../deploy/compose.prod.yml, service: kafka3 }
+    secrets: !reset []
     volumes: !override
       - kafka3:/var/lib/kafka/data
       - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
