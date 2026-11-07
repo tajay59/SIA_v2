@@ -173,6 +173,8 @@ class CatalogService:
         q: dict[str, Any] = {} if staff else dict(PUBLIC_FILTER)
         if staff and not filters.get("includeInactive"):
             q["active"] = True
+        if staff and filters.get("sellable") is not None:
+            q["sellable"] = filters["sellable"]
         for key in ("type", "department", "project"):
             if filters.get(key):
                 q[key] = filters[key]
@@ -468,15 +470,17 @@ class CatalogService:
         doc = await self.store.misc.find_one({"id": "departments"})
         return list(doc.get("values") or []) if doc else []
 
-    async def reference(self) -> dict[str, Any]:
+    async def reference(self, include_inactive: bool = False) -> dict[str, Any]:
         types_doc = await self.store.misc.find_one({"id": "types"})
         labels = {t["key"]: t["label"] for t in (types_doc or {}).get("values", []) if isinstance(t, dict)}
-        projects = await self.store.misc.find({"kind": "projects", "active": True}).to_list()
+        q: dict[str, Any] = {"kind": "projects"} if include_inactive else {"kind": "projects", "active": True}
+        projects = await self.store.misc.find(q).to_list()
         return {
             "departments": await self._departments(),
             "types": [{"key": k, "label": labels.get(k, k)} for k in PRODUCT_TYPES],
             "projects": sorted(
-                ({"code": d["code"], "name": d["name"], "active": True} for d in projects), key=lambda x: x["name"]
+                ({"code": d["code"], "name": d["name"], "active": bool(d.get("active", True))} for d in projects),
+                key=lambda x: x["name"],
             ),
         }
 

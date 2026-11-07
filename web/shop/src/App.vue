@@ -1,12 +1,12 @@
 <script setup lang="ts">
 /**
  * SHOP shell (DESIGN_BRIEF §8): top app bar (64 px, surface, hairline) with logo, navigation and the
- * account menu. Catalogue, Pro Bono, search and cart arrive with P3/P5; only screens that exist are linked.
+ * account menu: Catalogue, Pro Bono, search; My requests for customers. The cart arrives with P5.
  */
 import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
 import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
-import { mdiAccountCircleOutline, mdiLogout, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
+import { mdiAccountCircleOutline, mdiLogout, mdiMagnify, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -33,10 +33,13 @@ async function logout() {
           <img :src="brand" alt="CIMH" height="32" width="104" />
           <span class="t-label muted brand-name">Stores</span>
         </router-link>
-        <nav v-if="session.isCustomer" class="nav" aria-label="Main">
-          <v-btn to="/requests" variant="text">My requests</v-btn>
+        <nav class="nav hide-xs" aria-label="Main">
+          <v-btn to="/catalogue" variant="text">Catalogue</v-btn>
+          <v-btn to="/pro-bono" variant="text">Pro Bono</v-btn>
+          <v-btn v-if="session.isCustomer" to="/requests" variant="text">My requests</v-btn>
         </nav>
         <span class="spacer" />
+        <v-btn variant="text" :icon="mdiMagnify" aria-label="Search the catalogue" to="/search" />
         <v-btn
           variant="text"
           :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
@@ -51,6 +54,8 @@ async function logout() {
               </v-btn>
             </template>
             <v-list density="compact" min-width="200">
+              <v-list-item to="/catalogue" title="Catalogue" class="show-xs" />
+              <v-list-item to="/pro-bono" title="Pro Bono" class="show-xs" />
               <v-list-item to="/account" title="Profile" />
               <v-list-item :prepend-icon="mdiLogout" title="Log out" @click="logout" />
             </v-list>

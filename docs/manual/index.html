@@ -4864,7 +4864,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tbody>
 </table>
 <h2 id="119-implementation-status-2026-11-07">11.9 Implementation status (2026-11-07)</h2>
-<p>Code: <code>web/shop</code>, <code>web/sia</code> (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes), shared <code>packages/web-app</code> (session store, API errors and silent refresh, route guards, forms). Built and tested with Playwright (<code>tests/e2e-web</code>: J-01, J-08, J-11 and the §2 behaviours) on every PR; deployed to staging (store.hashiz.store, sia.hashiz.store).</p>
+<p>Code: <code>web/shop</code>, <code>web/sia</code> (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes), shared <code>packages/web-app</code> (session store, API errors and silent refresh, route guards, forms). Built and tested with Playwright (<code>tests/e2e-web</code>: J-01, J-08, J-10, J-11, personal data and the §2 behaviours) on every PR; deployed to staging (store.hashiz.store, sia.hashiz.store).</p>
 <table>
 <thead>
 <tr>
@@ -4879,7 +4879,23 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-01</td>
-<td>Text and "how requesting works" only: featured products and the Pro Bono teaser need the catalogue (P3); the hero image is still to come (Design Brief §7)</td>
+<td>Hero (one primary action: Browse catalogue), featured MET/RAD products, how requesting works, Pro Bono band. The hero photo is picked up from <code>web/shop/src/assets/hero/hero-1600.webp</code> (+ <code>hero-800.webp</code>, record in <code>SOURCE.md</code>) when the owner adds it; until then the hero is text only</td>
+</tr>
+<tr>
+<td>S-02, S-04, S-06</td>
+<td>Filter column (drawer on phones; two product columns), filters in the URL, "Load more". S-06 ranks by relevance</td>
+</tr>
+<tr>
+<td>S-03</td>
+<td>Gallery with thumbnails, make/model, availability, Pro Bono badge with its limit, specs; never a price. Visitors get "Log in to request"; CIMH accounts a note; customers a quantity stepper with <strong>Add to request disabled</strong> until order-svc (P5)</td>
+</tr>
+<tr>
+<td>A-05, A-06, A-07</td>
+<td>List with search/filters (incl. sellable, inactive) and stock count; form with the explicit Pro Bono choice; tabs Details (If-Match), Images (upload, background-removal option, processing tiles, primary, remove), Stock (count only; by location with P4), History (admins: audit entries). Deactivate with a confirmation. "Create labels" comes with P4</td>
+</tr>
+<tr>
+<td>A-19</td>
+<td>Fees, email lists (active staff/admins), workflow, reference (departments; projects incl. inactive, rename, toggle)</td>
 </tr>
 <tr>
 <td>S-10</td>
@@ -7635,7 +7651,7 @@ rs.initiate({
 <tbody>
 <tr>
 <td>PR</td>
-<td>lint, type-check, unit, integration (testcontainers: Mongo RS, Redis, Kafka), contract (Schemathesis against <code>docs/api</code>), authz, component, SAST, dependency/secret scans, shellcheck + actionlint + compose render, SHOP/SIA build, <strong>Playwright journeys J-01, J-08, J-11</strong> and the personal-data journey (production builds against the dev stack), <strong>SIA Mobile</strong> JVM unit tests + Android lint (warnings fail) + debug/release build, a11y on components</td>
+<td>lint, type-check, unit, integration (testcontainers: Mongo RS, Redis, Kafka), contract (Schemathesis against <code>docs/api</code>), authz, component, SAST, dependency/secret scans, shellcheck + actionlint + compose render, SHOP/SIA build, <strong>Playwright journeys J-01, J-08, J-10, J-11</strong> and the personal-data journey (J-10 runs the real image pipeline: relay, Kafka, media-worker) (production builds against the dev stack), <strong>SIA Mobile</strong> JVM unit tests + Android lint (warnings fail) + debug/release build, a11y on components</td>
 <td>Any failure; coverage below target; high/critical vulnerability; untested endpoint</td>
 </tr>
 <tr>

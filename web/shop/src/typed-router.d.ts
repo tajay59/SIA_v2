@@ -52,6 +52,20 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/catalogue/': RouteRecordInfo<
+      '/catalogue/',
+      '/catalogue',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/catalogue/[id]': RouteRecordInfo<
+      '/catalogue/[id]',
+      '/catalogue/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
     '/forgot-password': RouteRecordInfo<
       '/forgot-password',
       '/forgot-password',
@@ -73,6 +87,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/pro-bono': RouteRecordInfo<
+      '/pro-bono',
+      '/pro-bono',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/requests/': RouteRecordInfo<
       '/requests/',
       '/requests',
@@ -83,6 +104,13 @@ declare module 'vue-router/auto-routes' {
     '/reset-password': RouteRecordInfo<
       '/reset-password',
       '/reset-password',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/search': RouteRecordInfo<
+      '/search',
+      '/search',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -138,6 +166,22 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/catalogue/index.vue': {
+      routes:
+        | '/catalogue/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/catalogue/[id].vue': {
+      routes:
+        | '/catalogue/[id]'
+      views:
+        | never
+      pathParamNames:
+        | 'id'
+    }
     'src/pages/forgot-password.vue': {
       routes:
         | '/forgot-password'
@@ -162,6 +206,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/pro-bono.vue': {
+      routes:
+        | '/pro-bono'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/requests/index.vue': {
       routes:
         | '/requests/'
@@ -173,6 +225,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/reset-password.vue': {
       routes:
         | '/reset-password'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/search.vue': {
+      routes:
+        | '/search'
       views:
         | never
       pathParamNames:

@@ -63,7 +63,11 @@ test.describe.serial('personal data: export and erasure', () => {
     await page.goto(`${SIA}/admin/accounts?erasure=1`)
     const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\.')) })
     await expect(row.getByText('Delete requested')).toBeVisible()
-    await row.getByRole('link').click()
+    // The list may re-render right after loading; retry until the detail page has opened.
+    await expect(async () => {
+      await row.getByRole('link').click({ timeout: 2000 })
+      await expect(page).toHaveURL(/\/admin\/accounts\/USR/, { timeout: 2000 })
+    }).toPass({ timeout: 15_000 })
     await expect(page.getByText(/asked to be deleted on/)).toBeVisible()
 
     await page.getByRole('button', { name: 'Erase', exact: true }).click()

@@ -70,6 +70,7 @@ export function componentDefaults(app: App): Record<string, Record<string, unkno
     VTextField: { variant: 'outlined', rounded: 'md', density },
     VSelect: { variant: 'outlined', rounded: 'md', density },
     VAutocomplete: { variant: 'outlined', rounded: 'md', density },
+    VCombobox: { variant: 'outlined', rounded: 'md', density },
     VTextarea: { variant: 'outlined', rounded: 'md', density },
     VCard: { rounded: 'lg', variant: 'outlined' },
     VChip: { rounded: 'sm', size: 'small' },
