@@ -49,6 +49,8 @@ def _apply_implicit_responses(raw: dict[str, Any]) -> None:
                 extra.update({"401": "Unauthorized", "403": "Forbidden"})
             if op.get("requestBody") or op.get("parameters") or item.get("parameters"):
                 extra["422"] = "Unprocessable"
+            if any(str(p.get("$ref", "")).endswith("/IfMatch") for p in op.get("parameters", [])):
+                extra["428"] = "PreconditionRequired"
             responses = op.setdefault("responses", {})
             for status, name in extra.items():
                 responses.setdefault(status, {"$ref": _ERR + name})

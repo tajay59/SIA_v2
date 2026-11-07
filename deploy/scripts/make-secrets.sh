@@ -40,6 +40,11 @@ make jwt_private_key openssl genpkey -algorithm ed25519
 make data_key sh -c 'openssl rand -base64 32 | tr -d "\n"'
 make code_pepper rand
 make service_secrets sh -c 'for s in notification order catalog inventory document media; do echo "$s=$(openssl rand -hex 24)"; done'
+# identity-svc reads the whole list; each calling service reads only its own line (SERVICE_SECRET_FILE).
+while IFS='=' read -r name value; do
+  [[ -n $name ]] || continue
+  f="$DIR/service_secret_$name"; rm -f "$f"; printf '%s' "$value" > "$f"; chmod 400 "$f"
+done < "$DIR/service_secrets"
 
 # Connection URLs with credentials are secrets too (MONGO_URL_FILE / REDIS_URL_FILE). Re-rendered every run.
 MONGO_HOSTS=${MONGO_HOSTS:-sia-host.cimh.local:27017,sia-pi-a.cimh.local:27017,sia-pi-b.cimh.local:27017}

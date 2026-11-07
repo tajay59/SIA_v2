@@ -105,11 +105,11 @@ Verification and reset codes: `kind`, `accountId`, **`codeHash`** (for checking)
 `id` (= source eventId, so duplicates are impossible), `at`, `actor`, `action`, `entity{type,id}`, `from/to`, `reason`, `ip`, `correlationId`. The service user can insert and read only. Kept indefinitely; personal data is removed when an account is deleted.
 
 ### `product`
-`id` (unique) · `name`, `description`, `details`, `make`, `modelname`, `modelnumber` · **`type`** codes `MET, RAD, EQUIP, SUPP, MISC, PRO` · `department`, `project` · **`sellable` → bool** · **`probono` bool (required at creation)** · `probonoMaxPerRequest?` · `cost` (Money, staff only) · `threshold`, `unitquantity`, `weight`, `dimension`, `sn`, `sn1` · `keywords[]` · `images[]{fileId, url, w, h, primary}` · `inStock` (derived) · `active` (soft delete).
-Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on `sn`, `sn1`, `modelnumber`.
+`id` (unique) · `name`, `description`, `details`, `make`, `modelname`, `modelnumber` · **`type`** codes `MET, RAD, EQUIP, SUPP, MISC, PRO` · `department`, `project` · **`sellable` → bool** · **`probono` bool (required at creation)** · `probonoMaxPerRequest?` · `cost` (Money, staff only) · `threshold`, `unitquantity`, `weight`, `dimension`, `sn`, `sn1` · `keywords[]` · `images[]{fileId, url, w, h, primary}` · `inStock`, `stockCount`, `stockAt` (derived from stock events; an older event never overwrites a newer one) · `active` (soft delete).
+Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on `sn`, `sn1`, `modelnumber`. Browsing is sorted by name (indexes end in `name, id` for cursor paging).
 
 ### `xuser` (view)
-`product` filtered to `sellable: true, active: true`, projecting **only public fields**, so `cost` and serials can never reach a customer.
+`product` filtered to `sellable: true, active: true`, projecting **only public fields**, so `cost` and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.
 
 ### `misc` (reference data, now with a `kind` field)
 

@@ -45,7 +45,7 @@ The platform has three clients (SHOP, SIA, SIA Mobile) and one backend. Its only
 | Service | Owns | Publishes | Consumes | Scheduled jobs |
 |---|---|---|---|---|
 | identity | `accounts`, `temp`, `organisations`, `auditlog` | `identity.user.events` | `audit.events` | Expire unverified (24 h); remind admins (48 h); purge rejected/expired (90 d) |
-| catalog | `product`, `xuser`, `misc` | `catalog.product.events`, `media.jobs` | `media.results`, `inventory.stock.events` | — |
+| catalog | `product`, `xuser`, `misc` | `catalog.product.events`, `media.jobs`, `audit.events` | `media.results`, `inventory.stock.events` | — |
 | inventory | `storage`, `history` | `inventory.stock.events` | `order.events` | — |
 | order | `orders` (incl. carts) | `order.events` | `document.events`, `inventory.stock.events`, `identity.user.events` | Quote expiry (30 d) + reminder (3 d before) |
 | document | none (metadata in `orders.files[]`) | `document.events` | `order.events` | — |

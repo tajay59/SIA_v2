@@ -185,6 +185,7 @@ auth/         shared token-checking library (from packages/)
 | **Publishes** | `catalog.product.events`: `product.created`, `product.updated`, `product.deleted`, `product.image_added`. `media.jobs`: `image.process` |
 | **Consumes** | `media.results` (processed image ready); `inventory.stock.events` (keeps an "in stock / on request" flag on each product for SHOP) |
 | **Search** | MongoDB text index + prefix indexes (TR-DATA-9). The customer view only returns sellable products and never returns `cost` |
+| **Built (P3)** | `services/catalog-svc`: API, outbox relay (`product`, `misc` → `catalog.product.events`, `media.jobs`, `audit.events`), process `catalog-consumer` (`stock.changed` → `inStock`/`stockCount`; `image.processed` → `images[]` + `product.image_added`). Admin changes to reference data, settings, product cost and deactivation are audited via `audit.events`. Email-list members are checked against identity-svc (`GET /internal/accounts/{id}`, service token; admin-only and rare). Uploads are checked by their bytes (JPEG/PNG/WebP), written to `incoming/` on the files volume and processed by media-worker |
 
 ### 4.3 inventory-svc
 | Aspect | Detail |

@@ -46,8 +46,10 @@ Rate limits are 20 requests/s per IP for the API in general and 5/min on auth en
 
 **Implicit responses.** To keep the specs readable, these are not repeated on every operation, but any
 operation may return them (all as `application/problem+json`): **401** and **403** if the operation is
-secured; **422** if it takes a body, query or path parameters; **400**, **429** and **503** always. Every
+secured; **422** if it takes a body, query or path parameters; **428** (`PRECONDITION_REQUIRED`) if it takes `If-Match`; **400**, **429** and **503** always. Every
 other status must be listed on the operation. The Schemathesis contract tests apply exactly this rule.
+
+**Strict bodies.** Request bodies are validated strictly: a number sent as a string, or `true` for an integer, is a 422 (never coerced).
 
 ## 10.4 The request (order) API: state machine as endpoints
 

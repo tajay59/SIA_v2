@@ -16,12 +16,13 @@ TAG=staging
 EDGE=0; [[ "${1:-}" == "--edge" ]] && EDGE=1
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-echo "== build image"
-docker build -q -f services/identity-svc/Dockerfile --build-arg APP_VERSION="$(git rev-parse --short HEAD)" \
-  -t cimh/identity-svc:$TAG . >/dev/null
-
-echo "== ship image ($(docker image inspect cimh/identity-svc:$TAG --format '{{.Size}}' | awk '{printf "%d MB", $1/1e6}'))"
-docker save cimh/identity-svc:$TAG | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
+for svc in identity-svc catalog-svc; do
+  echo "== build $svc"
+  docker build -q -f "services/$svc/Dockerfile" --build-arg APP_VERSION="$(git rev-parse --short HEAD)" \
+    -t "cimh/$svc:$TAG" . >/dev/null
+  echo "== ship $svc ($(docker image inspect "cimh/$svc:$TAG" --format '{{.Size}}' | awk '{printf "%d MB", $1/1e6}'))"
+  docker save "cimh/$svc:$TAG" | gzip -1 | ssh "$HOST" 'gunzip | docker load -q'
+done
 
 echo "== build web apps (SHOP -> store.hashiz.store, SIA -> sia.hashiz.store)"
 [[ -d node_modules ]] || npm ci --no-audit --no-fund
@@ -48,9 +49,11 @@ umask 077
 [ -s service_secrets ] || printf 'notification=%s\norder=%s\ncatalog=%s\ninventory=%s\ndocument=%s\nmedia=%s\n' \
   "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" \
   "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > service_secrets
+# Each calling service gets only its own line (catalog -> identity internal API).
+grep '^catalog=' service_secrets | cut -d= -f2- | tr -d '\n' > service_secret_catalog
 # Containers run as uid 10001 and read the secrets via bind mounts.
-chown 10001 jwt_private_key.pem data_key code_pepper service_secrets
-chmod 400 jwt_private_key.pem data_key code_pepper service_secrets
+chown 10001 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog
+chmod 400 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog
 EOF
 
 echo "== start stack"

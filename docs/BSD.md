@@ -275,6 +275,7 @@ Short-lived verification and reset codes.
 | `keywords` | string[] | | ⟲ | Lowercased; used by the text index |
 | `images` | `{ fileId, url, w, h, primary bool }[]` | | ⟲ (was string[]) | Public WebP URLs |
 | `inStock` | bool | R | ✚ | **Derived** from `inventory.stock.events`; display only |
+| `stockCount`, `stockAt` | int?, Timestamp? | | ✚ | Available units and the time of the `stock.changed` event they come from (an older event never overwrites a newer one). `stockCount` is staff only |
 | `active` | bool | R | ✚ | Soft delete |
 | `createdAt`, `updatedAt` | Timestamp | R | ✚ | |
 | `outbox` | OutboxEvent[] | R | ✚ | |
@@ -285,14 +286,15 @@ Short-lived verification and reset codes.
 |---|---|
 | `{ id: 1 }` unique | Lookups by id |
 | `{ name: "text", make: "text", modelname: "text", modelnumber: "text", keywords: "text" }` (weights: name 10, modelnumber 8, keywords 5, make 3, modelname 3) | Search |
-| `{ sellable: 1, active: 1, type: 1, department: 1, _id: 1 }` | Customer browsing with cursor paging |
-| `{ probono: 1, active: 1, type: 1, _id: 1 }` | Pro Bono section |
+| `{ sellable: 1, active: 1, type: 1, department: 1, name: 1, id: 1 }` and `{ sellable: 1, active: 1, name: 1, id: 1 }` | Customer browsing, sorted by name, cursor paging on (name, id) |
+| `{ probono: 1, active: 1, type: 1, name: 1, id: 1 }` | Pro Bono section |
+| `{ active: 1, name: 1, id: 1 }` | Staff browsing |
 | `{ sn: 1 }` sparse, `{ sn1: 1 }` sparse | Exact and prefix serial lookups (staff) |
 | `{ modelnumber: 1 }` | Prefix lookups |
 
 ### 5.6 `xuser` (view, catalog-svc)
 
-The customer-facing product view. Redefined in v2 so `cost` and staff-only fields can never leak:
+The customer-facing product view. Redefined in v2 so `cost` and staff-only fields can never leak. catalog-svc creates or redefines it at start-up from the same field list (`PUBLIC_FIELDS`) its public API uses, so the view, the API and the snapshot tests can't drift apart:
 
 ```js
 db.createView("xuser", "product", [

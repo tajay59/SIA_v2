@@ -21,6 +21,7 @@ secrets:
   data_key: { file: ./secrets/data_key }
   code_pepper: { file: ./secrets/code_pepper }
   service_secrets: { file: ./secrets/service_secrets }
+  service_secret_catalog: { file: ./secrets/service_secret_catalog }
 
 services:
   gateway:
@@ -31,10 +32,11 @@ services:
       - ./headers.inc:/etc/nginx/conf.d/headers.inc:ro
       - ./proxy.inc:/etc/nginx/conf.d/proxy.inc:ro
       - ./site:/usr/share/nginx/sia-site:ro
+      - media:/srv/sia-data:ro
     networks:
       internal: {}
       kong-net: { aliases: [sia-gateway] }
-    depends_on: [identity-svc]
+    depends_on: [identity-svc, catalog-svc]
     mem_limit: 48m
     cpus: 0.25
     logging: { driver: local, options: { max-size: "10m", max-file: "3" } }
@@ -113,6 +115,66 @@ services:
     mem_limit: 128m
     cpus: 0.1
 
+  catalog-svc:
+    image: cimh/catalog-svc:staging
+    <<: *hardening
+    command: ["gunicorn", "catalog_svc.main:build_app()", "-k", "uvicorn.workers.UvicornWorker",
+              "-b", "0.0.0.0:8000", "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      JWT_ISSUER: https://sia.hashiz.store
+      JWT_AUDIENCE: cimh-stores
+      IDENTITY_URL: http://identity-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_catalog
+      MEDIA_ROOT: /srv/sia-data
+      LOG_LEVEL: INFO
+    secrets: [service_secret_catalog]
+    volumes: [media:/srv/sia-data]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      identity-svc: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 192m
+    cpus: 0.5
+
+  outbox-relay-catalog:
+    image: cimh/catalog-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      RELAY_NAME: catalog
+      RELAY_COLLECTIONS: product,misc
+      RELAY_TOPICS: "product.=catalog.product.events,image.=media.jobs,audit.=audit.events"
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 80m
+    cpus: 0.1
+
+  catalog-consumer:
+    image: cimh/catalog-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "catalog_svc.consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 112m
+    cpus: 0.1
+
   mongo:
     image: mongo:8.0
     restart: unless-stopped
@@ -171,6 +233,7 @@ services:
     restart: "no"
 
 volumes:
+  media:
   mongo-data:
   redis-data:
   kafka-data:

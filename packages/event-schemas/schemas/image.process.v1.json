@@ -47,16 +47,21 @@
         "payload": {
           "type": "object",
           "required": [
+            "jobId",
             "productId",
             "sourcePath",
             "removeBackground"
           ],
           "properties": {
+            "jobId": {
+              "type": "string"
+            },
             "productId": {
               "type": "string"
             },
             "sourcePath": {
-              "type": "string"
+              "type": "string",
+              "description": "Relative to the files volume, e.g. incoming/<random>.jpg"
             },
             "removeBackground": {
               "type": "boolean"

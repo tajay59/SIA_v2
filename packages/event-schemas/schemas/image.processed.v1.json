@@ -51,6 +51,10 @@
             "ok"
           ],
           "properties": {
+            "jobId": {
+              "type": "string",
+              "description": "From image.process"
+            },
             "productId": {
               "type": "string"
             },
