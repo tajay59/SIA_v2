@@ -63,7 +63,8 @@ def hibp_check(timeout: float = 2.0) -> BreachCheck:
     async def check(password: str) -> bool:
         import httpx
 
-        sha1 = hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest().upper()
+        # HIBP k-anonymity protocol is defined over SHA-1; not used for any security property.
+        sha1 = hashlib.sha1(password.encode(), usedforsecurity=False).hexdigest().upper()  # nosemgrep
         prefix, suffix = sha1[:5], sha1[5:]
         try:
             async with httpx.AsyncClient(timeout=timeout) as client:

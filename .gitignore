@@ -17,18 +17,8 @@ deploy/secrets/
 !.env.example
 *.log
 
-# Legacy app runtime data and customer files (never commit; archive on the server)
-legacy/sia/app/uploads/
-legacy/sia/app/tempquotations/
-legacy/sia/app/tempcode/
-legacy/sia/app/invoices/
-legacy/sia/app/orderfiles/
-legacy/sia/app/log/
-legacy/sia/app/*.db
-legacy/sia/app/invoice*.pdf
-legacy/sia/sia_env/
-legacy/shop/store/
-legacy/shop/dist/
+# Legacy apps stay outside this repo (history kept in the old SIA/ and SHOP/ repos)
+/legacy/
 *.pdf
 !docs/**/*.pdf
 

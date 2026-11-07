@@ -4,10 +4,8 @@ name: ci
 
 on:
   pull_request:
-    paths-ignore: ['legacy/**']
   push:
     branches: [main]
-    paths-ignore: ['legacy/**']
 
 permissions:
   contents: read
@@ -31,7 +29,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e packages/py-common -e services/hello-svc
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc
           pip install -r requirements-dev.txt
       - name: Ruff
         run: ruff check . && ruff format --check .
@@ -53,7 +51,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}", cache: pip }
       - run: |
-          pip install -e packages/py-common -e services/hello-svc -r requirements-dev.txt
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -r requirements-dev.txt
           # exit code 5 = no tests collected (none exist until services own data in P2)
           pytest -m integration --no-cov || [ $? -eq 5 ]
 
@@ -86,7 +84,7 @@ jobs:
           pip install bandit pip-audit
           bandit -q -r packages services -x '*/tests/*'
           pip-audit -r requirements-dev.txt
-          pip install -e packages/py-common -e services/hello-svc && pip-audit --skip-editable
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc && pip-audit --skip-editable
       - name: Semgrep
         run: pipx run semgrep scan --config p/python --config p/owasp-top-ten --error packages services
 

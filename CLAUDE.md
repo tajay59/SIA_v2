@@ -13,9 +13,9 @@ Keep it terse. Detail lives in `docs/`; this file only points to it.
 ## What this is
 **Team: one developer working with Claude Code. No deadline; phases end on exit criteria.**
 Rebuild of CIMH's stores system to production grade (target: 1M registered users).
-- **One git repo at the project root** (branch `main`, no remote yet). v2 code at the root (`services/ packages/ web/ deploy/ tools/ tests/`, `README.md`, `CONTRIBUTING.md`); `docs/`; legacy apps in `legacy/` with their histories (SIA history purged of customer files). Venv `.venv` at the root. `core.autocrlf=false` + `.gitattributes` (LF). Dev stack: `docker compose -f deploy/compose.dev.yml [--profile kafka]` on ports 18000 (hello) / 18001 (identity) / 19090/19093/18025 (9090 and 27018 are taken by other software on this PC).
-- **Legacy SHOP** (`legacy/shop`): customer web store (Vue 3, legacy JS) + its nginx confs (`legacy/shop/nginx/`). The owner's uncommitted WIP (`src/stores`, `src/views`, package files) is carried over **uncommitted**; don't commit it.
-- **Old folders `SIA/`, `SHOP/`, `v2/`** are pre-merge copies kept until the owner confirms; git ignores them. Delete only when asked. Stray root npm install moved to `_old_root_npm/`.
+- **One git repo at the project root** (branch `main`, no remote yet). Remote: https://github.com/tajay59/SIA_v2 (private). v2 code at the root (`services/ packages/ web/ deploy/ tools/ tests/`, `README.md`, `CONTRIBUTING.md`) + `docs/`. **`legacy/` is NOT in the repo** (owner decision, git-ignored): working copies in `legacy/sia`, `legacy/shop`; their git history stays in the old `SIA/` and `SHOP/SIA-STORE` repos. Venv `.venv` at the root. `core.autocrlf=false` + `.gitattributes` (LF). Dev stack: `docker compose -f deploy/compose.dev.yml [--profile kafka]` on ports 18000 (hello) / 18001 (identity) / 19090/19093/18025 (9090 and 27018 are taken by other software on this PC).
+- **Legacy SHOP** (`legacy/shop`, not tracked): customer web store (Vue 3, legacy JS) + its nginx confs (`legacy/shop/nginx/`). Contains the owner's WIP (`src/stores`, `src/views`, package files), also still in `SHOP/SIA-STORE`.
+- **Old folders `SIA/`, `SHOP/`, `v2/`** are pre-merge copies; git ignores them. `SIA/` and `SHOP/SIA-STORE` hold the legacy git history (SIA's still contains customer files: purge before pushing it anywhere). Delete only when asked. Stray root npm install moved to `_old_root_npm/`.
 - **Legacy SIA** (`legacy/sia`): **Flask** API (`legacy/sia/app/views.py` ~3.7k lines, `functions.py` = Mongo layer) + staff Vue app (`legacy/sia/src`). Its `.env` was copied in (git-ignored).
 - **SIA Mobile**: Android (Kotlin/Compose) at `C:\Users\tedwards\AndroidStudioProjects\StockInventoryApp`.
 - Root also holds unrelated clutter (`product photos/`, `LOCAL/`, `fake_products.json` 564 MB, PDFs). **Ignore it.**
@@ -103,7 +103,7 @@ Update CLI skills: `npx skills update -p`.
 - `SIA/sia_env` (old copy) venv is broken (points at a missing Python). Use system Python 3.13 or a scratch venv.
 - draw.io CLI: `"C:\Program Files\draw.io\draw.io.exe" -x -f svg --svg-theme dark -o images/X.svg diagrams/X.drawio`. **Always use `--svg-theme dark`**; the manual cards are `#121212`. **Exception: `28-design-tokens` → `--svg-theme light`** (dark mode recolours swatches; the diagram draws its own dark background). Don't regenerate a `.drawio` file that has been hand-edited.
 - **Secrets:** `legacy/sia/.env` (and old `SIA/.env`) hold real credentials. **`git.txt` in the root holds a GitHub token: owner must revoke it** (git-ignored), and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
-- **Never `git add -A` / `git add .`**: `legacy/shop` holds the owner's uncommitted WIP. Stage explicit paths.
+- Stage explicit paths (avoid `git add -A`).
 - Commit or push only when asked. P0 fixes are committed in SIA (`3ad5fa0`, `4a5881b`).
 - Customer quotation PDFs and `Spares.db` are untracked now but **still in SIA git history**: purge (`git filter-repo`) before SIA is ever pushed anywhere.
 
@@ -129,6 +129,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-07: Pushed to github.com/tajay59/SIA_v2; `legacy/` removed from the repo and its history (owner decision, force-pushed once); CI fixes (identity install, HIBP SHA-1 nosemgrep).
 - 2026-11-07: One monorepo at the project root (v2 + legacy/sia + legacy/shop + docs, histories kept, customer files purged from history); all checks re-run green from the new layout.
 - 2026-11-07: Staging-lite live on sia/store.hashiz.store (kw-server); e2e smoke passes over public HTTPS.
 - 2026-11-07: P2 identity backend + outbox relay built and verified end to end; contract gaps fixed (code claim endpoint, 2 events, error codes) in API/BSD/TAD/manual (diagrams 03, 13).
