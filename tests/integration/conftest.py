@@ -29,7 +29,7 @@ class Stack:
     kafka: str
 
 
-def _until(ready: Callable[[], bool], seconds: float) -> None:
+def _until(ready: Callable[[], bool], seconds: float, container: DockerContainer | None = None) -> None:
     """Poll a real readiness probe (log lines differ between image versions and CI runners)."""
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
@@ -39,7 +39,11 @@ def _until(ready: Callable[[], bool], seconds: float) -> None:
         except Exception:  # noqa: S110 - container still starting
             pass
         time.sleep(1)
-    raise TimeoutError(f"container not ready after {seconds}s")
+    logs = ""
+    if container is not None:
+        out, err = container.get_logs()
+        logs = (out + err).decode(errors="replace")[-3000:]
+    raise TimeoutError(f"container not ready after {seconds}s: {logs}")
 
 
 def _free_port() -> int:
@@ -49,26 +53,25 @@ def _free_port() -> int:
 
 
 def _mongo() -> tuple[DockerContainer, str]:
-    c = DockerContainer("mongo:8.0").with_command("--replSet rs0 --bind_ip_all").with_exposed_ports(27017)
-    c.start()
-    _until(lambda: c.exec(["mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]).exit_code == 0, 120)
-    c.exec(["mongosh", "--quiet", "--eval", "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"])
-    url = f"mongodb://{c.get_container_host_ip()}:{c.get_exposed_port(27017)}/?directConnection=true"
     from pymongo import MongoClient
 
-    client: MongoClient[dict[str, object]] = MongoClient(url)
-    for _ in range(60):
-        if client.admin.command("hello").get("isWritablePrimary"):
-            break
-        time.sleep(0.5)
-    client.close()
+    c = DockerContainer("mongo:8.0").with_command("--replSet rs0 --bind_ip_all").with_exposed_ports(27017)
+    c.start()
+    url = f"mongodb://{c.get_container_host_ip()}:{c.get_exposed_port(27017)}/?directConnection=true"
+    client: MongoClient[dict[str, object]] = MongoClient(url, serverSelectionTimeoutMS=2000)
+    try:
+        _until(lambda: bool(client.admin.command("ping").get("ok")), 120, c)
+        client.admin.command({"replSetInitiate": {"_id": "rs0", "members": [{"_id": 0, "host": "localhost:27017"}]}})
+        _until(lambda: bool(client.admin.command("hello").get("isWritablePrimary")), 60, c)
+    finally:
+        client.close()
     return c, url
 
 
 def _redis() -> tuple[DockerContainer, str]:
     c = DockerContainer("redis:7.4-alpine").with_exposed_ports(6379)
     c.start()
-    _until(lambda: c.exec(["redis-cli", "ping"]).output.strip() == b"PONG", 60)
+    _until(lambda: c.exec(["redis-cli", "ping"]).output.strip() == b"PONG", 60, c)
     return c, f"redis://{c.get_container_host_ip()}:{c.get_exposed_port(6379)}/0"
 
 
@@ -90,7 +93,7 @@ def _kafka() -> tuple[DockerContainer, str]:
     )
     c.start()
     probe = ["/opt/kafka/bin/kafka-topics.sh", "--bootstrap-server", f"localhost:{port}", "--list"]
-    _until(lambda: c.exec(probe).exit_code == 0, 180)
+    _until(lambda: c.exec(probe).exit_code == 0, 180, c)
     bootstrap = f"localhost:{port}"
 
     async def create() -> None:

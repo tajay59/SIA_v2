@@ -32,6 +32,7 @@ services:
     mem_limit: 768m
   mongo3:
     <<: *pi
+    secrets: !reset []
     volumes: !override
       - mongo3:/data/db
       - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: m3 } }
