@@ -105,6 +105,8 @@ Update CLI skills: `npx skills update -p`.
 - **Secrets:** `legacy/sia/.env` (and old `SIA/.env`) hold real credentials. **`git.txt` in the root holds a GitHub token: owner must revoke it** (git-ignored), and the Mongo admin password was exposed in chat. **Never echo or commit them**; rotation is pending.
 - Stage explicit paths (avoid `git add -A`).
 - Git Bash + Docker: set `MSYS_NO_PATHCONV=1` for container paths, but then use `pwd -W` for host paths and never `-o /dev/null` with curl.
+- **`main` is protected** (public repo): PRs only, 5 required checks (python, integration, web, security, infra), up to date, linear history, squash merge, applies to admins, 0 approvals (solo). Work on a branch, `gh pr create`, `gh pr merge --squash --auto`.
+- Staging deploy: CI job `deploy-staging` on push to `main`, GitHub-hosted runner → SSH (env `staging`: secrets `STAGING_SSH_KEY`, `STAGING_KNOWN_HOSTS`, var `STAGING_HOST`) → `deploy/staging-lite/deploy.sh`. Needs the key's public half in kw-server root `authorized_keys` (owner adds it). No self-hosted runner.
 - Commit or push only when asked. P0 fixes are committed in SIA (`3ad5fa0`, `4a5881b`).
 - Customer quotation PDFs and `Spares.db` are untracked now but **still in SIA git history**: purge (`git filter-repo`) before SIA is ever pushed anywhere.
 
@@ -130,6 +132,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-07: Repo public; branch protection on `main` (PRs + required checks); staging deploys from GitHub Actions over SSH (self-hosted runner dropped for staging).
 - 2026-11-07: All Mongo images pinned to 8.0.30 (8.0.21–29 refuse to start on kernel 6.19+, found in CI); host kernels must be ≤6.18 or ≥7.0.14.
 - 2026-11-07: P1 code finished: platform as code + rehearsal (all checks pass on Docker), integration tests (testcontainers), Schemathesis contract tests (found 3 contract gaps: implicit error responses now in API README §4, name minLength, health paths at root), identity image in CI.
 - 2026-11-07: CI fully green on GitHub (fixed: identity install, HIBP SHA-1 false positive, trivy-action pin by SHA, pip removed from runtime images = Trivy HIGH in pip's vendored libs).

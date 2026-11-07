@@ -1,5 +1,5 @@
 # CI gates (TEST_STRATEGY §9). PR: lint, types, unit, integration, contract, authz, scans.
-# main: build images -> Trivy -> cosign sign -> deploy to staging via the self-hosted runner.
+# main: build images -> Trivy -> cosign sign -> deploy staging-lite (kw-server) over SSH from a GitHub-hosted runner.
 name: ci
 
 on:
@@ -152,20 +152,41 @@ jobs:
       - run: bash tools/infra/rehearsal/run.sh
 
   deploy-staging:
-    needs: [images, rehearsal]
-    # Runs only once the self-hosted runner on the CIMH host exists: set repo variable SELF_HOSTED_RUNNER=true.
-    if: vars.SELF_HOSTED_RUNNER == 'true'
-    runs-on: [self-hosted, sia-host]
-    environment: staging
-    strategy:
-      max-parallel: 1
-      matrix:
-        service: [hello-svc, identity-svc]
+    # GitHub-hosted runner -> SSH to the staging-lite server (kw-server). The key lives only in the `staging`
+    # environment, which only protected branches (main) can use; PR runs never see it.
+    name: deploy staging (sia.hashiz.store)
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [images]
+    runs-on: ubuntu-latest
+    environment: { name: staging, url: "https://sia.hashiz.store" }
+    concurrency: { group: deploy-staging, cancel-in-progress: false }
     steps:
       - uses: actions/checkout@v4
-        with: { sparse-checkout: deploy }
-      - name: Deploy the image built from this commit (by digest)
+      - name: SSH access
+        env:
+          KEY: ${{ secrets.STAGING_SSH_KEY }}
+          KNOWN: ${{ secrets.STAGING_KNOWN_HOSTS }}
+          HOST: ${{ vars.STAGING_HOST }}
         run: |
-          image=ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}:${{ github.sha }}
-          digest=$(docker buildx imagetools inspect "$image" --format '{{json .Manifest.Digest}}' | tr -d '"')
-          deploy/scripts/deploy.sh staging ${{ matrix.service }} "$digest"
+          install -m 700 -d ~/.ssh
+          printf '%s
+' "$KEY" > ~/.ssh/staging && chmod 600 ~/.ssh/staging
+          printf '%s
+' "$KNOWN" > ~/.ssh/known_hosts
+          printf 'Host kw-server
+  HostName %s
+  User root
+  IdentityFile ~/.ssh/staging
+  IdentitiesOnly yes
+  StrictHostKeyChecking yes
+' "$HOST" > ~/.ssh/config
+      - name: Deploy (build, ship, restart; edge/cert step stays manual)
+        run: bash deploy/staging-lite/deploy.sh
+      - name: Smoke
+        run: |
+          for i in $(seq 1 20); do
+            curl -fsS https://sia.hashiz.store/api/identity/v1/.well-known/jwks.json >/dev/null && exit 0; sleep 6
+          done
+          echo "staging did not come up" >&2; exit 1
+      - if: always()
+        run: rm -f ~/.ssh/staging
