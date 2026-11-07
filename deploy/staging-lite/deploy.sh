@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy staging-lite to the shared demo server. Run from v2/ on a machine with `ssh kw-server` access:
+# Deploy staging-lite to the shared demo server. Run from the repository root on a machine with `ssh kw-server` access:
 #
 #   deploy/staging-lite/deploy.sh            # build image, ship it, (re)start the stack
 #   deploy/staging-lite/deploy.sh --edge     # also install the edge site + certificate (first time)

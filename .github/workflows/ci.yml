@@ -4,8 +4,10 @@ name: ci
 
 on:
   pull_request:
+    paths-ignore: ['legacy/**']
   push:
     branches: [main]
+    paths-ignore: ['legacy/**']
 
 permissions:
   contents: read

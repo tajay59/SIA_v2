@@ -3,7 +3,7 @@
 Fails if:
   - a row has unknown roles/ownership, or is still marked `review: true`
     (allowed with --allow-review while services are being built);
-  - an operation in the OpenAPI specs (when ../docs/api is present) has no row;
+  - an operation in the OpenAPI specs (docs/api) has no row;
   - a route in any running FastAPI app passed with --app module:attr has no row
     ("no untested endpoint can ship").
 """

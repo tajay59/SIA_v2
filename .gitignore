@@ -1,3 +1,4 @@
+# ---- CIMH Stores monorepo ----
 node_modules/
 .venv/
 __pycache__/
@@ -15,3 +16,45 @@ deploy/secrets/
 .env.*
 !.env.example
 *.log
+
+# Legacy app runtime data and customer files (never commit; archive on the server)
+legacy/sia/app/uploads/
+legacy/sia/app/tempquotations/
+legacy/sia/app/tempcode/
+legacy/sia/app/invoices/
+legacy/sia/app/orderfiles/
+legacy/sia/app/log/
+legacy/sia/app/*.db
+legacy/sia/app/invoice*.pdf
+legacy/sia/sia_env/
+legacy/shop/store/
+legacy/shop/dist/
+*.pdf
+!docs/**/*.pdf
+
+# Secrets / tokens
+git.txt
+*.pem
+*.key
+**/secrets/
+
+# Old locations kept until the move is verified, and unrelated clutter in the project folder
+/SIA/
+/SHOP/
+/v2/
+/_old_root_npm/
+/LOCAL/
+/Spares/
+/Spares.zip
+/product photos/
+/slides/
+/sia_env/
+/fake_products.json
+/product.json
+/inventory.csv
+/*.logcat
+/debug paging 3.txt
+/barcode_string_generator.py
+/stationConfig.py
+/StockInventory.code-workspace
+docs/manual/diagrams/*.bkp

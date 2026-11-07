@@ -1,6 +1,6 @@
 # CIMH Stores v2
 
-Monorepo for the rebuilt CIMH stores platform. The design lives in `../docs/` (PRD, TRD, TAD, BSD,
+Monorepo for the rebuilt CIMH stores platform. The design lives in `docs/` (PRD, TRD, TAD, BSD,
 API contract, APD, Design Brief, Security, Migration, Infrastructure, Test Strategy, Implementation Plan).
 
 | Path | What |

@@ -1,4 +1,4 @@
-# Developer stack (INFRASTRUCTURE §4). Run from v2/:
+# Developer stack (INFRASTRUCTURE §4). Run from the repository root:
 #   docker compose -f deploy/compose.dev.yml up -d --build
 #   docker compose -f deploy/compose.dev.yml --profile kafka up -d   # add Kafka
 # Endpoints: hello http://localhost:18000/api/hello/v1/greeting, Prometheus http://localhost:19090,

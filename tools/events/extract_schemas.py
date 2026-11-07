@@ -1,6 +1,6 @@
 """Extract one JSON Schema per event type from docs/api/events.asyncapi.yaml into packages/event-schemas.
 
-    python tools/events/extract_schemas.py [--spec ../docs/api/events.asyncapi.yaml]
+    python tools/events/extract_schemas.py [--spec docs/api/events.asyncapi.yaml]
 
 Output: packages/event-schemas/schemas/<event.type>.v<version>.json (payload schema with all
 $refs inlined) + index.json mapping event type -> file. Producers/consumers validate payloads
@@ -19,7 +19,7 @@ from typing import Any
 import yaml
 
 V2 = Path(__file__).resolve().parents[2]
-DEFAULT_SPEC = V2.parent / "docs" / "api" / "events.asyncapi.yaml"
+DEFAULT_SPEC = V2 / "docs" / "api" / "events.asyncapi.yaml"
 OUT = V2 / "packages" / "event-schemas" / "schemas"
 
 

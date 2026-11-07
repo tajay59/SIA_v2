@@ -4,7 +4,7 @@
 # Synthetic data only: never load CIMH personal data here (Barbados DPA 2019).
 #
 # Edge: printit-nginx (ports 80/443, TLS) -> sia-gateway (alias on kong-net) -> services.
-# Install/update: deploy/staging-lite/deploy.sh (run from v2/ on a dev machine with ssh access).
+# Install/update: deploy/staging-lite/deploy.sh (run from the repository root on a dev machine with ssh access).
 name: sia-staging
 
 x-hardening: &hardening

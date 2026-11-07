@@ -1,6 +1,6 @@
 """Seed / refresh tests/authz/matrix.yaml from the OpenAPI specs (TEST_STRATEGY §5).
 
-    python tools/authz/build_matrix.py [--specs ../docs/api] [--out tests/authz/matrix.yaml]
+    python tools/authz/build_matrix.py [--specs docs/api] [--out tests/authz/matrix.yaml]
 
 Existing rows are kept as they are (they may have been reviewed by hand). New operations
 get roles inferred from the summary hint, e.g. "(staff, admin)"; anything that can't be
@@ -19,8 +19,8 @@ from typing import Any
 import yaml
 
 HERE = Path(__file__).resolve()
-V2 = HERE.parents[2]
-DEFAULT_SPECS = V2.parent / "docs" / "api"
+V2 = HERE.parents[2]  # repository root
+DEFAULT_SPECS = V2 / "docs" / "api"
 DEFAULT_OUT = V2 / "tests" / "authz" / "matrix.yaml"
 
 METHODS = ("get", "post", "put", "patch", "delete")

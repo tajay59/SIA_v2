@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-# Build context: the v2/ repository root (so packages/py-common is available).
+# Build context: the repository root (so packages/py-common is available).
 #   docker build -f services/hello-svc/Dockerfile -t hello-svc .
 
 FROM python:3.13-slim AS build
