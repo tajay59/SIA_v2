@@ -242,3 +242,19 @@ Links that need a login go through S-16 / A-21 with `returnTo`.
 | 1 | Saved or multiple carts? | **Resolved:** no. One cart per user. |
 | 2 | Per-staff assignment / "my work" on the dashboard? | **Resolved:** no. Requests have no assignee; the dashboard shows shared queues. |
 | 3 | Is the Pro Bono catalogue public? | **Resolved:** yes, visible to anyone (S-04 guard `public`). Requesting still needs an approved customer account. |
+
+## 9. Implementation status (2026-11-07)
+
+Code: `web/shop`, `web/sia` (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes), shared `packages/web-app` (session store, API errors and silent refresh, route guards, forms). Built and tested with Playwright (`tests/e2e-web`: J-01, J-08, J-11 and the §2 behaviours) on every PR; deployed to staging (store.hashiz.store, sia.hashiz.store).
+
+| Built | Notes |
+|---|---|
+| S-13 – S-19, S-20 | As specified. S-16 handles every account-state code of §2 |
+| S-01 | Text and "how requesting works" only: featured products and the Pro Bono teaser need the catalogue (P3); the hero image is still to come (Design Brief §7) |
+| S-10 | Empty state until order-svc (P5) |
+| A-21, A-16, A-17, A-18, A-20 | As specified; A-16 suggests an organisation from the email domain, then the organisation text, and can create one in the dialog |
+| A-01 | Identity counters only (pending approvals, unverified sign-ups) until order/inventory exist |
+| **New:** `/mfa-setup` (SIA) | An admin without MFA lands here after login and can't use anything else (TR-AUTH-9). After confirming, the admin logs in again, because the old token predates MFA |
+| **New:** `/staff-only` (SIA) | The "This app is for CIMH staff" screen of §2 |
+
+Behaviour notes: the start-up session probe never shows "session ended" to an anonymous visitor (only a failed refresh during use does). Dev servers use ports 15173 (SHOP) and 15174 (SIA).

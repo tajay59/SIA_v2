@@ -51,3 +51,14 @@ export function formatDateTime(iso: string): string {
   const p = parts(DATETIME_FMT, new Date(iso))
   return `${p.day} ${p.month} ${p.year}, ${p.hour}:${p.minute}`
 }
+
+/** "just now", "12 min", "5 h", "3 days" since `iso` (waiting times in queues). */
+export function formatAge(iso: string, now: number = Date.now()): string {
+  const ms = now - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 60_000) return 'just now'
+  const min = Math.floor(ms / 60_000)
+  if (min < 60) return `${min} min`
+  const h = Math.floor(min / 60)
+  if (h < 48) return `${h} h`
+  return `${Math.floor(h / 24)} days`
+}

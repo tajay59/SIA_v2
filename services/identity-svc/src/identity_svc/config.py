@@ -55,7 +55,7 @@ class Settings:
     @classmethod
     def from_env(cls) -> Settings:
         env = os.environ.get
-        return cls(
+        settings = cls(
             issuer=env("JWT_ISSUER", cls.issuer),
             audience=env("JWT_AUDIENCE", cls.audience),
             cookie_secure=env("COOKIE_SECURE", "true").lower() != "false",
@@ -70,3 +70,14 @@ class Settings:
             redis_url=_read_secret("REDIS_URL"),
             db_name=env("MONGO_DB", cls.db_name),
         )
+        settings.require_keys(allow_ephemeral=env("ALLOW_EPHEMERAL_KEYS", "false").lower() == "true")
+        return settings
+
+    def require_keys(self, *, allow_ephemeral: bool) -> None:
+        """Without a configured JWT key and data key, every worker process would invent its own: tokens
+        signed by one worker fail on another, and codes sealed by one can't be opened by another. Only a
+        single-worker dev process may run with throw-away keys (ALLOW_EPHEMERAL_KEYS=true)."""
+        missing = [n for n, v in (("JWT_PRIVATE_KEY", self.private_key_pem), ("DATA_KEY", self.data_key_b64)) if not v]
+        if missing and not allow_ephemeral:
+            names = ", ".join(missing)
+            raise RuntimeError(f"{names} not configured (set *_FILE); refusing to start with per-process keys")

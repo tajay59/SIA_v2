@@ -55,3 +55,6 @@ export const ordersClient = (origin?: string) => make<OrdersPaths>(BASE.orders, 
 export const documentsClient = (origin?: string) => make<DocumentsPaths>(BASE.documents, origin)
 
 export type { CatalogPaths, DocumentsPaths, IdentityPaths, InventoryPaths, OrdersPaths }
+
+export type { components as IdentityComponents } from './generated/identity'
+export type { components as CommonCatalogComponents } from './generated/catalog'

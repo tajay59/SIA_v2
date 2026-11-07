@@ -1,0 +1,79 @@
+/* Typography and layout helpers from DESIGN_BRIEF §4–5 (Vuetify supplies components; these are the gaps). */
+:root {
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-12: 48px;
+}
+
+html,
+body {
+  font-family: 'Inter Variable', Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+}
+
+.v-application {
+  font-family: inherit;
+}
+
+.t-display { font-size: 36px; line-height: 44px; font-weight: 600; letter-spacing: -0.5px; margin: 0; }
+.t-h1 { font-size: 28px; line-height: 36px; font-weight: 600; letter-spacing: -0.3px; margin: 0; }
+.t-h2 { font-size: 22px; line-height: 30px; font-weight: 600; letter-spacing: -0.2px; margin: 0; }
+.t-h3 { font-size: 18px; line-height: 26px; font-weight: 600; margin: 0; }
+.t-body { font-size: 14px; line-height: 22px; }
+.t-body-lg { font-size: 16px; line-height: 24px; }
+.t-label { font-size: 13px; line-height: 18px; font-weight: 500; letter-spacing: 0.1px; }
+.t-caption { font-size: 12px; line-height: 16px; letter-spacing: 0.1px; }
+.t-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; line-height: 20px; }
+.tnum { font-variant-numeric: tabular-nums; }
+.muted { color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); }
+.prose { max-width: 72ch; }
+
+.stack { display: flex; flex-direction: column; gap: var(--sp-4); }
+.stack-sm { display: flex; flex-direction: column; gap: var(--sp-2); }
+.row { display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap; }
+.row-end { display: flex; gap: var(--sp-3); justify-content: flex-end; flex-wrap: wrap; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-4); }
+.spacer { flex: 1 1 auto; }
+
+.page { padding: var(--sp-6) var(--sp-4); }
+.page-header { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-6); }
+
+:focus-visible {
+  outline: 2px solid #0084c8;
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* Links follow the theme (browser defaults are unreadable in dark mode). */
+a {
+  color: rgb(var(--v-theme-primary));
+  text-underline-offset: 2px;
+}
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Text fields show focus with their own outline; don't add the global ring on top. */
+.v-field input:focus-visible,
+.v-field textarea:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 599.98px) {
+  .hide-xs {
+    display: none !important;
+  }
+}
