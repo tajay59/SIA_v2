@@ -1,0 +1,13 @@
+# Dev: alerts go to Mailpit (http://localhost:18025). Production uses alertmanager.yml with the CIMH mail server.
+route:
+  receiver: ops-email
+  group_by: [alertname, service]
+  group_wait: 10s
+  repeat_interval: 4h
+receivers:
+  - name: ops-email
+    email_configs:
+      - to: ops@example.test
+        from: alerts@example.test
+        smarthost: mailpit:1025
+        require_tls: false

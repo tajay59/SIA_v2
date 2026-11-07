@@ -1,0 +1,26 @@
+# Staging on sia-host (project sia-staging), started on demand. Same images as production, pinned by digest.
+# Deployed only by deploy/scripts/deploy.sh from the self-hosted runner. Infra services (Mongo RS, Kafka,
+# Redis, nginx, monitoring) are added during provisioning (INFRASTRUCTURE §10 steps 1–9).
+name: sia-staging
+
+x-service: &service
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  user: "10001"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: { driver: local }
+  networks: [app, data]
+
+services:
+  hello-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/cimh}/hello-svc@${HELLO_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/staging.env]
+    mem_limit: 128m
+    cpus: 0.25
+
+networks:
+  app: { external: true, name: sia-staging-app }
+  data: { external: true, name: sia-staging-data }

@@ -1,0 +1,28 @@
+# Production on sia-host (project sia-prod). See INFRASTRUCTURE §4.1 for the full service table;
+# real services are added here phase by phase. Images are always pinned by digest and cosign-verified
+# by deploy.sh before `docker compose up`.
+name: sia-prod
+
+x-service: &service
+  restart: unless-stopped
+  read_only: true
+  tmpfs: [/tmp]
+  user: "10001"
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  logging: { driver: local }
+  networks: [app, data]
+
+services:
+  hello-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/cimh}/hello-svc@${HELLO_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/prod.env]
+    mem_limit: 128m
+    cpus: 0.25
+    deploy:
+      replicas: 1
+
+networks:
+  app: { external: true, name: sia-prod-app }
+  data: { external: true, name: sia-prod-data }

@@ -1,0 +1,24 @@
+[project]
+name = "cimh-common"
+version = "0.1.0"
+description = "Shared code for CIMH Stores v2 services: auth, authz, errors, outbox, consumers, logging, metrics, health."
+requires-python = ">=3.13"
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.9",
+  "pyjwt[crypto]>=2.9",
+  "redis>=5.2",
+  "pymongo>=4.10",
+  "aiokafka>=0.12",
+  "prometheus-client>=0.21",
+]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cimh_common = ["py.typed"]

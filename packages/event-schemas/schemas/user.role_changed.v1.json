@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "user.role_changed",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "allOf": [
+            {
+              "type": "object",
+              "required": [
+                "userId",
+                "email",
+                "firstname",
+                "lastname",
+                "role",
+                "status"
+              ],
+              "properties": {
+                "userId": {
+                  "type": "string"
+                },
+                "email": {
+                  "type": "string"
+                },
+                "firstname": {
+                  "type": "string"
+                },
+                "lastname": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string",
+                  "enum": [
+                    "user",
+                    "staff",
+                    "admin"
+                  ]
+                },
+                "status": {
+                  "type": "string"
+                },
+                "isCimh": {
+                  "type": "boolean"
+                },
+                "organisationId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            },
+            {
+              "type": "object",
+              "required": [
+                "previousRole"
+              ],
+              "properties": {
+                "previousRole": {
+                  "type": "string"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

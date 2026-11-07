@@ -1,0 +1,7 @@
+{
+  "name": "@cimh/event-schemas",
+  "version": "0.1.0",
+  "private": true,
+  "description": "JSON Schema per Kafka event type, extracted from docs/api/events.asyncapi.yaml by tools/events/extract_schemas.py. Do not edit by hand.",
+  "files": ["schemas"]
+}

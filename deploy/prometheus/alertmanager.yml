@@ -1,0 +1,19 @@
+# Production/staging. SMTP password comes from a Docker secret file (never in git).
+route:
+  receiver: ops-email
+  group_by: [alertname, service]
+  group_wait: 30s
+  repeat_interval: 4h
+  routes:
+    - matchers: [severity="critical"]
+      receiver: ops-email
+      repeat_interval: 1h
+receivers:
+  - name: ops-email
+    email_configs:
+      - to: ${ALERT_EMAIL_TO}          # filled by deploy/scripts/render-config.sh
+        from: sia-alerts@cimh.edu.bb
+        smarthost: ${SMTP_HOST}:587
+        auth_username: ${SMTP_USER}
+        auth_password_file: /run/secrets/smtp_password
+        require_tls: true

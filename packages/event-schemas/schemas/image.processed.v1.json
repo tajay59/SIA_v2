@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "image.processed",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": [
+            "productId",
+            "ok"
+          ],
+          "properties": {
+            "productId": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "fileId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "w": {
+              "type": "integer"
+            },
+            "h": {
+              "type": "integer"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "audit.recorded",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": [
+            "action",
+            "entity",
+            "actor"
+          ],
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "entity": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                }
+              }
+            },
+            "actor": {
+              "type": "object",
+              "required": [
+                "id",
+                "role"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                }
+              }
+            },
+            "from": {},
+            "to": {},
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "ip": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,47 @@
+# Workspace-wide Python tooling config. Each package/service has its own pyproject for dependencies.
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = [".venv", "node_modules"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF", "SIM", "PT"]
+ignore = ["S101"]  # assert is fine in tests
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cimh_common", "hello_svc"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S105", "S106", "S311"]
+"tools/**" = ["S603", "S607"]
+
+[tool.mypy]
+strict = true
+python_version = "3.13"
+packages = ["cimh_common", "hello_svc"]
+mypy_path = ["packages/py-common/src", "services/hello-svc/src"]
+
+[[tool.mypy.overrides]]
+module = ["aiokafka.*", "fakeredis.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+addopts = "-q --import-mode=importlib -m 'not integration'"
+markers = [
+  "integration: needs Docker (testcontainers); run with -m integration",
+  "req(id): requirement covered (RTM)",
+]
+testpaths = ["packages/py-common/tests", "services", "tools/tests"]
+
+[tool.coverage.run]
+source = ["cimh_common", "hello_svc"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true

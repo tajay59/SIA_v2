@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "order.quoted",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "customer",
+            "quoteVersion",
+            "expiresAt",
+            "currency"
+          ],
+          "properties": {
+            "orderId": {
+              "type": "string"
+            },
+            "customer": {
+              "type": "string"
+            },
+            "quoteVersion": {
+              "type": "integer"
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "currency": {
+              "type": "string",
+              "enum": [
+                "BBD",
+                "USD"
+              ]
+            },
+            "cimhLineIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Lines offered from CIMH stock (document-svc renders the CIMH quote PDF)"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

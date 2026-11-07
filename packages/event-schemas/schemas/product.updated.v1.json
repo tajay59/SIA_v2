@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "product.updated",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": [
+            "productId",
+            "name",
+            "type",
+            "sellable",
+            "probono",
+            "active",
+            "threshold"
+          ],
+          "properties": {
+            "productId": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string",
+              "enum": [
+                "MET",
+                "RAD",
+                "EQUIP",
+                "SUPP",
+                "MISC",
+                "PRO"
+              ]
+            },
+            "sellable": {
+              "type": "boolean"
+            },
+            "probono": {
+              "type": "boolean"
+            },
+            "probonoMaxPerRequest": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "active": {
+              "type": "boolean"
+            },
+            "threshold": {
+              "type": "integer"
+            },
+            "changed": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Changed field names (updated only)"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# Paid request status flow: TAD §7.2 (source of truth). Generated tests check every legal
+# transition succeeds and every other (from, to) pair returns 409 ORDER_ILLEGAL_TRANSITION.
+entity: request
+type: PAID
+initial: SUBMITTED
+terminal: [DELIVERED, CANCELLED]
+illegal_code: ORDER_ILLEGAL_TRANSITION
+transitions:
+  - { from: SUBMITTED, to: QUOTING, action: start-quoting, actor: staff }
+  - { from: SUBMITTED, to: CANCELLED, action: cancel, actor: requester|staff|admin }
+  - { from: QUOTING, to: QUOTED, action: send-quote, actor: staff }
+  - { from: QUOTING, to: CANCELLED, action: cancel, actor: requester|staff|admin }
+  - { from: QUOTED, to: QUOTED, action: send-quote, actor: staff, note: quote revised }
+  - { from: QUOTED, to: AWAITING_AGREEMENT, action: agreement, actor: requester|admin }
+  - { from: QUOTED, to: DECLINED, action: decline, actor: requester|admin }
+  - { from: QUOTED, to: CANCELLED, action: expire, actor: system, note: 30 days }
+  - { from: AWAITING_AGREEMENT, to: QUOTED, action: change-choices, actor: requester|admin }
+  - { from: AWAITING_AGREEMENT, to: ACCEPTED, action: accept, actor: requester|admin }
+  - { from: AWAITING_AGREEMENT, to: CANCELLED, action: cancel, actor: requester|staff|admin }
+  - { from: ACCEPTED, to: AWAITING_AGREEMENT, action: reject-agreement, actor: staff }
+  - { from: ACCEPTED, to: PURCHASING, action: purchase, actor: staff, guard: agreementVerified }
+  - { from: ACCEPTED, to: CANCELLED, action: cancel, actor: staff|admin }
+  - { from: DECLINED, to: CANCELLED, action: close, actor: system }
+  - { from: PURCHASING, to: SHIPPED, action: ship, actor: staff, guard: tracking unless HAND }
+  - { from: SHIPPED, to: DELIVERED, action: deliver, actor: staff }

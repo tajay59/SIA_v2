@@ -1,0 +1,14 @@
+# Pro Bono request status flow: TAD §7.2. No quote.
+entity: request
+type: PROBONO
+initial: SUBMITTED
+terminal: [DELIVERED, REJECTED, CANCELLED]
+illegal_code: ORDER_ILLEGAL_TRANSITION
+transitions:
+  - { from: SUBMITTED, to: APPROVED, action: approve, actor: staff, note: reserves stock }
+  - { from: SUBMITTED, to: REJECTED, action: reject, actor: staff }
+  - { from: SUBMITTED, to: CANCELLED, action: cancel, actor: requester|staff|admin }
+  - { from: APPROVED, to: PICKING, action: start-picking, actor: staff }
+  - { from: APPROVED, to: CANCELLED, action: cancel, actor: staff|admin, note: releases stock }
+  - { from: PICKING, to: SHIPPED, action: ship, actor: staff }
+  - { from: SHIPPED, to: DELIVERED, action: deliver, actor: staff }

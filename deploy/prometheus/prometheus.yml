@@ -1,0 +1,28 @@
+# Production/staging scrape config (INFRASTRUCTURE §8). Targets resolve on the Docker `data`/`app` networks.
+# Exporters (node, mongodb, kafka, redis, nginx, clamav textfile) are added in P1 provisioning steps 4–9.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels: { site: cimh, env: ${ENV} }
+
+rule_files: [/etc/prometheus/rules/*.yml]
+
+alerting:
+  alertmanagers:
+    - static_configs: [{ targets: ["alertmanager:9093"] }]
+
+scrape_configs:
+  - job_name: services
+    dns_sd_configs:
+      - names: [hello-svc, identity-svc, catalog-svc, inventory-svc, order-svc, document-svc, notification-svc]
+        type: A
+        port: 8000
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100", "sia-pi-a:9100", "sia-pi-b:9100"]
+  - job_name: mongodb
+    static_configs: [{ targets: ["mongodb-exporter:9216"] }]
+  - job_name: kafka
+    static_configs: [{ targets: ["kafka-exporter:9308"] }]
+  - job_name: redis
+    static_configs: [{ targets: ["redis-exporter:9121"] }]

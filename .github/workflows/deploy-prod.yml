@@ -1,0 +1,21 @@
+# Production deploy: manual trigger of an image digest that already passed staging.
+# The `production` environment requires approval (set in GitHub: Settings -> Environments).
+name: deploy-prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      service: { description: "Service name", required: true, default: hello-svc }
+      digest: { description: "Image digest (sha256:…) that passed staging", required: true }
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, sia-host]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with: { sparse-checkout: deploy }
+      - run: deploy/scripts/deploy.sh prod "${{ inputs.service }}" "${{ inputs.digest }}"
