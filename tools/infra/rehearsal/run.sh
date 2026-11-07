@@ -32,8 +32,10 @@ mongo_root() { $C exec -T mongo1 mongosh --quiet --tls --tlsCAFile /run/secrets/
   -u root -p "$(cat "$SEC/mongo_root")" --authenticationDatabase admin "$@"; }
 
 start() { # services...: start and wait; on failure show why (CI has no other view)
-  if ! $C up -d --quiet-pull --wait --wait-timeout 180 "$@" >/dev/null 2>&1; then
-    bad "start $*"; docker compose version; $C ps -a; $C logs --tail 40 "$@"; exit 1
+  local out
+  if ! out=$($C up -d --quiet-pull --wait --wait-timeout 180 "$@" 2>&1); then
+    bad "start $*"; echo "$out" | tail -15; docker version --format 'engine {{.Server.Version}}'
+    $C ps -a; $C logs --tail 40 "$@"; exit 1
   fi
 }
 
