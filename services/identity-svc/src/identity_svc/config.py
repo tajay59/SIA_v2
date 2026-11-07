@@ -79,4 +79,5 @@ class Settings:
         single-worker dev process may run with throw-away keys (ALLOW_EPHEMERAL_KEYS=true)."""
         missing = [n for n, v in (("JWT_PRIVATE_KEY", self.private_key_pem), ("DATA_KEY", self.data_key_b64)) if not v]
         if missing and not allow_ephemeral:
-            raise RuntimeError(f"{', '.join(missing)} not configured (set *_FILE); refusing to start with per-process keys")
+            names = ", ".join(missing)
+            raise RuntimeError(f"{names} not configured (set *_FILE); refusing to start with per-process keys")

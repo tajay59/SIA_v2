@@ -162,6 +162,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: shellcheck
         run: shellcheck -S warning deploy/*/*.sh deploy/scripts/*.sh tools/infra/rehearsal/run.sh
+      - name: actionlint (workflow files)
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
       - name: compose files render
         env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
         run: |
@@ -184,12 +186,15 @@ jobs:
     # environment, which only protected branches (main) can use; PR runs never see it.
     name: deploy staging (sia.hashiz.store)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    needs: [images]
+    needs: [images, e2e]
     runs-on: ubuntu-latest
     environment: { name: staging, url: "https://sia.hashiz.store" }
     concurrency: { group: deploy-staging, cancel-in-progress: false }
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
+      - run: npm ci --no-audit --no-fund
       - name: SSH access
         env:
           KEY: ${{ secrets.STAGING_SSH_KEY }}
@@ -207,11 +212,11 @@ jobs:
             echo "  IdentitiesOnly yes"
             echo "  StrictHostKeyChecking yes"
           } > ~/.ssh/config
-      - name: Deploy (build, ship, restart; edge/cert step stays manual)
+      - name: Deploy (identity image + SHOP/SIA builds; edge/cert step stays manual)
         run: bash deploy/staging-lite/deploy.sh
       - name: Smoke
         run: |
-          for i in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             curl -fsS https://sia.hashiz.store/api/identity/v1/.well-known/jwks.json >/dev/null && exit 0; sleep 6
           done
           echo "staging did not come up" >&2; exit 1

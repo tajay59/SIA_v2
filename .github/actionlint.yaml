@@ -1,0 +1,3 @@
+# actionlint: labels of the future self-hosted runner on the CIMH host (deploy-prod.yml).
+self-hosted-runner:
+  labels: [sia-host]
