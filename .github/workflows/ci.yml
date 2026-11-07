@@ -46,9 +46,11 @@ jobs:
 
   integration:
     name: integration (testcontainers)
-    runs-on: ubuntu-latest
+    # MongoDB 8.0 won't start on kernel 6.19-7.0.13 (SERVER-125742); ubuntu-latest is in that range.
+    runs-on: ubuntu-22.04
     needs: python
     steps:
+      - run: uname -r
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}", cache: pip }
@@ -142,9 +144,10 @@ jobs:
     name: platform rehearsal (replica set, Kafka TLS/ACL, Redis ACL, backup/restore)
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     needs: [infra]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04   # kernel: see the integration job
     timeout-minutes: 30
     steps:
+      - run: uname -r
       - uses: actions/checkout@v4
       - run: bash tools/infra/rehearsal/run.sh
 
