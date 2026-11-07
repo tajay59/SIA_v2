@@ -155,13 +155,13 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 ### catalog-svc: `/api/catalog/v1`
 | Method | Path | Role | Purpose |
 |---|---|---|---|
-| GET | `/products` | public | Browse (filters: type, department, project, `probono`, inStock) |
+| GET | `/products` | public | Browse (filters: type, department, project, `probono`, inStock; staff also `sellable`, `includeInactive`) |
 | GET | `/products/search?q=` | public | Full-text search |
 | GET | `/products/{id}` | public | Detail (staff view adds cost, serials, stockCount) |
 | POST / PATCH / DELETE | `/products` · `/products/{id}` | staff | Create (`probono` required), edit, deactivate |
 | POST | `/products/{id}/images` | staff | Upload (async processing; background removal optional) |
 | PATCH / DELETE | `/products/{id}/images/{fileId}` | staff | Make primary, remove |
-| GET | `/reference` | public | Departments, types, projects |
+| GET | `/reference` | public | Departments, types, active projects (staff: `includeInactive=true` lists all) |
 | PUT | `/reference/departments` · POST `/reference/projects` · PATCH `/reference/projects/{code}` | admin | Reference data |
 | GET / PUT | `/settings/fees` · `/settings/email-lists` · `/settings/general` | staff read / admin write | Admin fee, notification lists, workflow settings |
 | POST | `/internal/products/summaries` · GET/PUT `/internal/places` | service | Internal |

@@ -57,6 +57,10 @@ def test_projects(ctx: Ctx) -> None:
     )
     ctx.client.post(ctx.url("/reference/projects"), headers=ADMIN, json={"code": "old", "name": "Old", "active": False})
     assert [p["code"] for p in ctx.client.get(ctx.url("/reference")).json()["projects"]] == ["crews"]
+    every = ctx.client.get(ctx.url("/reference"), headers=STAFF, params={"includeInactive": True}).json()["projects"]
+    assert [(p["code"], p["active"]) for p in every] == [("crews", True), ("old", False)]
+    hidden = ctx.client.get(ctx.url("/reference"), headers=USER, params={"includeInactive": True}).json()["projects"]
+    assert [p["code"] for p in hidden] == ["crews"]
     r = ctx.client.patch(ctx.url("/reference/projects/CREWS"), headers=ADMIN, json={"active": False})
     assert r.json()["active"] is False
     assert ctx.client.patch(ctx.url("/reference/projects/nope"), headers=ADMIN, json={"name": "x"}).status_code == 404

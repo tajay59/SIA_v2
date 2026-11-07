@@ -58,11 +58,12 @@ body {
 }
 
 /* Links follow the theme (browser defaults are unreadable in dark mode). */
-a {
+/* Text links only: Vuetify buttons, chips and list items rendered as <a> keep their own colours. */
+a:where(:not(.v-btn, .v-chip, .v-list-item, .v-tab)) {
   color: rgb(var(--v-theme-primary));
   text-underline-offset: 2px;
 }
-a:hover {
+a:where(:not(.v-btn, .v-chip, .v-list-item, .v-tab)):hover {
   text-decoration-thickness: 2px;
 }
 
@@ -74,6 +75,11 @@ a:hover {
 
 @media (max-width: 599.98px) {
   .hide-xs {
+    display: none !important;
+  }
+}
+@media (min-width: 600px) {
+  .show-xs {
     display: none !important;
   }
 }

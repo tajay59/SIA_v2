@@ -81,8 +81,10 @@ export async function activeCimhAccount(prefix: string): Promise<string> {
 }
 
 /** First admins come from migration (CLAUDE.md); in dev the role is set directly. */
+let adminSeq = 0
 export async function adminAccount(): Promise<string> {
-  const email = await activeCimhAccount('admin')
+  // A new address per call: several specs in one run each need their own admin.
+  const email = await activeCimhAccount(`admin${++adminSeq}`)
   mongo(`db.accounts.updateOne({ email: ${JSON.stringify(email)} }, { $set: { role: 'admin' }, $inc: { version: 1 } }); return true`)
   return email
 }
@@ -119,4 +121,12 @@ export async function adminWithMfa(): Promise<{ email: string; key: string }> {
   const confirm = await req(`${API}/auth/mfa/confirm`, { method: 'POST', headers: auth, body: JSON.stringify({ totp: totp(key) }) })
   if (confirm.status !== 204) throw new Error(`mfa confirm: ${confirm.status} ${await confirm.text()}`)
   return { email, key }
+}
+
+/** An ACTIVE staff account (dev: the role is set directly, as for the first admin). */
+let staffSeq = 0
+export async function staffAccount(prefix = 'staff'): Promise<string> {
+  const email = await activeCimhAccount(`${prefix}${++staffSeq}`)
+  mongo(`db.accounts.updateOne({ email: ${JSON.stringify(email)} }, { $set: { role: 'staff' }, $inc: { version: 1 } }); return true`)
+  return email
 }

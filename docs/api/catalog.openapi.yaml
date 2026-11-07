@@ -36,6 +36,7 @@ paths:
         - { name: project, in: query, schema: { type: string } }
         - { name: probono, in: query, description: Filter to Pro Bono items, schema: { type: boolean } }
         - { name: inStock, in: query, schema: { type: boolean } }
+        - { name: sellable, in: query, description: staff/admin only (customers only ever see sellable items), schema: { type: boolean } }
         - { name: includeInactive, in: query, description: staff/admin only, schema: { type: boolean, default: false } }
         - { $ref: './common.yaml#/components/parameters/Cursor' }
         - { $ref: './common.yaml#/components/parameters/Limit' }
@@ -190,6 +191,8 @@ paths:
       tags: [reference]
       summary: Departments, product types and active projects (public)
       security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: includeInactive, in: query, description: 'staff/admin only: also list inactive projects', schema: { type: boolean, default: false } }
       responses:
         '200':
           description: Reference data

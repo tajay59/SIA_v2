@@ -106,6 +106,10 @@ def test_staff_see_everything_including_inactive_on_request(ctx: Ctx) -> None:
     assert names == ["Hidden", "Rain gauge"]
     r = ctx.client.get(ctx.url("/products"), headers=STAFF, params={"includeInactive": True})
     assert [i["name"] for i in r.json()["items"]] == ["Gone", "Hidden", "Rain gauge"]
+    r = ctx.client.get(ctx.url("/products"), headers=STAFF, params={"sellable": False})
+    assert [i["name"] for i in r.json()["items"]] == ["Hidden"]
+    r = ctx.client.get(ctx.url("/products"), params={"sellable": False})
+    assert [i["name"] for i in r.json()["items"]] == ["Rain gauge"]  # ignored for customers
     detail = ctx.client.get(ctx.url(f"/products/{gone['id']}"), headers=STAFF)
     assert detail.json()["active"] is False
     assert detail.headers["ETag"] == '"2"'

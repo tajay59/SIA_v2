@@ -25,6 +25,8 @@ export interface paths {
                     /** @description Filter to Pro Bono items */
                     probono?: boolean;
                     inStock?: boolean;
+                    /** @description staff/admin only (customers only ever see sellable items) */
+                    sellable?: boolean;
                     /** @description staff/admin only */
                     includeInactive?: boolean;
                     /** @description Opaque cursor from a previous page's `nextCursor`. */
@@ -198,6 +200,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -233,6 +236,7 @@ export interface paths {
                         "application/json": components["schemas"]["ProductStaff"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
             };
@@ -283,16 +287,20 @@ export interface paths {
                     };
                     content: {
                         "application/json": {
+                            /** @description One per file; echoed as jobId in image.process / image.processed */
                             jobIds: string[];
                         };
                     };
                 };
-                /** @description File too large */
+                404: components["responses"]["NotFound"];
+                /** @description File too large (code FILE_TOO_LARGE) */
                 413: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
                 };
                 422: components["responses"]["Unprocessable"];
             };
@@ -339,6 +347,8 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         options?: never;
@@ -375,6 +385,8 @@ export interface paths {
                         "application/json": components["schemas"]["ProductStaff"];
                     };
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         trace?: never;
@@ -389,7 +401,10 @@ export interface paths {
         /** Departments, product types and active projects (public) */
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    /** @description staff/admin only: also list inactive projects */
+                    includeInactive?: boolean;
+                };
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -501,6 +516,7 @@ export interface paths {
                     };
                 };
                 409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
             };
         };
         delete?: never;
@@ -555,6 +571,7 @@ export interface paths {
                         "application/json": components["schemas"]["Project"];
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         trace?: never;
@@ -880,7 +897,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -913,14 +932,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
                 /** @description Not ready */
                 503: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -1120,6 +1143,13 @@ export interface components {
                 field: string;
                 message: string;
             }[];
+        };
+        Health: {
+            /** @enum {string} */
+            status: "ok" | "degraded";
+            checks?: {
+                [key: string]: "ok" | "fail";
+            };
         };
     };
     responses: {

@@ -7,9 +7,14 @@ import VueRouter from 'vue-router/vite'
 // tests catch violations before deployment.
 const csp =
   "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-const proxy = { '/api/identity': { target: process.env.IDENTITY_URL ?? 'http://localhost:18001', changeOrigin: false } }
+const proxy = {
+  '/api/identity': { target: process.env.IDENTITY_URL ?? 'http://localhost:18001', changeOrigin: false },
+  '/api/catalog': { target: process.env.CATALOG_URL ?? 'http://localhost:18002', changeOrigin: false },
+  '/media': { target: process.env.MEDIA_URL ?? 'http://localhost:18003', changeOrigin: false },
+}
 
-// File-based routing (APD §1): src/pages/<route>.vue. Dev: /api goes to the dev stack (identity on 18001).
+// File-based routing (APD §1): src/pages/<route>.vue. Dev: /api and /media go to the dev stack
+// (identity 18001, catalog 18002, processed images 18003).
 export default defineConfig({
   plugins: [
     VueRouter({ routesFolder: 'src/pages', dts: 'src/typed-router.d.ts' }),

@@ -10,10 +10,12 @@ import {
   mdiAccountCheckOutline,
   mdiAccountCircleOutline,
   mdiAccountGroupOutline,
+  mdiCogOutline,
   mdiDomain,
   mdiHistory,
   mdiLogout,
   mdiMenu,
+  mdiPackageVariantClosed,
   mdiViewDashboardOutline,
   mdiWeatherNight,
   mdiWhiteBalanceSunny,
@@ -34,6 +36,9 @@ const bare = computed(() => route.meta.layout === 'bare' || !session.isStaff || 
 
 const nav = computed(() => [
   { title: 'Dashboard', to: '/', icon: mdiViewDashboardOutline, show: true },
+  { header: 'Catalogue', show: true },
+  { title: 'Products', to: '/products', icon: mdiPackageVariantClosed, show: true },
+  { title: 'Settings', to: '/admin/settings', icon: mdiCogOutline, show: session.isAdmin },
   { header: 'Accounts', show: true },
   { title: 'Pending accounts', to: '/admin/approvals', icon: mdiAccountCheckOutline, show: session.isAdmin },
   { title: 'Accounts', to: '/admin/accounts', icon: mdiAccountGroupOutline, show: true },

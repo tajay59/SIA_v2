@@ -183,6 +183,7 @@ async def list_products(
     project: str | None = None,
     probono: bool | None = None,
     inStock: bool | None = None,
+    sellable: bool | None = None,
     includeInactive: bool = False,
     cursor: str | None = None,
     limit: Limit = None,
@@ -194,6 +195,7 @@ async def list_products(
         "project": project,
         "probono": probono,
         "inStock": inStock,
+        "sellable": sellable,
         "includeInactive": includeInactive,
     }
     items, nxt = await svc(request).list_products(me, filters, cursor, limit)
@@ -321,8 +323,10 @@ async def delete_image(
 
 
 @router.get("/reference", tags=["reference"])
-async def reference(request: Request) -> dict[str, Any]:
-    return await svc(request).reference()
+async def reference(
+    request: Request, includeInactive: bool = False, me: Principal | None = Depends(optional_principal)
+) -> dict[str, Any]:
+    return await svc(request).reference(include_inactive=bool(includeInactive and me and me.is_staff))
 
 
 @router.put("/reference/departments", status_code=204, tags=["reference"])
