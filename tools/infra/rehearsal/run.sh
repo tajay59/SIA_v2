@@ -31,6 +31,12 @@ check() { local name=$1; shift; if "$@" >/dev/null 2>&1; then ok "$name"; else b
 mongo_root() { $C exec -T mongo1 mongosh --quiet --tls --tlsCAFile /run/secrets/ca.pem --host sia-host.cimh.local \
   -u root -p "$(cat "$SEC/mongo_root")" --authenticationDatabase admin "$@"; }
 
+start() { # services...: start and wait; on failure show why (CI has no other view)
+  if ! $C up -d --quiet-pull --wait --wait-timeout 180 "$@" >/dev/null 2>&1; then
+    bad "start $*"; docker compose version; $C ps -a; $C logs --tail 40 "$@"; exit 1
+  fi
+}
+
 cleanup() {
   if [[ "${KEEP:-}" != 1 ]]; then
     $C --profile tools down -v --remove-orphans >/dev/null 2>&1 || true
@@ -79,7 +85,7 @@ $C --profile tools build -q backup >/dev/null
 ok "identity-svc and backup images built"
 
 echo "== 4. MongoDB replica set (deploy/mongo/init-replset.js, roles.js)"
-$C up -d --quiet-pull --wait mongo1 mongo2 mongo3 >/dev/null 2>&1
+start mongo1 mongo2 mongo3
 $C exec -T -e MONGO_MEMBERS=sia-host.cimh.local:27017,sia-pi-a.cimh.local:27017,sia-pi-b.cimh.local:27017 mongo1 \
   mongosh --quiet --tls --tlsCAFile /run/secrets/ca.pem --host localhost --file /dev/stdin < "$ROOT/deploy/mongo/init-replset.js"
 $C exec -T -e SECRETS_DIR=/run/secrets mongo1 \
@@ -100,7 +106,7 @@ check "svc_catalog may NOT write accounts" svc_denied catalog accounts
 check "svc_order may NOT write product" svc_denied order product
 
 echo "== 5. Redis (deploy/redis) and Kafka (deploy/kafka/setup.sh)"
-$C up -d --quiet-pull --wait redis >/dev/null 2>&1
+start redis
 rcli() { $C exec -T redis redis-cli --no-auth-warning --user "$1" --pass "$(cat "$SEC/redis_$1")" "${@:2}" | tr -d '\r'; }
 r_ok() { [[ $(rcli identity SET sess:rehearsal 1) == OK ]]; }
 r_denied() { rcli catalog GET sess:rehearsal | grep -q NOPERM; }
@@ -158,7 +164,7 @@ mongo_root --eval '
   d.product.insertMany(Array.from({length: 500}, (_, i) => ({ code: "REH" + i, type: "MET", rehearsal: true })));
   d.storage.insertMany(Array.from({length: 300}, (_, i) => ({ barcode: "B" + i, rehearsal: true })));' >/dev/null
 if $C --profile tools run --rm -T backup backup.sh; then ok "backup.sh (mongodump --oplog from a secondary -> restic)"; else bad "backup.sh"; fi
-$C up -d --quiet-pull --wait mongo-restore >/dev/null 2>&1
+start mongo-restore
 if $C --profile tools run --rm -T backup restore.sh latest; then ok "restore.sh: every collection count matches the manifest"; else bad "restore.sh"; fi
 
 echo
