@@ -7262,7 +7262,7 @@ rs.initiate({
 <td><code>deploy/scripts/provision.sh</code></td>
 </tr>
 <tr>
-<td>catalog-svc, its relay and consumer; per-service <code>service_secret_&lt;name&gt;</code> files (each caller reads only its own); <code>/srv/sia-data/{incoming,products}</code> owned by 10001</td>
+<td>catalog-svc, its relay and consumer; per-service <code>service_secret_&lt;name&gt;</code> files (each caller reads only its own); <code>/srv/sia-data/{incoming,public/products,protected}</code> owned by 10001; media-worker (CPU image; GPU/rembg variant built on sia-host)</td>
 <td><code>compose.prod.yml</code>, <code>make-secrets.sh</code>, <code>provision.sh</code></td>
 </tr>
 </tbody>

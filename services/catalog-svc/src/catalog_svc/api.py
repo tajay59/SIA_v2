@@ -307,9 +307,11 @@ async def delete_image(
     productId: str, fileId: str, request: Request, me: Principal = Depends(require_staff)
 ) -> Response:
     await svc(request).remove_image(me, productId, fileId, cid(request))
-    # Processed files are named <fileId>[-<size>].webp by media-worker; the id never contains a path.
-    if re.fullmatch(r"[A-Za-z0-9_-]{1,64}", fileId):
-        folder = Path(request.app.state.settings.media_root) / "products"
+    # media-worker writes public/products/<productId>/<fileId>[@800|@320].webp (BSD §2). Both ids exist on a
+    # product we just changed, and neither may contain a path.
+    safe = re.compile(r"[A-Za-z0-9._-]{1,64}")
+    if safe.fullmatch(fileId) and safe.fullmatch(productId) and ".." not in productId:
+        folder = Path(request.app.state.settings.media_root) / "public" / "products" / productId
         for f in folder.glob(f"{fileId}*.webp"):
             f.unlink(missing_ok=True)
     return Response(status_code=204)

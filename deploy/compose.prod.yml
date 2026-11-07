@@ -285,6 +285,26 @@ services:
     mem_limit: 128m
     cpus: 0.1
 
+  # media.jobs -> WebP files -> media.results. This CPU image resizes, re-encodes and strips metadata; the GPU
+  # variant (rembg, REMBG_ENABLED=true, `deploy.resources.reservations.devices`) is built on sia-host (TAD §4.7).
+  media-worker:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/media-worker@${MEDIA_WORKER_DIGEST:?set by deploy.sh}
+    environment:
+      REDIS_URL_FILE: /run/secrets/redis_url_media
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: media
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_media
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+      MEDIA_ROOT: /srv/sia-data
+    volumes: ["/srv/sia-data:/srv/sia-data"]
+    secrets: [ca.pem, redis_url_media, app_kafka_media]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 1g
+    cpus: 2.0
+
   # ---------------------------------------------------------------- monitoring
   prometheus:
     <<: *hardening
@@ -341,6 +361,7 @@ secrets:
   mongo_url_catalog: { file: "${SECRETS:-./secrets}/mongo_url_catalog" }
   redis_url_catalog: { file: "${SECRETS:-./secrets}/redis_url_catalog" }
   service_secret_catalog: { file: "${SECRETS:-./secrets}/service_secret_catalog" }
+  redis_url_media: { file: "${SECRETS:-./secrets}/redis_url_media" }
   jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }
   data_key: { file: "${SECRETS:-./secrets}/data_key" }
   code_pepper: { file: "${SECRETS:-./secrets}/code_pepper" }
@@ -358,6 +379,7 @@ secrets:
   app_kafka_relay: { file: "${SECRETS:-./secrets}/app_kafka_relay" }     # copy owned by uid 10001
   app_kafka_identity: { file: "${SECRETS:-./secrets}/app_kafka_identity" }
   app_kafka_catalog: { file: "${SECRETS:-./secrets}/app_kafka_catalog" }
+  app_kafka_media: { file: "${SECRETS:-./secrets}/app_kafka_media" }
   kafka_exporter: { file: "${SECRETS:-./secrets}/kafka_exporter" }
 
 networks:

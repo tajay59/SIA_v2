@@ -236,6 +236,7 @@ auth/         shared token-checking library (from packages/)
 | **Consumes** | `media.jobs` |
 | **Publishes** | `media.results` |
 | **Deployment** | 2 replicas, each pinned to one GPU; falls back to the CPU if the GPU is unavailable. The model is loaded **once at startup** (today it is loaded on every request) |
+| **Built (P3)** | `services/media-worker`: decodes and re-encodes every upload (JPEG/PNG/WebP in, WebP out at 1600, 800 and 320 px; EXIF orientation applied, all metadata dropped; 40 MP decompression-bomb limit), reads only `incoming/<name>` (no other paths), writes `public/products/<productId>/<fileId>[@800\|@320].webp`, publishes `image.processed` directly (plain envelope) and then deletes the original. The file id comes from the job id, so redelivery is harmless. Background removal is pluggable (`REMBG_ENABLED`); the CPU image skips it with a log line, and the GPU image with rembg and the model baked in is built on sia-host. Barcode decoding: not built yet (needed with inventory, P4) |
 
 ### 4.8 Shared packages
 | Package | Contents |

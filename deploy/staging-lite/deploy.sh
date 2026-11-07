@@ -16,7 +16,7 @@ TAG=staging
 EDGE=0; [[ "${1:-}" == "--edge" ]] && EDGE=1
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-for svc in identity-svc catalog-svc; do
+for svc in identity-svc catalog-svc media-worker; do
   echo "== build $svc"
   docker build -q -f "services/$svc/Dockerfile" --build-arg APP_VERSION="$(git rev-parse --short HEAD)" \
     -t "cimh/$svc:$TAG" . >/dev/null

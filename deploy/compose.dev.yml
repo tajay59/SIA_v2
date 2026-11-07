@@ -208,6 +208,25 @@ services:
     mem_limit: 128m
     healthcheck: { disable: true }
 
+  media-worker:
+    profiles: [kafka]
+    build:
+      context: ..
+      dockerfile: services/media-worker/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/media-worker:dev
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      MEDIA_ROOT: /srv/sia-data
+    volumes: [media:/srv/sia-data]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    mem_limit: 512m
+    healthcheck: { disable: true }
+
   prometheus:
     image: prom/prometheus:v3.1.0
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]

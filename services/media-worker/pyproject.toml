@@ -1,0 +1,20 @@
+[project]
+name = "media-worker"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "cimh-common",
+  "pillow>=11",
+]
+
+[project.optional-dependencies]
+# Background removal (PRD C6). The GPU image adds rembg + onnxruntime-gpu and bakes the model in; without it
+# images are still resized, re-encoded and stripped, and a removal request is logged and skipped.
+rembg = ["rembg>=2.0.60"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
