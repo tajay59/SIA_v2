@@ -232,7 +232,7 @@ Authoritative matrix: [API README §3](../api/README.md#3-roles-and-access). Sum
 | Lawful purpose and minimisation | Only data needed to supply items: name, email, phone, organisation, addresses; no IDs, no payment data |
 | Transparency | Privacy notice at sign-up (Privacy Policy, doc #30); purposes listed |
 | Retention | BSD §8: rejected/expired accounts deleted after 90 d; carts 180 d; financial records kept |
-| Data subject rights | Access/export via admin; erasure = account deletion + `[deleted]` replacement in requests (BSD §8) |
+| Data subject rights | Access: self-service download or by an admin; erasure: the person asks (password), an admin erases; personal data removed, `[deleted]` replacement in requests, audit kept (BSD §8) |
 | Security | This document |
 | Sharing | Same-organisation visibility (disclosed at sign-up); carriers receive name/address/phone; no third-party analytics or trackers |
 | Breach notification | Incident Response Plan (doc #25): assess within 24 h, notify the Data Protection Commissioner and affected people without undue delay where required |

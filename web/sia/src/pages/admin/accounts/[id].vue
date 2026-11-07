@@ -8,6 +8,8 @@ import {
   ApiError,
   call,
   countryName,
+  downloadJson,
+  exportFilename,
   identity,
   ifMatch,
   reason as reasonSchema,
@@ -19,12 +21,13 @@ import {
 } from '@cimh/web-app'
 import { formatDateTime } from '@cimh/web-ui'
 import { computed, onMounted, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import DecisionDialog from '../../../components/DecisionDialog.vue'
 
 definePage({ meta: { guard: 'staff', title: 'Account' } })
 
 const route = useRoute('/admin/accounts/[id]')
+const router = useRouter()
 const session = useSession()
 const notify = useNotify()
 const account = ref<Account | null>(null)
@@ -90,6 +93,49 @@ function reactivate() {
 // pending → approve / deny
 const decisionOpen = ref(false)
 const decision = ref<'approve' | 'deny'>('approve')
+
+// personal data (TR-PRIV-1): export, erase
+const exporting = ref(false)
+async function exportData() {
+  if (!account.value) return
+  exporting.value = true
+  try {
+    const id = account.value.id
+    const body = await call(() => identity.GET('/admin/accounts/{accountId}/export', { params: { path: { accountId: id } } }))
+    downloadJson(body, exportFilename(`cimh-data-${id}`, body.generatedAt))
+  } catch (e) {
+    notify.report(e)
+  } finally {
+    exporting.value = false
+  }
+}
+
+const eraseOpen = ref(false)
+const eraseReason = ref('')
+const eraseConfirm = ref('')
+const eraseValid = ref(false)
+function openErase() {
+  eraseReason.value = account.value?.erasureRequestedAt ? 'Asked by the account holder' : ''
+  eraseConfirm.value = ''
+  eraseOpen.value = true
+}
+async function erase() {
+  const a = account.value
+  if (!a) return
+  busy.value = true
+  try {
+    await call(() => identity.POST('/admin/accounts/{accountId}/erase', { params: params(a), body: { reason: eraseReason.value.trim() } }))
+    eraseOpen.value = false
+    notify.toast('Account erased', 'success')
+    await router.push('/admin/accounts')
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'LAST_ADMIN') notify.toast('This is the last administrator; promote someone else first.', 'warning')
+    else notify.report(e, { retry: load })
+    if (e instanceof ApiError && e.status === 409) await load()
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -117,8 +163,15 @@ const decision = ref<'approve' | 'deny'>('approve')
           <v-btn v-if="account.status === 'ACTIVE'" variant="outlined" :disabled="isSelf" @click="newRole = account.role; roleOpen = true">Change role</v-btn>
           <v-btn v-if="account.status === 'ACTIVE'" variant="outlined" color="error" :disabled="isSelf" @click="suspendReason = ''; suspendOpen = true">Suspend</v-btn>
           <v-btn v-if="account.status === 'SUSPENDED'" color="primary" :loading="busy" @click="reactivate">Reactivate</v-btn>
+          <v-btn variant="outlined" :loading="exporting" @click="exportData">Export data</v-btn>
+          <v-btn variant="outlined" color="error" :disabled="isSelf" @click="openErase">Erase</v-btn>
         </template>
       </div>
+
+      <v-alert v-if="account.erasureRequestedAt" type="warning" variant="tonal">
+        The account holder asked to be deleted on {{ formatDateTime(account.erasureRequestedAt) }}.
+        <template v-if="session.isAdmin">Export their data if they want a copy, then erase the account.</template>
+      </v-alert>
 
       <div class="cards">
         <v-card>
@@ -184,6 +237,31 @@ const decision = ref<'approve' | 'deny'>('approve')
         <v-card-actions class="row-end">
           <v-btn variant="text" @click="suspendOpen = false">Cancel</v-btn>
           <v-btn color="error" :loading="busy" :disabled="!suspendValid" @click="suspend">Suspend</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="eraseOpen" max-width="520">
+      <v-card>
+        <v-card-title class="t-h3">Erase account</v-card-title>
+        <v-card-text>
+          <v-form v-model="eraseValid" class="stack" @submit.prevent="erase">
+            <p class="t-body">
+              Removes the name, contact details, addresses and sign-in of <strong>{{ account?.email }}</strong> and signs them out.
+              Their requests stay as financial records with the name replaced by “[deleted]”. This cannot be undone.
+            </p>
+            <v-textarea v-model="eraseReason" label="Reason" rows="2" auto-grow counter="500" :rules="[rule(reasonSchema)]" />
+            <v-text-field
+              v-model="eraseConfirm"
+              label="Type the email address to confirm"
+              autocomplete="off"
+              :rules="[(v: string) => v.trim().toLowerCase() === account?.email.toLowerCase() || 'Must match the account email']"
+            />
+          </v-form>
+        </v-card-text>
+        <v-card-actions class="row-end">
+          <v-btn variant="text" @click="eraseOpen = false">Cancel</v-btn>
+          <v-btn color="error" :loading="busy" :disabled="!eraseValid" @click="erase">Erase account</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

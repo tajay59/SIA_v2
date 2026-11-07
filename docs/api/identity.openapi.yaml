@@ -300,6 +300,82 @@ paths:
         '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
 
+  /me/export:
+    get:
+      tags: [me]
+      summary: Download my personal data (TR-PRIV-1; DPA right of access)
+      description: |
+        Everything identity-svc holds about the caller: profile, addresses, status history and the audit trail
+        about the account. Staff who acted on the account appear by role only. Other services add their own
+        `sections` (order-svc: requests, quotes and files, P5). Audited as `privacy.exported`.
+      responses:
+        '200':
+          description: Export, sent as a download
+          headers:
+            Content-Disposition: { description: 'attachment; filename="cimh-my-data-YYYY-MM-DD.json"', schema: { type: string } }
+            Cache-Control: { description: no-store, schema: { type: string } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonalDataExport' } } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+
+  /me/erasure-request:
+    post:
+      tags: [me]
+      summary: Ask for my account and personal data to be erased (password confirms; an admin carries it out)
+      description: |
+        Sets `erasureRequestedAt` and publishes `user.erasure_requested` (admins are emailed). Asking again changes
+        nothing. An admin then calls `POST /admin/accounts/{accountId}/erase` (BSD §8 right to erasure).
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [password]
+              properties:
+                password: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        '202': { description: Request recorded }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+
+  /admin/accounts/{accountId}/export:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    get:
+      tags: [admin-accounts]
+      summary: Export an account's personal data (admin)
+      description: Same bundle as `GET /me/export`, with staff names kept. Audited as `privacy.exported`.
+      responses:
+        '200':
+          description: Export, sent as a download
+          headers:
+            Content-Disposition: { description: 'attachment; filename="cimh-data-<accountId>-YYYY-MM-DD.json"', schema: { type: string } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/PersonalDataExport' } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /admin/accounts/{accountId}/erase:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Erase an account's personal data (admin; reason required; not yourself or the last admin)
+      description: |
+        Removes the person's name, contact details, addresses, password and MFA secret, revokes every session,
+        anonymises the audit entries the person made (name and IP) and publishes `user.deleted`; the emptied
+        document is removed once the event is out. Consumers replace their copies with `[deleted]`; order-svc
+        also cancels the person's open requests (P5). Requests stay as financial records (BSD §8).
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '204': { description: Erased }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
   /admin/accounts:
     get:
       tags: [admin-accounts]
@@ -310,6 +386,7 @@ paths:
         - { name: role, in: query, schema: { $ref: './common.yaml#/components/schemas/Role' } }
         - { name: organisationId, in: query, schema: { type: string } }
         - { name: q, in: query, description: Name or email prefix, schema: { type: string, maxLength: 100 } }
+        - { name: erasureRequested, in: query, description: Only accounts whose owner asked for erasure, schema: { type: boolean } }
         - { $ref: './common.yaml#/components/parameters/Cursor' }
         - { $ref: './common.yaml#/components/parameters/Limit' }
       responses:
@@ -699,6 +776,37 @@ components:
         organisationName: { type: [string, 'null'] }
         organisationText: { type: [string, 'null'] }
         createdAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        erasureRequestedAt: { type: [string, 'null'], format: date-time, description: Set by POST /me/erasure-request }
+    PersonalDataExport:
+      type: object
+      required: [generatedAt, subjectId, sections]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        subjectId: { type: string }
+        sections:
+          type: object
+          description: One entry per service that holds data about the person
+          required: [identity]
+          properties:
+            identity:
+              type: object
+              required: [account, auditTrail]
+              properties:
+                account: { $ref: '#/components/schemas/Account' }
+                auditTrail:
+                  type: array
+                  description: Entries about the account or made by the person (newest first, at most 1000)
+                  items:
+                    type: object
+                    required: [at, action, by]
+                    properties:
+                      at: { type: string, format: date-time }
+                      action: { type: string }
+                      by: { type: string, description: '"you", or the role (admin export: name and role) of whoever acted' }
+                      from: {}
+                      to: {}
+                      reason: { type: [string, 'null'] }
+        notes: { type: array, items: { type: string } }
     Account:
       allOf:
         - $ref: '#/components/schemas/AccountSummary'

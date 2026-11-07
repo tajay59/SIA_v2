@@ -27,13 +27,13 @@ from typing import Any
 
 from cimh_common.outbox import new_event
 
+from .privacy import strip_account
 from .service import user_ref
 from .store import Store, now
 
 log = logging.getLogger("identity.jobs")
 
 SYSTEM_ACTOR = {"id": "system", "name": "System", "role": "service"}
-DELETED = "[deleted]"
 
 
 @dataclass(frozen=True)
@@ -155,54 +155,15 @@ class Jobs:
         return {"purged": stripped, "removed": res.deleted_count}
 
     async def _strip(self, acc: dict[str, Any], t: datetime) -> bool:
-        aid = acc["id"]
-        cid = f"job-purge-{aid}"
-        evt = _event("user.deleted", {"userId": aid}, cid)
-        res = await self.store.accounts.update_one(
-            {"id": aid, "status": acc["status"], "deletedAt": {"$exists": False}},
-            {
-                "$set": {
-                    "deletedAt": t,
-                    "updatedAt": t,
-                    # Keeps the unique email index happy and frees the real address for a new sign-up.
-                    "email": f"deleted-{aid.lower()}@deleted.invalid",
-                    "firstname": DELETED,
-                    "lastname": DELETED,
-                    "phone": None,
-                    "department": None,
-                    "organisationText": None,
-                    "addresses": [],
-                    "image": None,
-                    "statusHistory": [],
-                },
-                "$unset": {
-                    "passwordHash": "",
-                    "legacyPasswordHash": "",
-                    "mfa": "",
-                    "totpSecretEnc": "",
-                    "failedLogins": "",
-                    "lockouts": "",
-                    "lockedUntil": "",
-                },
-                "$inc": {"version": 1},
-                "$push": {"outbox": evt},
-            },
-        )
-        if not res.modified_count:
-            return False
-        await self.store.temp.delete_many({"accountId": aid})
-        # BSD §5.4: audit entries stay; the person's name and IP go.
-        await self.store.audit.update_many({"actor.id": aid}, {"$set": {"actor.name": DELETED}, "$unset": {"ip": ""}})
-        await self.store.record_audit(
+        return await strip_account(
+            self.store,
+            acc,
+            t,
             actor=SYSTEM_ACTOR,
             action="account.deleted",
-            entity_type="account",
-            entity_id=aid,
-            correlation_id=cid,
-            before=acc["status"],
             reason="Retention: 90 days after rejection or expiry",
+            correlation_id=f"job-purge-{acc['id']}",
         )
-        return True
 
 
 async def main(once: bool = False) -> None:

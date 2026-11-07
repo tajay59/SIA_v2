@@ -31,6 +31,7 @@ channels:
       userProfileUpdated: { $ref: '#/components/messages/userProfileUpdated' }
       userDeleted: { $ref: '#/components/messages/userDeleted' }
       userApprovalPending: { $ref: '#/components/messages/userApprovalPending' }
+      userErasureRequested: { $ref: '#/components/messages/userErasureRequested' }
       userPasswordResetRequested: { $ref: '#/components/messages/userPasswordResetRequested' }
       userEmailChangeRequested: { $ref: '#/components/messages/userEmailChangeRequested' }
   catalogProductEvents:
@@ -310,9 +311,20 @@ components:
                 allOf:
                   - $ref: '#/components/schemas/UserRef'
                   - properties: { waitingSince: { type: [string, 'null'], format: date-time } }
+    userErasureRequested:
+      name: user.erasure_requested
+      description: The person asked for erasure (POST /me/erasure-request). Admins are emailed; an admin erases the account.
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                allOf:
+                  - $ref: '#/components/schemas/UserRef'
+                  - properties: { requestedAt: { type: string, format: date-time } }
     userDeleted:
       name: user.deleted
-      description: Tombstone (value has userId only). Consumers remove personal data copies.
+      description: Tombstone (value has userId only), from the 90-day purge or an admin erasure. Consumers replace personal data copies with `[deleted]`; order-svc also cancels the person's open requests.
       payload:
         allOf:
           - $ref: '#/components/schemas/Envelope'

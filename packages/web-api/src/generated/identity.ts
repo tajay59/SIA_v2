@@ -667,6 +667,203 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download my personal data (TR-PRIV-1; DPA right of access)
+         * @description Everything identity-svc holds about the caller: profile, addresses, status history and the audit trail
+         *     about the account. Staff who acted on the account appear by role only. Other services add their own
+         *     `sections` (order-svc: requests, quotes and files, P5). Audited as `privacy.exported`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Export, sent as a download */
+                200: {
+                    headers: {
+                        /** @description attachment; filename="cimh-my-data-YYYY-MM-DD.json" */
+                        "Content-Disposition"?: string;
+                        /** @description no-store */
+                        "Cache-Control"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalDataExport"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/erasure-request": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask for my account and personal data to be erased (password confirms; an admin carries it out)
+         * @description Sets `erasureRequestedAt` and publishes `user.erasure_requested` (admins are emailed). Asking again changes
+         *     nothing. An admin then calls `POST /admin/accounts/{accountId}/erase` (BSD §8 right to erasure).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        password: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Request recorded */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["Unauthorized"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/accounts/{accountId}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Export an account's personal data (admin)
+         * @description Same bundle as `GET /me/export`, with staff names kept. Audited as `privacy.exported`.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    accountId: components["parameters"]["AccountId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Export, sent as a download */
+                200: {
+                    headers: {
+                        /** @description attachment; filename="cimh-data-<accountId>-YYYY-MM-DD.json" */
+                        "Content-Disposition"?: string;
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["PersonalDataExport"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/accounts/{accountId}/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Erase an account's personal data (admin; reason required; not yourself or the last admin)
+         * @description Removes the person's name, contact details, addresses, password and MFA secret, revokes every session,
+         *     anonymises the audit entries the person made (name and IP) and publishes `user.deleted`; the emptied
+         *     document is removed once the event is out. Consumers replace their copies with `[deleted]`; order-svc
+         *     also cancels the person's open requests (P5). Requests stay as financial records (BSD §8).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    accountId: components["parameters"]["AccountId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReasonBody"];
+                };
+            };
+            responses: {
+                /** @description Erased */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/accounts": {
         parameters: {
             query?: never;
@@ -686,6 +883,8 @@ export interface paths {
                     organisationId?: string;
                     /** @description Name or email prefix */
                     q?: string;
+                    /** @description Only accounts whose owner asked for erasure */
+                    erasureRequested?: boolean;
                     /** @description Opaque cursor from a previous page's `nextCursor`. */
                     cursor?: components["parameters"]["Cursor"];
                     limit?: components["parameters"]["Limit"];
@@ -1590,6 +1789,34 @@ export interface components {
             organisationName?: string | null;
             organisationText?: string | null;
             createdAt?: components["schemas"]["Timestamp"];
+            /**
+             * Format: date-time
+             * @description Set by POST /me/erasure-request
+             */
+            erasureRequestedAt?: string | null;
+        };
+        PersonalDataExport: {
+            /** Format: date-time */
+            generatedAt: string;
+            subjectId: string;
+            /** @description One entry per service that holds data about the person */
+            sections: {
+                identity: {
+                    account: components["schemas"]["Account"];
+                    /** @description Entries about the account or made by the person (newest first, at most 1000) */
+                    auditTrail: {
+                        /** Format: date-time */
+                        at: string;
+                        action: string;
+                        /** @description "you", or the role (admin export: name and role) of whoever acted */
+                        by: string;
+                        from?: unknown;
+                        to?: unknown;
+                        reason?: string | null;
+                    }[];
+                };
+            };
+            notes?: string[];
         };
         Account: components["schemas"]["AccountSummary"] & {
             version: number;

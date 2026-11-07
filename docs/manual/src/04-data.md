@@ -91,7 +91,7 @@ Products, units, sites, locations and shelves keep their legacy barcode formats.
 ## 4.4 Collections at a glance
 
 ### `accounts`
-`id` (unique) · `email` (unique, case-insensitive) · `passwordHash` (Argon2id; legacy hash upgraded at next login) · `firstname`, `lastname`, `phone` · `role` · **`status`** · `isCimh` · `organisationText` (typed) → **`organisationId`** (set at approval) · `department`, `country` · `addresses[]` (max 10) · `defaults{site, location, shelf}` (staff) · `verifiedAt`, `approvedBy/At`, `rejection` · `statusHistory[]` · `failedLogins` · `mfa` · `approvalReminderAt` · `deletedAt` (purge in progress) · `outbox[]`.
+`id` (unique) · `email` (unique, case-insensitive) · `passwordHash` (Argon2id; legacy hash upgraded at next login) · `firstname`, `lastname`, `phone` · `role` · **`status`** · `isCimh` · `organisationText` (typed) → **`organisationId`** (set at approval) · `department`, `country` · `addresses[]` (max 10) · `defaults{site, location, shelf}` (staff) · `verifiedAt`, `approvedBy/At`, `rejection` · `statusHistory[]` · `failedLogins` · `mfa` · `approvalReminderAt` · `erasureRequestedAt` (the person asked to be deleted) · `deletedAt` (purge or erasure in progress) · `outbox[]`.
 Removed: `cart` (moves to `orders`), `emailconfirmed`, `registered`, `timestamp`, `password`.
 Rule: an `ACTIVE` non-CIMH account must have an `organisationId`.
 
@@ -195,7 +195,9 @@ Every collection has a `$jsonSchema` validator generated from the service's Pyda
 | Backups | 30 daily + 12 monthly (pending confirmation) |
 | Container logs | 10 × 50 MB per container |
 
-**Right to erasure:** delete the account and replace the personal data on its requests with `[deleted]`. The financial fields and the audit trail are kept.
+**Right of access:** people download their own data from their profile (staff appear by role only); admins can export anyone's. Each export is audited.
+
+**Right to erasure:** the person asks from their profile (password required), and an admin erases the account with a reason. The name, contact details, addresses and sign-in are removed, sessions end, the person's audit entries lose name and IP, and `user.deleted` tells other services to replace the personal data on requests with `[deleted]` (open requests are cancelled). The financial fields and the audit trail are kept. The 90-day purge of rejected and expired accounts uses the same steps.
 
 ## 4.9 Migration from the legacy data
 

@@ -133,11 +133,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | GET | `/.well-known/jwks.json` | public | Token verification keys |
 | GET / PATCH | `/me` | any | Own profile (PATCH needs If-Match) |
 | POST | `/me/email` · `/me/password` | any | Change email or password |
+| GET | `/me/export` | any | Download own personal data (JSON attachment) |
+| POST | `/me/erasure-request` | any | Ask to be deleted (password confirms; an admin erases) |
 | GET | `/admin/accounts` · `/admin/accounts/{id}` | staff, admin | Accounts and the approval queue (`?status=PENDING_APPROVAL`) |
 | POST | `/admin/accounts/{id}/approve` · `/deny` | admin | Approval decision (approve needs `organisationId`) |
 | POST | `/admin/accounts/bulk-decision` | admin | Up to 100 decisions (207) |
 | POST | `/admin/accounts/{id}/suspend` · `/reactivate` | admin | Suspension |
 | PUT | `/admin/accounts/{id}/role` | admin | Role change |
+| GET | `/admin/accounts/{id}/export` | admin | Export a person's data |
+| POST | `/admin/accounts/{id}/erase` | admin | Erase a person's data (reason, If-Match; 204) |
 | GET / POST | `/organisations` | staff / admin | List, create |
 | GET / PATCH | `/organisations/{id}` | staff / admin | View, edit |
 | POST | `/organisations/{id}/merge` | admin | Merge duplicates |

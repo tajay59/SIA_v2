@@ -97,7 +97,7 @@ Only five places need an immediate answer from another service (the fifth: notif
 
 | Topic | Events |
 |---|---|
-| `identity.user.events` | `user.registered`, `user.verified`, `user.approved`, `user.rejected`, `user.suspended`, `user.reactivated`, `user.role_changed`, `user.profile_updated`, `user.deleted`, `user.password_reset_requested`, `user.email_change_requested` (code events carry only a `codeRef`) |
+| `identity.user.events` | `user.registered`, `user.verified`, `user.approved`, `user.rejected`, `user.suspended`, `user.reactivated`, `user.role_changed`, `user.profile_updated`, `user.approval_pending`, `user.erasure_requested`, `user.deleted`, `user.password_reset_requested`, `user.email_change_requested` (code events carry only a `codeRef`) |
 | `catalog.product.events` | `product.created`, `product.updated`, `product.deleted`, `product.image_added` |
 | `inventory.stock.events` | `stock.changed`, `stock.low`, `stock.reserved`, `stock.released`, `stock.reservation_failed`, `unit.stowed`, `unit.picked` |
 | `order.events` | `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired` |

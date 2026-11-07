@@ -234,6 +234,16 @@ endpoints:
     - admin
     ownership: admin
     note: admin; reason required
+  POST /api/identity/v1/admin/accounts/{accountId}/erase:
+    roles:
+    - admin
+    ownership: admin
+    note: admin; reason required; not yourself or the last admin
+  GET /api/identity/v1/admin/accounts/{accountId}/export:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
   POST /api/identity/v1/admin/accounts/{accountId}/reactivate:
     roles:
     - admin
@@ -370,6 +380,20 @@ endpoints:
     - admin
     ownership: self
     note: sends a code to the new address; applied after /auth/verify with kind change_email
+  POST /api/identity/v1/me/erasure-request:
+    roles:
+    - user
+    - staff
+    - admin
+    ownership: self
+    note: password confirms; an admin carries it out
+  GET /api/identity/v1/me/export:
+    roles:
+    - user
+    - staff
+    - admin
+    ownership: self
+    note: tr-priv-1; dpa right of access
   POST /api/identity/v1/me/password:
     roles:
     - user
