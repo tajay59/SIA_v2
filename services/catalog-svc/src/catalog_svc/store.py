@@ -51,17 +51,24 @@ class Store:
         await p.create_index(
             [(f, "text") for f in TEXT_WEIGHTS], weights=TEXT_WEIGHTS, name="product_text", default_language="english"
         )
-        # Browsing is sorted by name with the id as tie-breaker (cursor paging).
+        # Browsing is sorted by name with the id as tie-breaker (cursor paging). Each filter combination the
+        # screens use has an index whose equality prefix is followed by (name, id), so no list sorts in memory
+        # (checked on 200k products by tools/perf/explain_catalog.py).
         await p.create_index([("sellable", 1), ("active", 1), ("type", 1), ("department", 1), ("name", 1), ("id", 1)])
+        await p.create_index([("sellable", 1), ("active", 1), ("type", 1), ("name", 1), ("id", 1)])
         await p.create_index([("sellable", 1), ("active", 1), ("name", 1), ("id", 1)])
         await p.create_index([("probono", 1), ("active", 1), ("type", 1), ("name", 1), ("id", 1)])
+        await p.create_index([("active", 1), ("type", 1), ("name", 1), ("id", 1)])
         await p.create_index([("active", 1), ("name", 1), ("id", 1)])
+        await p.create_index([("type", 1), ("name", 1), ("id", 1)])  # staff "show inactive" by type
+        await p.create_index([("name", 1), ("id", 1)])  # staff "show inactive"
         await p.create_index("sn", sparse=True)
         await p.create_index("sn1", sparse=True)
         await p.create_index("modelnumber")
         await p.create_index([("outbox.0", 1)], sparse=True)
         await self.misc.create_index("id", unique=True)
         await self.misc.create_index([("kind", 1), ("site", 1), ("location", 1)])
+        await self.misc.create_index([("kind", 1), ("id", 1)])  # places list, sorted by (kind, id)
         await self.misc.create_index([("outbox.0", 1)], sparse=True)
 
     async def ensure_view(self) -> None:

@@ -106,7 +106,7 @@ Verification and reset codes: `kind`, `accountId`, **`codeHash`** (for checking)
 
 ### `product`
 `id` (unique) · `name`, `description`, `details`, `make`, `modelname`, `modelnumber` · **`type`** codes `MET, RAD, EQUIP, SUPP, MISC, PRO` · `department`, `project` · **`sellable` → bool** · **`probono` bool (required at creation)** · `probonoMaxPerRequest?` · `cost` (Money, staff only) · `threshold`, `unitquantity`, `weight`, `dimension`, `sn`, `sn1` · `keywords[]` · `images[]{fileId, url, w, h, primary}` · `inStock`, `stockCount`, `stockAt` (derived from stock events; an older event never overwrites a newer one) · `active` (soft delete).
-Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on `sn`, `sn1`, `modelnumber`. Browsing is sorted by name (indexes end in `name, id` for cursor paging).
+Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on `sn`, `sn1`, `modelnumber`. Browsing is sorted by name (indexes end in `name, id` for cursor paging); every filter combination the screens use (customer: all / type / type + department; staff: active or "show inactive", with or without type) has its own index, and CI checks with `explain` that no catalogue read scans the collection (TR-DATA-5).
 
 ### `xuser` (view)
 `product` filtered to `sellable: true, active: true`, projecting **only public fields**, so `cost` and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.
