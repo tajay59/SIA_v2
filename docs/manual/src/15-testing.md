@@ -83,6 +83,16 @@ CI fails if an endpoint exists in a running service but **not** in the matrix (n
 
 Test data: 2 M products, 30 M units, 1.5 M orders generated synthetically on staging (sized-as-prod run done with staging stack alone, TRD §6.3). Memory and CPU per container recorded and compared to INFRASTRUCTURE §4.1. **Results feed the 64 GB upgrade decision** (INFRASTRUCTURE Q4).
 
+### Phase checks (before P9)
+
+Each service phase ends with a smaller check on the dev stack, with **one** container at its production limits. Tools in `tools/perf/`: a bulk seeder (`seed_catalog.py`, removable with `--cleanup`), an **explain check** that records the queries the real service methods send and fails on any collection scan (the same cases run in CI on 20k products, which enforces **TR-DATA-5**), and a k6 scenario with a runner script (`MODE=steady` gate or `MODE=knee` ramp).
+
+| Phase | Data | Load | Result |
+|---|---|---|---|
+| **P3 catalogue** | 200k products | 55 req/s for 3 min (lists, detail, search, staff) | **Pass.** p95 43 ms, p99 71 ms, 0 errors; search p95 68 ms; all 55 queries index-backed |
+
+**For P9:** one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.
+
 ## 15.7 Resilience tests
 
 | Test | Expected |

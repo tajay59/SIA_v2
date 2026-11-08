@@ -250,7 +250,7 @@ Detailed steps go in the Backup and Disaster Recovery Plan (Documentation Index 
 | 1 | VLAN id, IP range and DNS zone | **Resolved:** CIMH IT provides them before deployment (provisioning checklist step 1 is a gate). |
 | 2 | How does CI reach the host? | **Resolved:** **self-hosted GitHub Actions runner** on sia-host (outbound-only; deploy jobs only). |
 | 3 | Pi LUKS unlock after reboot? | **Resolved:** manual passphrase (§12a). |
-| 4 | Will the host be upgraded to **64 GB** before go-live? | **Open: undecided.** The plan works at 32 GB with the limits in §4.1 and no spare replicas; decide by migration rehearsal DR-2, after load tests show real usage. |
+| 4 | Will the host be upgraded to **64 GB** before go-live? | **Open: undecided.** The plan works at 32 GB with the limits in §4.1 and no spare replicas; decide by migration rehearsal DR-2, after load tests show real usage. P3 input (Testing chapter, phase checks): one catalog-svc container saturates its 0.5 CPU at ~145 req/s, so the full browse target needs ~6 replicas (+1 GB) or more CPU per replica. |
 
 ## 14.14 Implementation status (P1 code, 2026-11-07)
 

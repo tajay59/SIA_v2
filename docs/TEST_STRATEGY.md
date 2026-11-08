@@ -88,6 +88,24 @@ CI fails if an endpoint exists in a running service but **not** in the matrix (n
 
 Test data: 2 M products, 30 M units, 1.5 M orders generated synthetically on staging (sized-as-prod run done with staging stack alone, TRD §6.3). Memory and CPU per container recorded and compared to INFRASTRUCTURE §4.1. **Results feed the 64 GB upgrade decision** (INFRASTRUCTURE Q4).
 
+### 6.1 Phase checks (before P9)
+
+Each service phase ends with a smaller check on the dev stack, with **one** container at its production limits (half of production for catalog-svc, which runs 2 replicas). Tools live in `tools/perf/`:
+
+| Tool | Does |
+|---|---|
+| `seed_catalog.py` | Bulk-seeds synthetic products (`seedTag: "perf"`, removed with `--cleanup`) |
+| `querylog.py` + `explain_<service>.py` | Records the queries the real service methods send and runs `explain` on each: FAIL on a collection scan, WARN on an in-memory sort or > 100 documents examined per result (a `$text` relevance sort is allowed). The same cases run in CI on 20k products (`tests/integration/test_query_plans.py`), which enforces **TR-DATA-5** |
+| `<service>.k6.js` + `run_<service>.sh` | k6 in Docker: `MODE=steady` (gate) or `MODE=knee` (ramp, no gate); results in `tools/perf/results/` (git-ignored) |
+
+| Phase | Data | Load | Result |
+|---|---|---|---|
+| **P3 catalogue** (2026-11-07) | 200k products | 55 req/s for 3 min: 35 % lists (+ next page), 25 % detail, 25 % search, 15 % staff | **Pass.** p95 43 ms, p99 71 ms, 0 errors in 9,927 requests; search p95 68 ms; 132 of 256 MB. 55 of 55 queries index-backed (fixed on the way: "show inactive" scanned all 200k products; type filters relied on MET being common) |
+
+**Findings for P9:**
+- One catalog-svc container (0.5 CPU, 2 workers) is **CPU-bound in Python**: p95 stays < 80 ms up to ~145 req/s, then requests queue (no errors, but p95 reaches seconds by ~250 req/s). The 1,000 req/s browse mix (~850 req/s on the catalogue) therefore needs about **6 replicas at 0.5 CPU or more CPU per replica**, not today's 2 × 0.5 (INFRASTRUCTURE §4.1). This is CPU, not memory.
+- `$text` ranking sorts all matches in memory: ~30 ms for ~10k matches at 200k products. At 2M products a broad word ("sensor") matches ~100k, so search is the first read to check in P9.
+
 ## 7. Resilience tests
 
 | Test | Expected |

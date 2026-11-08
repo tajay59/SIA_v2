@@ -60,3 +60,4 @@ playwright-report/
 
 # Owner drop folder (originals; processed copies live in the apps)
 files/
+tools/perf/results/

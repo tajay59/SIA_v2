@@ -286,9 +286,10 @@ Short-lived verification and reset codes.
 |---|---|
 | `{ id: 1 }` unique | Lookups by id |
 | `{ name: "text", make: "text", modelname: "text", modelnumber: "text", keywords: "text" }` (weights: name 10, modelnumber 8, keywords 5, make 3, modelname 3) | Search |
-| `{ sellable: 1, active: 1, type: 1, department: 1, name: 1, id: 1 }` and `{ sellable: 1, active: 1, name: 1, id: 1 }` | Customer browsing, sorted by name, cursor paging on (name, id) |
+| `{ sellable: 1, active: 1, type: 1, department: 1, name: 1, id: 1 }`, `{ sellable: 1, active: 1, type: 1, name: 1, id: 1 }` and `{ sellable: 1, active: 1, name: 1, id: 1 }` | Customer browsing (all, by type, by type + department), sorted by name, cursor paging on (name, id) |
 | `{ probono: 1, active: 1, type: 1, name: 1, id: 1 }` | Pro Bono section |
-| `{ active: 1, name: 1, id: 1 }` | Staff browsing |
+| `{ active: 1, type: 1, name: 1, id: 1 }` and `{ active: 1, name: 1, id: 1 }` | Staff browsing |
+| `{ type: 1, name: 1, id: 1 }` and `{ name: 1, id: 1 }` | Staff browsing with "show inactive" |
 | `{ sn: 1 }` sparse, `{ sn1: 1 }` sparse | Exact and prefix serial lookups (staff) |
 | `{ modelnumber: 1 }` | Prefix lookups |
 
@@ -330,6 +331,7 @@ Common fields: `_id`, `id` R, `kind` R, `updatedAt` R, `updatedBy` Actor R.
 |---|---|
 | `{ id: 1 }` unique | Lookups by id |
 | `{ kind: 1, site: 1, location: 1 }` | Sites, locations and shelves for inventory-svc (read through the catalog API, cached in Redis) |
+| `{ kind: 1, id: 1 }` | Places list sorted by (kind, id) without an in-memory sort |
 
 > Splitting shelves out of arrays means a shelf update touches one small document, not a large location document. If ADR-0012 is accepted later, `site`, `location` and `shelf` move to a `locations` collection owned by inventory-svc with the same schema.
 

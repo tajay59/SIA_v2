@@ -1321,7 +1321,7 @@ Rule: an <code>ACTIVE</code> non-CIMH account must have an <code>organisationId<
 <p><code>id</code> (= source eventId, so duplicates are impossible), <code>at</code>, <code>actor</code>, <code>action</code>, <code>entity{type,id}</code>, <code>from/to</code>, <code>reason</code>, <code>ip</code>, <code>correlationId</code>. The service user can insert and read only. Kept indefinitely; personal data is removed when an account is deleted.</p>
 <h3 id="product"><code>product</code></h3>
 <p><code>id</code> (unique) · <code>name</code>, <code>description</code>, <code>details</code>, <code>make</code>, <code>modelname</code>, <code>modelnumber</code> · <strong><code>type</code></strong> codes <code>MET, RAD, EQUIP, SUPP, MISC, PRO</code> · <code>department</code>, <code>project</code> · <strong><code>sellable</code> → bool</strong> · <strong><code>probono</code> bool (required at creation)</strong> · <code>probonoMaxPerRequest?</code> · <code>cost</code> (Money, staff only) · <code>threshold</code>, <code>unitquantity</code>, <code>weight</code>, <code>dimension</code>, <code>sn</code>, <code>sn1</code> · <code>keywords[]</code> · <code>images[]{fileId, url, w, h, primary}</code> · <code>inStock</code>, <code>stockCount</code>, <code>stockAt</code> (derived from stock events; an older event never overwrites a newer one) · <code>active</code> (soft delete).
-Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on <code>sn</code>, <code>sn1</code>, <code>modelnumber</code>. Browsing is sorted by name (indexes end in <code>name, id</code> for cursor paging).</p>
+Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on <code>sn</code>, <code>sn1</code>, <code>modelnumber</code>. Browsing is sorted by name (indexes end in <code>name, id</code> for cursor paging); every filter combination the screens use (customer: all / type / type + department; staff: active or "show inactive", with or without type) has its own index, and CI checks with <code>explain</code> that no catalogue read scans the collection (TR-DATA-5).</p>
 <h3 id="xuser-view"><code>xuser</code> (view)</h3>
 <p><code>product</code> filtered to <code>sellable: true, active: true</code>, projecting <strong>only public fields</strong>, so <code>cost</code> and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.</p>
 <h3 id="misc-reference-data-now-with-a-kind-field"><code>misc</code> (reference data, now with a <code>kind</code> field)</h3>
@@ -7246,7 +7246,7 @@ rs.initiate({
 <tr>
 <td>4</td>
 <td>Will the host be upgraded to <strong>64 GB</strong> before go-live?</td>
-<td><strong>Open: undecided.</strong> The plan works at 32 GB with the limits in §4.1 and no spare replicas; decide by migration rehearsal DR-2, after load tests show real usage.</td>
+<td><strong>Open: undecided.</strong> The plan works at 32 GB with the limits in §4.1 and no spare replicas; decide by migration rehearsal DR-2, after load tests show real usage. P3 input (Testing chapter, phase checks): one catalog-svc container saturates its 0.5 CPU at ~145 req/s, so the full browse target needs ~6 replicas (+1 GB) or more CPU per replica.</td>
 </tr>
 </tbody>
 </table>
@@ -7578,6 +7578,27 @@ rs.initiate({
 </tbody>
 </table>
 <p>Test data: 2 M products, 30 M units, 1.5 M orders generated synthetically on staging (sized-as-prod run done with staging stack alone, TRD §6.3). Memory and CPU per container recorded and compared to INFRASTRUCTURE §4.1. <strong>Results feed the 64 GB upgrade decision</strong> (INFRASTRUCTURE Q4).</p>
+<h3 id="phase-checks-before-p9">Phase checks (before P9)</h3>
+<p>Each service phase ends with a smaller check on the dev stack, with <strong>one</strong> container at its production limits. Tools in <code>tools/perf/</code>: a bulk seeder (<code>seed_catalog.py</code>, removable with <code>--cleanup</code>), an <strong>explain check</strong> that records the queries the real service methods send and fails on any collection scan (the same cases run in CI on 20k products, which enforces <strong>TR-DATA-5</strong>), and a k6 scenario with a runner script (<code>MODE=steady</code> gate or <code>MODE=knee</code> ramp).</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Data</th>
+<th>Load</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>P3 catalogue</strong></td>
+<td>200k products</td>
+<td>55 req/s for 3 min (lists, detail, search, staff)</td>
+<td><strong>Pass.</strong> p95 43 ms, p99 71 ms, 0 errors; search p95 68 ms; all 55 queries index-backed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>For P9:</strong> one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.</p>
 <h2 id="157-resilience-tests">15.7 Resilience tests</h2>
 <table>
 <thead>
