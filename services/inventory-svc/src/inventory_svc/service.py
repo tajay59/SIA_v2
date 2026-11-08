@@ -133,6 +133,9 @@ class _Short(Exception):
         self.lines = lines
 
 
+LABEL_PDF_MAX = 200  # document-svc /internal/labels limit
+
+
 class InventoryService:
     def __init__(
         self,
@@ -337,7 +340,7 @@ class InventoryService:
                 raise ProblemError(503, "DEPENDENCY_UNAVAILABLE", "Could not allocate unit barcodes; try again")
         # Printable PDF from document-svc; if it is unavailable the screen still renders the codes itself.
         file_id = None
-        if self.label_pdfs is not None:
+        if self.label_pdfs is not None and len(barcodes) <= LABEL_PDF_MAX:  # larger batches: the screen draws them
             stock = await self.store.stock.find_one({"id": product_id}, {"productName": 1})
             file_id = await self.label_pdfs.render(product_id, (stock or {}).get("productName"), barcodes)
         return {"barcodes": barcodes, "fileId": file_id}

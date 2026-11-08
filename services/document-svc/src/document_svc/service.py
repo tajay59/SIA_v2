@@ -15,6 +15,7 @@ Generate: from order events (consumer.py); the file id is derived from the event
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -172,7 +173,7 @@ class DocumentService:
         self, p: Principal, product_id: str, name: str | None, barcodes: list[str], cid: str
     ) -> dict[str, Any]:
         fid = "FIL" + secrets.token_hex(16)
-        data = pdfs.labels(product_id, name, barcodes)
+        data = await asyncio.to_thread(pdfs.labels, product_id, name, barcodes)
         meta = self._generated_meta(fid, None, "labels", f"Labels-{product_id}.pdf", data, p.sub)
         self.files.save(meta, data)
         return public(meta)
@@ -190,7 +191,7 @@ class DocumentService:
             "probono_invoice": pdfs.probono_invoice,
             "commercial_invoice": pdfs.commercial_invoice,
         }
-        data = render[kind](req, **opts)
+        data = await asyncio.to_thread(render[kind], req, **opts)
         fid = "FIL" + hashlib.sha256(f"{event.eventId}:{kind}".encode()).hexdigest()[:32]
         meta = self._generated_meta(fid, rid, kind, f"{NAMES[kind]}-{rid}.pdf", data, "system")
         self.files.save(meta, data)

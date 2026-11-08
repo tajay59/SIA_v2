@@ -16,6 +16,7 @@ from cimh_common.errors import ProblemError, forbidden
 from .service import DocumentService
 
 router = APIRouter()
+MAX_LABELS = 200
 UploadKind = Literal["supplier_quote", "signed_agreement", "upload", "commercial_invoice"]
 
 
@@ -30,7 +31,8 @@ class ReasonIn(Strict):
 class LabelsIn(Strict):
     productId: str = Field(min_length=1, max_length=64)
     productName: str | None = Field(default=None, max_length=200)
-    barcodes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(min_length=1, max_length=500)
+    # ~15 ms per QR code (pure-Python encoder): 200 labels ≈ 3 s, rendered off the event loop.
+    barcodes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(min_length=1, max_length=MAX_LABELS)
 
 
 def svc(request: Request) -> DocumentService:
