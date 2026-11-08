@@ -90,6 +90,9 @@ Each service phase ends with a smaller check on the dev stack, with **one** cont
 | Phase | Data | Load | Result |
 |---|---|---|---|
 | **P3 catalogue** | 200k products | 55 req/s for 3 min (lists, detail, search, staff) | **Pass.** p95 43 ms, p99 71 ms, 0 errors; search p95 68 ms; all 55 queries index-backed |
+| **P4 inventory** | 200k units, 2k products | Explain only | **Pass.** 133 queries, all index-backed (incl. partial indexes) |
+
+P4's gate is concurrency: integration tests race two reservations for the last units (one wins, the loser holds nothing), two crossing multi-line reservations (fails without the transaction), and two devices scanning the same unit.
 
 **For P9:** one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.
 

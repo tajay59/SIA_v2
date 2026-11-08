@@ -296,7 +296,7 @@ paths:
   /internal/products/summaries:
     post:
       tags: [internal]
-      summary: Bulk product snapshots for order-svc (service token)
+      summary: Bulk product snapshots for order-svc and inventory-svc (service token)
       requestBody:
         required: true
         content:
@@ -321,6 +321,7 @@ paths:
         - { name: kind, in: query, schema: { type: string, enum: [site, location, shelf] } }
         - { name: site, in: query, schema: { type: string } }
         - { name: location, in: query, schema: { type: string } }
+        - { name: barcode, in: query, description: One place by its barcode (a scan), schema: { type: string } }
       responses:
         '200':
           description: Places

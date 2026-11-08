@@ -22,6 +22,7 @@ secrets:
   code_pepper: { file: ./secrets/code_pepper }
   service_secrets: { file: ./secrets/service_secrets }
   service_secret_catalog: { file: ./secrets/service_secret_catalog }
+  service_secret_inventory: { file: ./secrets/service_secret_inventory }
 
 services:
   gateway:
@@ -163,6 +164,65 @@ services:
     image: cimh/catalog-svc:staging
     <<: *hardening
     command: ["python", "-m", "catalog_svc.consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 112m
+    cpus: 0.1
+
+  inventory-svc:
+    image: cimh/inventory-svc:staging
+    <<: *hardening
+    command: ["gunicorn", "inventory_svc.main:build_app()", "-k", "uvicorn.workers.UvicornWorker",
+              "-b", "0.0.0.0:8000", "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      JWT_ISSUER: https://sia.hashiz.store
+      JWT_AUDIENCE: cimh-stores
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_inventory
+      LOG_LEVEL: INFO
+    secrets: [service_secret_inventory]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      catalog-svc: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 160m
+    cpus: 0.5
+
+  outbox-relay-inventory:
+    image: cimh/inventory-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      RELAY_NAME: inventory
+      RELAY_COLLECTIONS: stock
+      RELAY_TOPICS: "stock.=inventory.stock.events,unit.=inventory.stock.events"
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 80m
+    cpus: 0.1
+
+  inventory-consumer:
+    image: cimh/inventory-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "inventory_svc.consumer"]
     environment:
       MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
       REDIS_URL: redis://redis:6379/0

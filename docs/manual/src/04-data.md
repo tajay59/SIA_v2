@@ -125,12 +125,16 @@ Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 
 | `settings` | `quoteValidityDays` 30, `quoteReminderDays` 3, `approvalReminderHours` 48, `purgeAfterDays` 90 |
 
 ### `storage` (one document per physical unit)
-`barcode` (**unique**) · `product` · `serial` · location (`site/location/shelf` + names) · `stowed`, `stowby`, `stowdate` · `picked`, `pickedby`, `pickeddate`, `pickedreason` · `orderid` (picked for) · ✚ **`reservedFor`** (reserved for) · ✚ `reservedAt` · ✚ `assignedTo` (issued to a person) · `images[]` · `updatedAt` · `outbox[]`.
-**Available** = `stowed && !picked && reservedFor == null`.
-New key index: `{ product, stowed, picked, reservedFor }`. Seven of today's nine indexes are dropped once usage checks confirm they're covered.
+`barcode` (**unique**) · `product` · `serial` · location (`site/location/shelf` + names) · `stowed`, `stowby`, `stowdate` · `picked`, `pickedby`, `pickeddate`, `pickedreason` · `orderid` (picked for) · ✚ **`reservedFor`** (reserved for) · ✚ `reservedAt` · ✚ `assignedTo` (issued to a person; off the shelf) · `images[]` · `updatedAt`.
+**Available** = `stowed && !picked && reservedFor == null`. Unit barcodes keep the legacy `<productId>_<8 hex>` form.
+New key index: `{ product, stowed, picked, reservedFor }`; `reservedFor`, `orderid` and `assignedTo` have small partial indexes. Seven of today's nine indexes are dropped once usage checks confirm they're covered.
 
 ### `history` (movement log, added to and never edited)
-`id` (unit barcode) · `operation` (stow, pick, relocate, assign, unassign, reserve, release, adjust) · `reason` · location after the move · `from` (for relocate) · `user` · `orderId` · `date`.
+`id` (unit barcode) · `operation` (stow, pick, relocate, assign, unassign, reserve, release, adjust) · `reason` · location after the move · `from` (for relocate) · `user` · ✚ `accountId` (assign/unassign) · `orderId` · `date`.
+
+### ✚ `stock` (counts per product, inventory-svc)
+`id` (= product id) · `productName`, `type`, `threshold`, `active` (copied from catalog events) · `available`, `reserved`, `picked`, `assigned` · `low` · `outbox[]`.
+Updated **in the same transaction** as every scan, with counts recomputed from `storage`, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold > 0 and available ≤ threshold; `stock.low` is sent when it turns true.
 
 ### `orders` (carts and requests)
 

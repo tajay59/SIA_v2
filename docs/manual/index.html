@@ -846,9 +846,9 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td>inventory</td>
-<td><code>storage</code>, <code>history</code></td>
+<td><code>storage</code>, <code>history</code>, <code>stock</code></td>
 <td><code>inventory.stock.events</code></td>
-<td><code>order.events</code></td>
+<td><code>catalog.product.events</code>, <code>order.events</code></td>
 <td>—</td>
 </tr>
 <tr>
@@ -1368,11 +1368,14 @@ Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 
 </tbody>
 </table>
 <h3 id="storage-one-document-per-physical-unit"><code>storage</code> (one document per physical unit)</h3>
-<p><code>barcode</code> (<strong>unique</strong>) · <code>product</code> · <code>serial</code> · location (<code>site/location/shelf</code> + names) · <code>stowed</code>, <code>stowby</code>, <code>stowdate</code> · <code>picked</code>, <code>pickedby</code>, <code>pickeddate</code>, <code>pickedreason</code> · <code>orderid</code> (picked for) · ✚ <strong><code>reservedFor</code></strong> (reserved for) · ✚ <code>reservedAt</code> · ✚ <code>assignedTo</code> (issued to a person) · <code>images[]</code> · <code>updatedAt</code> · <code>outbox[]</code>.
-<strong>Available</strong> = <code>stowed &amp;&amp; !picked &amp;&amp; reservedFor == null</code>.
-New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of today's nine indexes are dropped once usage checks confirm they're covered.</p>
+<p><code>barcode</code> (<strong>unique</strong>) · <code>product</code> · <code>serial</code> · location (<code>site/location/shelf</code> + names) · <code>stowed</code>, <code>stowby</code>, <code>stowdate</code> · <code>picked</code>, <code>pickedby</code>, <code>pickeddate</code>, <code>pickedreason</code> · <code>orderid</code> (picked for) · ✚ <strong><code>reservedFor</code></strong> (reserved for) · ✚ <code>reservedAt</code> · ✚ <code>assignedTo</code> (issued to a person; off the shelf) · <code>images[]</code> · <code>updatedAt</code>.
+<strong>Available</strong> = <code>stowed &amp;&amp; !picked &amp;&amp; reservedFor == null</code>. Unit barcodes keep the legacy <code>&lt;productId&gt;_&lt;8 hex&gt;</code> form.
+New key index: <code>{ product, stowed, picked, reservedFor }</code>; <code>reservedFor</code>, <code>orderid</code> and <code>assignedTo</code> have small partial indexes. Seven of today's nine indexes are dropped once usage checks confirm they're covered.</p>
 <h3 id="history-movement-log-added-to-and-never-edited"><code>history</code> (movement log, added to and never edited)</h3>
-<p><code>id</code> (unit barcode) · <code>operation</code> (stow, pick, relocate, assign, unassign, reserve, release, adjust) · <code>reason</code> · location after the move · <code>from</code> (for relocate) · <code>user</code> · <code>orderId</code> · <code>date</code>.</p>
+<p><code>id</code> (unit barcode) · <code>operation</code> (stow, pick, relocate, assign, unassign, reserve, release, adjust) · <code>reason</code> · location after the move · <code>from</code> (for relocate) · <code>user</code> · ✚ <code>accountId</code> (assign/unassign) · <code>orderId</code> · <code>date</code>.</p>
+<h3 id="stock-counts-per-product-inventory-svc">✚ <code>stock</code> (counts per product, inventory-svc)</h3>
+<p><code>id</code> (= product id) · <code>productName</code>, <code>type</code>, <code>threshold</code>, <code>active</code> (copied from catalog events) · <code>available</code>, <code>reserved</code>, <code>picked</code>, <code>assigned</code> · <code>low</code> · <code>outbox[]</code>.
+Updated <strong>in the same transaction</strong> as every scan, with counts recomputed from <code>storage</code>, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold &gt; 0 and available ≤ threshold; <code>stock.low</code> is sent when it turns true.</p>
 <h3 id="orders-carts-and-requests"><code>orders</code> (carts and requests)</h3>
 <table>
 <thead>
@@ -2016,7 +2019,7 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>. Seven of t
 <tr>
 <td>A5</td>
 <td>Stock integrity (units, reservations, history)</td>
-<td><code>storage</code>, <code>history</code></td>
+<td><code>storage</code>, <code>history</code>, <code>stock</code></td>
 <td><strong>High</strong></td>
 <td>Theft concealment, overselling</td>
 </tr>
@@ -6120,7 +6123,8 @@ export const cimhDark = {
 </tbody>
 </table>
 <h3 id="m04-storage">M04 <code>storage</code></h3>
-<p>Unchanged fields + <code>reservedFor:null</code>, <code>reservedAt:null</code>, <code>assignedTo</code> (<strong>mapped from legacy self-stow data</strong>: units stowed to a person rather than a shelf become <code>assignedTo: &lt;accountId&gt;</code>; the exact field rule is listed in the DR-1 report), <code>updatedAt</code>. Indexes rebuilt per BSD §5.8 (<code>barcode</code> <strong>unique</strong>).</p>
+<p>Unchanged fields + <code>assignedTo</code> (<strong>mapped from legacy self-stow data</strong>: units stowed to a person rather than a shelf become <code>assignedTo: &lt;accountId&gt;</code> and <code>stowed: false</code>; the exact field rule is listed in the DR-1 report), <code>updatedAt</code>. <code>reservedFor</code>/<code>reservedAt</code> are left absent (= free). Indexes rebuilt per BSD §5.8 (<code>barcode</code> <strong>unique</strong>).</p>
+<p>Then build <strong><code>stock</code></strong> (BSD §5.11): one document per product with <code>productName</code>, <code>type</code>, <code>threshold</code>, <code>active</code> from <code>product</code>, counts computed from the migrated <code>storage</code>, <code>low</code>, <code>outbox: []</code> (no events at cut-over). Check: for every product, <code>available + reserved</code> = stowed, unpicked units.</p>
 <h3 id="m05-history">M05 <code>history</code></h3>
 <table>
 <thead>
@@ -7596,8 +7600,15 @@ rs.initiate({
 <td>55 req/s for 3 min (lists, detail, search, staff)</td>
 <td><strong>Pass.</strong> p95 43 ms, p99 71 ms, 0 errors; search p95 68 ms; all 55 queries index-backed</td>
 </tr>
+<tr>
+<td><strong>P4 inventory</strong></td>
+<td>200k units, 2k products</td>
+<td>Explain only</td>
+<td><strong>Pass.</strong> 133 queries, all index-backed (incl. partial indexes)</td>
+</tr>
 </tbody>
 </table>
+<p>P4's gate is concurrency: integration tests race two reservations for the last units (one wins, the loser holds nothing), two crossing multi-line reservations (fails without the transaction), and two devices scanning the same unit.</p>
 <p><strong>For P9:</strong> one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.</p>
 <h2 id="157-resilience-tests">15.7 Resilience tests</h2>
 <table>

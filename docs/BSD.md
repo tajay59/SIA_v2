@@ -63,6 +63,7 @@ Only the owning service connects to its collections. Each service has **its own 
 | `misc` | catalog-svc | `svc_catalog` | find, insert, update | 12 | ~5k (sites/shelves) |
 | `storage` | inventory-svc | `svc_inventory` | find, insert, update | 697 | 30M |
 | `history` | inventory-svc | `svc_inventory` | find, insert | 860 | +5M/year |
+| `stock` ✚ | inventory-svc | `svc_inventory` | find, insert, update | — | 2M (one per product) |
 | `orders` | order-svc | `svc_order` | find, insert, update | 39 | +1.5M/year (+ carts) |
 | `products` | — | — | **dropped** (empty legacy collection) | 0 | — |
 
@@ -353,30 +354,35 @@ Common fields: `_id`, `id` R, `kind` R, `updatedAt` R, `updatedBy` Actor R.
 | `picked` | bool | R | ⟲ | Removed from stock |
 | `pickedby`, `pickeddate`, `pickedreason` | string?, Timestamp?, string? | | ⟲ | |
 | `orderid` | Id? | | ⟲ | Request the unit was **picked for** |
-| `reservedFor` | Id? | | ✚ | Request the unit is **reserved for** (CIMH stock line or PROBONO). `null` = free |
+| `reservedFor` | Id? | | ✚ | Request the unit is **reserved for** (CIMH stock line or PROBONO). Absent (or `null`) = free; v2 removes the field on release |
 | `reservedAt` | Timestamp? | | ✚ | |
-| `assignedTo` | string? | | ✚ | Account id when issued to a person (self-stow / "who has what") |
+| `assignedTo` | string? | | ✚ | Account id when issued to a person (self-stow / "who has what"). An issued unit is off the shelf (`stowed: false`) and counts as assigned, not available; removed on return |
 | `images` | string[] | | ⟲ | |
 | `updatedAt` | Timestamp | R | ✚ | |
-| `outbox` | OutboxEvent[] | R | ✚ | |
+
+Units carry no outbox: inventory's events are carried by the product's `stock` document (§5.11).
 
 **Indexes** (existing ones are kept or replaced):
 
 | Index | Purpose | Status |
 |---|---|---|
 | `{ barcode: 1 }` **unique** | Scans | Make unique (now non-unique) |
-| `{ product: 1, stowed: 1, picked: 1, reservedFor: 1 }` | Availability and reservation (TAD §7.3) | ✚ |
-| `{ shelf: 1, stowed: 1 }` | Shelf lookup | ⟲ |
+| `{ product: 1, stowed: 1, picked: 1, reservedFor: 1 }` | Availability, reservation and per-product counts (TAD §7.3) | ✚ |
+| `{ shelf: 1, stowed: 1, barcode: 1 }` | Shelf lookup, paged by barcode | ⟲ (barcode added) |
 | `{ location: 1, product: 1, stowed: 1 }` | Location stock | ⟲ |
-| `{ reservedFor: 1 }` sparse | Release on cancel | ✚ |
-| `{ orderid: 1 }` sparse | Units picked for a request | ✚ |
-| `{ assignedTo: 1 }` sparse | Who has what | ✚ |
+| `{ reservedFor: 1 }` partial (`reservedFor > ""`) | Release on cancel | ✚ |
+| `{ orderid: 1 }` partial (`orderid > ""`) | Units picked for a request (legacy `""` not indexed) | ✚ |
+| `{ assignedTo: 1, barcode: 1 }` and `{ product: 1, assignedTo: 1 }` partial (`assignedTo > ""`) | Who has what (grouped by person); assigned count per product | ✚ |
 | `{ product: 1 }`, `{ location: 1 }`, `{ shelf: 1 }`, `{ stowed: 1 }`, `{ product: 1, stowed: 1 }`, `{ shelf: 1, product: 1, stowed: 1 }` | — | **Drop** after verifying with `$indexStats` (covered by the indexes above) |
+
+Partial indexes only hold the few units that carry the value (most of 30M units carry none). `explain` on every inventory query runs in CI (`tests/integration/test_query_plans.py`, TR-DATA-5).
 
 **Rules:**
 - A unit is **available** when `stowed: true, picked: false, reservedFor: null`.
 - Reservation and release follow TAD §7.3 (transaction, conditional on `reservedFor: null`).
 - A unit with `reservedFor` set can only be picked for that request.
+- Unit barcodes keep the legacy form `<productId>_<8 hex>`. `POST /labels` creates the units (not stowed); a legacy label that was printed without a record is created on its first stow if the product exists.
+- A unit picked **for a request** never goes back on a shelf; one picked with a reason can be stowed again. An issued unit must be returned (`/unassign`) before it is stowed, picked or moved.
 
 ### 5.9 `history` (inventory-svc)
 
@@ -389,8 +395,9 @@ Movement log, added to and never edited.
 | `operation` | `"stow"\|"pick"\|"relocate"\|"assign"\|"unassign"\|"reserve"\|"release"\|"adjust"` | R | ⟲ | |
 | `reason` | string? | | ⟲ | |
 | `site`, `location`, `shelf` | string? | | ⟲ | Location after the operation |
-| `from` | `{ site, location, shelf }`? | | ✚ | For relocate |
-| `user` | string | R | ⟲ | Account id |
+| `from` | `{ site, location, shelf }`? | | ✚ | For relocate (and assign, if the unit was on a shelf) |
+| `user` | string | R | ⟲ | Account id of the staff member who scanned |
+| `accountId` | string? | | ✚ | assign / unassign: the person the unit was issued to |
 | `orderId` | Id? | | ✚ | |
 | `date` | Timestamp | R | ⟲ | |
 
@@ -398,11 +405,34 @@ Movement log, added to and never edited.
 
 | Index | Purpose |
 |---|---|
-| `{ id: 1, date: -1 }` | History of one unit |
-| `{ user: 1, date: -1 }` | What one person did |
-| `{ date: -1 }` | Recent activity |
+| `{ id: 1, date: -1, _id: -1 }` | History of one unit |
+| `{ user: 1, date: -1, _id: -1 }` | What one person did |
+| `{ date: -1, _id: -1 }` | Recent activity (paged on date, then `_id` for equal timestamps) |
+
+Legacy operations are shown with v2 names (`orderpick` → `pick`, `selfstow` → `assign`). Reservations and releases are logged too (`reserve`, `release`, with `orderId`).
 
 **Retention:** indefinite. Archive yearly if it exceeds 50M documents.
+
+### 5.11 `stock` ✚ (inventory-svc): counts per product
+
+One document per product. It answers "how many, and is it low?" without counting 30M units, and it carries inventory-svc's outbox, so every `inventory.stock.events` message is keyed by the product id (TAD §5.3). Every scan updates it **in the same transaction** as the unit and its `history` row, with counts **recomputed from `storage`**, so it can't drift from the units.
+
+| Field | Type | R | Notes |
+|---|---|---|---|
+| `_id` | ObjectId | R | |
+| `id` | string | R | **Unique.** = `product.id` |
+| `productName`, `type` | string | | Copied from `catalog.product.events` |
+| `threshold` | int | R | Copied from catalog; 0 = no low-stock alert |
+| `active` | bool | R | Copied from catalog (`product.deleted` → false) |
+| `catalogAt` | Timestamp | | `occurredAt` of the last catalog event applied; an older event never overwrites a newer one |
+| `available`, `reserved`, `picked`, `assigned` | int | R | Counts from `storage` (available = stowed, not picked, not reserved) |
+| `low` | bool | R | `active` and `threshold > 0` and `available <= threshold`; `stock.low` is published when it turns true |
+| `updatedAt` | Timestamp | R | |
+| `outbox` | OutboxEvent[] | R | `stock.changed`, `stock.low`, `stock.reserved`, `stock.reservation_failed`, `stock.released`, `unit.stowed`, `unit.picked` |
+
+**Indexes:** `{ id: 1 }` unique; `{ low: 1, productName: 1, id: 1 }` (low-stock list); `{ outbox.0: 1 }` sparse (relay sweep).
+
+**Built** from `catalog.product.events` (a compacted topic, so a new consumer starts from every product) and, at cut-over, by the migration for every product (MIGRATION_PLAN M04).
 
 ### 5.10 `orders` (order-svc): carts and requests
 

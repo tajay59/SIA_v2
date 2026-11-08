@@ -191,12 +191,12 @@ auth/         shared token-checking library (from packages/)
 | Aspect | Detail |
 |---|---|
 | **Responsibilities** | Sites, locations, shelves (QR), unit labels, stow, pick, relocate, self-assign, lookups, stock counts, low-stock detection, **reservations** |
-| **Owns** | `storage`, `history` (sites/shelves records are kept in `misc` through catalog-svc's reference-data API; see the BSD) |
+| **Owns** | `storage`, `history`, `stock` (per-product counts + outbox, BSD §5.11). Sites/shelves records are kept in `misc` through catalog-svc's internal places API (looked up by barcode, cached in Redis); see the BSD |
 | **Public API** | `/api/inventory/v1/*`: sites, shelves, units, stow, pick, relocate, lookup, stock |
 | **Internal API** | `POST /internal/availability` (for each product, whether the full quantity is available), `POST /internal/reservations`, `DELETE /internal/reservations/{orderId}` |
 | **Publishes** | `inventory.stock.events`: `stock.changed`, `stock.low`, `stock.reserved`, `stock.released`, `unit.stowed`, `unit.picked` |
-| **Consumes** | `order.events`: `order.accepted` (reserve CIMH-stock items), `order.probono_approved` (reserve PROBONO), `order.cancelled` (release), `order.shipped` (mark reserved units picked) |
-| **Concurrency** | Reservations run as a **multi-document transaction** on the `storage` documents (see §7.3) |
+| **Consumes** | `catalog.product.events` (name, threshold, active → `stock`); `order.events`: `order.accepted` (reserve CIMH-stock items), `order.probono_approved` (reserve PROBONO), `order.cancelled` (release), `order.shipped` (mark reserved units picked) — the order handlers arrive with order-svc (P5) |
+| **Concurrency** | Every scan and every reservation is **one multi-document transaction** (unit + `history` + `stock` counts + events; §7.3); scans carry an `Idempotency-Key` (Redis, 24 h) |
 
 ### 4.4 order-svc
 | Aspect | Detail |

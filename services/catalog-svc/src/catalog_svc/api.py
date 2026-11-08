@@ -396,9 +396,11 @@ async def places(
     kind: Literal["site", "location", "shelf"] | None = None,
     site: str | None = None,
     location: str | None = None,
+    barcode: str | None = None,
     me: Principal = Depends(require_service),
 ) -> dict[str, Any]:
-    return {"items": await svc(request).places({"kind": kind, "site": site, "location": location})}
+    filters = {"kind": kind, "site": site, "location": location, "barcode": barcode}
+    return {"items": await svc(request).places(filters)}
 
 
 @router.put("/internal/places", tags=["internal"])

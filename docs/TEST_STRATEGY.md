@@ -101,6 +101,9 @@ Each service phase ends with a smaller check on the dev stack, with **one** cont
 | Phase | Data | Load | Result |
 |---|---|---|---|
 | **P3 catalogue** (2026-11-07) | 200k products | 55 req/s for 3 min: 35 % lists (+ next page), 25 % detail, 25 % search, 15 % staff | **Pass.** p95 43 ms, p99 71 ms, 0 errors in 9,927 requests; search p95 68 ms; 132 of 256 MB. 55 of 55 queries index-backed (fixed on the way: "show inactive" scanned all 200k products; type filters relied on MET being common) |
+| **P4 inventory** (2026-11-07) | 200k units, 2k products, 400k history rows (`explain_inventory.py`) | Explain only (P4's gate is the concurrency test, below) | **Pass.** 133 queries, all index-backed incl. the partial indexes (fixed on the way: assigned count filtered every unit of a product; unit lists looked up product names one by one) |
+
+Concurrency (P4 exit): `tests/integration/test_inventory.py` races two reservations for the last units (one wins, the loser holds nothing), two requests taking the same two products in opposite order (only possible to get right with the transaction; the test fails with transactions switched off), and two devices scanning the same unit.
 
 **Findings for P9:**
 - One catalog-svc container (0.5 CPU, 2 workers) is **CPU-bound in Python**: p95 stays < 80 ms up to ~145 req/s, then requests queue (no errors, but p95 reaches seconds by ~250 req/s). The 1,000 req/s browse mix (~850 req/s on the catalogue) therefore needs about **6 replicas at 0.5 CPU or more CPU per replica**, not today's 2 × 0.5 (INFRASTRUCTURE §4.1). This is CPU, not memory.

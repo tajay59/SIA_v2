@@ -86,7 +86,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       COOKIE_SECURE: "false"          # dev runs over http
       HIBP_ENABLED: "false"           # no internet calls from dev
-      SERVICE_SECRETS: "notification=dev-notification-secret,order=dev-order-secret,catalog=dev-catalog-secret"
+      SERVICE_SECRETS: "notification=dev-notification-secret,order=dev-order-secret,catalog=dev-catalog-secret,inventory=dev-inventory-secret"
       LOG_LEVEL: DEBUG
     ports: ["127.0.0.1:18001:8000"]
     depends_on:
@@ -214,6 +214,64 @@ services:
     depends_on:
       kafka-init: { condition: service_completed_successfully }
       catalog-svc: { condition: service_healthy }
+    mem_limit: 128m
+    healthcheck: { disable: true }
+
+  inventory-svc:
+    build:
+      context: ..
+      dockerfile: services/inventory-svc/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/inventory-svc:dev
+    <<: *hardening
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      SERVICE_SECRET: dev-inventory-secret
+      LOG_LEVEL: DEBUG
+    ports: ["127.0.0.1:18004:8000"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      identity-svc: { condition: service_healthy }
+      catalog-svc: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 0.5
+
+  outbox-relay-inventory:
+    profiles: [kafka]
+    image: cimh/inventory-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      RELAY_NAME: inventory
+      RELAY_COLLECTIONS: stock
+      RELAY_TOPICS: "stock.=inventory.stock.events,unit.=inventory.stock.events"
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    mem_limit: 64m
+    healthcheck: { disable: true }
+
+  inventory-consumer:
+    profiles: [kafka]
+    image: cimh/inventory-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "inventory_svc.consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      inventory-svc: { condition: service_healthy }
     mem_limit: 128m
     healthcheck: { disable: true }
 

@@ -310,7 +310,7 @@ d = Diagram("08-data-ownership", "Data ownership: one inventory database, each c
 groups = [
     ("identity-svc", ["accounts", "temp", "organisations (new)", "auditlog (new)"], 20),
     ("catalog-svc", ["product", "xuser (view)", "misc"], 290),
-    ("inventory-svc", ["storage", "history"], 560),
+    ("inventory-svc", ["storage", "history", "stock (new)"], 560),
     ("order-svc", ["orders (incl. carts)"], 830),
 ]
 coll = {}

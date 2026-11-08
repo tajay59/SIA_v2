@@ -24,7 +24,7 @@ admin.auth("root", secret("mongo_root"));
 const OWN = {
   identity: ["accounts", "temp", "organisations", "auditlog"],
   catalog: ["product", "misc"],
-  inventory: ["storage", "history"],
+  inventory: ["storage", "history", "stock"],
   order: ["orders"],
 };
 const READ_ONLY_VIEWS = { catalog: ["xuser"] };
