@@ -94,6 +94,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/inventory/': RouteRecordInfo<
+      '/inventory/',
+      '/inventory',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/login': RouteRecordInfo<
       '/login',
       '/login',
@@ -104,6 +111,13 @@ declare module 'vue-router/auto-routes' {
     '/mfa-setup': RouteRecordInfo<
       '/mfa-setup',
       '/mfa-setup',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/pick': RouteRecordInfo<
+      '/pick',
+      '/pick',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -136,6 +150,27 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/reports/assignments': RouteRecordInfo<
+      '/reports/assignments',
+      '/reports/assignments',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/reports/history': RouteRecordInfo<
+      '/reports/history',
+      '/reports/history',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/reports/stock': RouteRecordInfo<
+      '/reports/stock',
+      '/reports/stock',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/reset-password': RouteRecordInfo<
       '/reset-password',
       '/reset-password',
@@ -146,6 +181,13 @@ declare module 'vue-router/auto-routes' {
     '/staff-only': RouteRecordInfo<
       '/staff-only',
       '/staff-only',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/stow': RouteRecordInfo<
+      '/stow',
+      '/stow',
       Record<never, never>,
       Record<never, never>,
       | never
@@ -242,6 +284,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/inventory/index.vue': {
+      routes:
+        | '/inventory/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/login.vue': {
       routes:
         | '/login'
@@ -253,6 +303,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/mfa-setup.vue': {
       routes:
         | '/mfa-setup'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/pick.vue': {
+      routes:
+        | '/pick'
       views:
         | never
       pathParamNames:
@@ -290,6 +348,30 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/reports/assignments.vue': {
+      routes:
+        | '/reports/assignments'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/reports/history.vue': {
+      routes:
+        | '/reports/history'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/reports/stock.vue': {
+      routes:
+        | '/reports/stock'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/reset-password.vue': {
       routes:
         | '/reset-password'
@@ -301,6 +383,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/staff-only.vue': {
       routes:
         | '/staff-only'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/stow.vue': {
+      routes:
+        | '/stow'
       views:
         | never
       pathParamNames:

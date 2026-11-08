@@ -58,3 +58,4 @@ export type { CatalogPaths, DocumentsPaths, IdentityPaths, InventoryPaths, Order
 
 export type { components as IdentityComponents } from './generated/identity'
 export type { components as CommonCatalogComponents } from './generated/catalog'
+export type { components as InventoryComponents } from './generated/inventory'
