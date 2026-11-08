@@ -1,24 +1,49 @@
 <script setup lang="ts">
 /**
- * SHOP shell (DESIGN_BRIEF §8): top app bar (64 px, surface, hairline) with logo, navigation and the
- * account menu: Catalogue, Pro Bono, search; My requests for customers. The cart arrives with P5.
+ * SHOP shell, same structure as the legacy SHOP (App.vue, TopAppBar, BottomNavBar, Footer):
+ * desktop = top bar (brand left, main navigation centred, account + theme right); phones = no top bar,
+ * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page. The sign-in pages
+ * (login, sign-up, verify, password) have no top bar, as in legacy. The cart joins both bars with P5.
  */
 import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
 import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
-import { mdiAccountCircleOutline, mdiLogout, mdiMagnify, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
-import { computed } from 'vue'
+import {
+  mdiAccountCircleOutline,
+  mdiClipboardTextOutline,
+  mdiGiftOutline,
+  mdiHomeOutline,
+  mdiLogin,
+  mdiLogout,
+  mdiMenu,
+  mdiViewGridOutline,
+  mdiWeatherNight,
+  mdiWhiteBalanceSunny,
+} from '@mdi/js'
+import { computed, ref } from 'vue'
+import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
+import ShopFooter from './components/ShopFooter.vue'
 
 const session = useSession()
 const route = useRoute()
 const router = useRouter()
+const { mdAndUp } = useDisplay()
 const { dark, toggle } = useThemeMode()
 const brand = computed(() => (dark.value ? logoWhite : logo))
-const AUTH_PAGES = ['/signup', '/verify', '/pending-approval', '/forgot-password', '/reset-password', '/']
-const loginQuery = computed(() => (AUTH_PAGES.includes(route.path) ? {} : { returnTo: route.fullPath }))
+const SIGN_IN_PAGES = ['/login', '/signup', '/verify', '/pending-approval', '/forgot-password', '/reset-password']
+const signInPage = computed(() => SIGN_IN_PAGES.includes(route.path))
+const loginQuery = computed(() => (route.path === '/' || signInPage.value ? {} : { returnTo: route.fullPath }))
+const menu = ref(false)
+
+const nav = computed(() => [
+  { to: '/catalogue', title: 'Catalogue', icon: mdiViewGridOutline, show: true },
+  { to: '/pro-bono', title: 'Pro Bono', icon: mdiGiftOutline, show: true },
+  { to: '/requests', title: 'My requests', short: 'Requests', icon: mdiClipboardTextOutline, show: session.isCustomer },
+])
 
 async function logout() {
+  menu.value = false
   await session.logout()
   await router.push('/')
 }
@@ -27,51 +52,66 @@ async function logout() {
 <template>
   <v-app>
     <a href="#main" class="skip-link">Skip to content</a>
-    <v-app-bar flat border="b" height="64" color="surface">
+    <v-app-bar v-if="mdAndUp && !signInPage" flat border="b" height="72" color="surface">
       <div class="bar">
         <router-link to="/" class="brand" aria-label="CIMH Stores home">
-          <img :src="brand" alt="CIMH" height="32" width="104" />
-          <span class="t-label muted brand-name">Stores</span>
+          <img :src="brand" alt="CIMH" height="36" width="117" />
+          <span class="brand-name">Stores</span>
         </router-link>
-        <nav class="nav hide-xs" aria-label="Main">
-          <v-btn to="/catalogue" variant="text">Catalogue</v-btn>
-          <v-btn to="/pro-bono" variant="text">Pro Bono</v-btn>
-          <v-btn v-if="session.isCustomer" to="/requests" variant="text">My requests</v-btn>
+        <nav class="nav" aria-label="Main">
+          <router-link v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link">{{ n.title }}</router-link>
         </nav>
-        <span class="spacer" />
-        <v-btn variant="text" :icon="mdiMagnify" aria-label="Search the catalogue" to="/search" />
-        <v-btn
-          variant="text"
-          :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
-          :aria-label="dark ? 'Use light theme' : 'Use dark theme'"
-          @click="toggle"
-        />
-        <template v-if="session.isLoggedIn">
-          <v-menu location="bottom end">
+        <div class="right">
+          <v-btn
+            variant="text"
+            :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
+            :aria-label="dark ? 'Use light theme' : 'Use dark theme'"
+            @click="toggle"
+          />
+          <v-menu v-if="session.isLoggedIn" location="bottom end">
             <template #activator="{ props }">
-              <v-btn v-bind="props" variant="text" :prepend-icon="mdiAccountCircleOutline">
-                {{ session.account?.firstname }}
-              </v-btn>
+              <v-btn v-bind="props" variant="text" :prepend-icon="mdiAccountCircleOutline">{{ session.account?.firstname }}</v-btn>
             </template>
             <v-list density="compact" min-width="200">
-              <v-list-item to="/catalogue" title="Catalogue" class="show-xs" />
-              <v-list-item to="/pro-bono" title="Pro Bono" class="show-xs" />
-              <v-list-item to="/account" title="Profile" />
+              <v-list-item to="/account" title="Profile" :prepend-icon="mdiAccountCircleOutline" />
               <v-list-item :prepend-icon="mdiLogout" title="Log out" @click="logout" />
             </v-list>
           </v-menu>
-        </template>
-        <template v-else-if="route.path !== '/login'">
-          <v-btn :to="{ path: '/login', query: loginQuery }" variant="text" class="hide-xs">Log in</v-btn>
-          <v-btn to="/signup" color="primary" variant="flat">Sign up</v-btn>
-        </template>
+          <template v-else>
+            <v-btn :to="{ path: '/login', query: loginQuery }" variant="text">Log in</v-btn>
+            <v-btn to="/signup" color="primary" variant="flat">Sign up</v-btn>
+          </template>
+        </div>
       </div>
     </v-app-bar>
 
     <v-main id="main">
       <AppNotifier />
       <router-view />
+      <ShopFooter />
     </v-main>
+
+    <v-bottom-navigation v-if="!mdAndUp" grow height="64" border="t" color="primary" aria-label="Main">
+      <v-menu v-model="menu" location="top start" :close-on-content-click="false">
+        <template #activator="{ props }">
+          <v-btn v-bind="props" :prepend-icon="mdiMenu" stacked>Menu</v-btn>
+        </template>
+        <v-card min-width="240">
+          <v-list density="comfortable">
+            <v-list-item v-if="session.isLoggedIn" :title="session.displayName" :subtitle="session.account?.email" />
+            <v-list-item to="/" title="Home" :prepend-icon="mdiHomeOutline" @click="menu = false" />
+            <v-list-item v-if="session.isLoggedIn" to="/account" title="Profile" :prepend-icon="mdiAccountCircleOutline" @click="menu = false" />
+            <v-list-item :title="dark ? 'Light theme' : 'Dark theme'" :prepend-icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight" @click="toggle" />
+            <v-list-item v-if="session.isLoggedIn" title="Log out" :prepend-icon="mdiLogout" @click="logout" />
+            <template v-else>
+              <v-list-item :to="{ path: '/login', query: loginQuery }" title="Log in" :prepend-icon="mdiLogin" @click="menu = false" />
+              <v-list-item to="/signup" title="Sign up" :prepend-icon="mdiAccountCircleOutline" @click="menu = false" />
+            </template>
+          </v-list>
+        </v-card>
+      </v-menu>
+      <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" stacked>{{ n.short ?? n.title }}</v-btn>
+    </v-bottom-navigation>
   </v-app>
 </template>
 
@@ -81,7 +121,8 @@ async function logout() {
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 var(--sp-4);
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: var(--sp-4);
 }
@@ -91,19 +132,51 @@ async function logout() {
   gap: var(--sp-2);
   text-decoration: none;
   color: inherit;
+  justify-self: start;
 }
 .brand img {
-  height: 32px;
+  height: 36px;
   width: auto;
+}
+.brand-name {
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 0.72;
 }
 .nav {
   display: flex;
-  gap: var(--sp-1);
+  gap: var(--sp-6);
 }
-@media (max-width: 600px) {
-  .brand-name {
-    display: none;
-  }
+.nav-link {
+  position: relative;
+  padding: 8px 2px;
+  font-size: 15px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface));
+  text-decoration: none;
+}
+.nav-link:hover {
+  color: rgb(var(--v-theme-primary));
+}
+.nav-link.router-link-active {
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+}
+.nav-link.router-link-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgb(var(--v-theme-primary));
+}
+.right {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 .skip-link {
   position: absolute;

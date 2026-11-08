@@ -21,7 +21,7 @@ function done() {
 </script>
 
 <template>
-  <AuthCard title="SIA" subtitle="Stores, inventory and requests for CIMH staff.">
+  <AuthCard title="Welcome back" subtitle="SIA: stores, inventory and requests for CIMH staff.">
     <v-alert v-if="notice" type="success" variant="tonal" density="compact" class="mb-4">{{ notice }}</v-alert>
     <LoginForm
       verify-path="/verify"

@@ -77,6 +77,7 @@ Rebuild of CIMH's stores system to production grade (target: 1M registered users
 - First admins come from migration; dev bootstrap = promote a CIMH account in the dev DB (`tools/e2e/identity_smoke.py`).
 - **Erasure** is admin-performed on the person's request (password-confirmed), never self-service; self-service export hides staff names (role only). `svc_identity` keeps `update` on `auditlog`, used only to anonymise erased/purged people.
 - Product ids keep the legacy format `<TYPE><32 hex>` (or a scanned barcode); `number` from `misc` `counter:product`. Customer reads use `product` + `PUBLIC_FIELDS` (same list as the `xuser` view). Request bodies are strict (no coercion). Each calling service gets its own `service_secret_<name>` file.
+- **UI structure follows the legacy apps** (owner, 2026-11-07): every screen keeps the layout, navigation and section order of the matching legacy page (`legacy/shop/src`, `legacy/sia/src`); the Design Brief only supplies the modern look. v2 rules still override legacy content (no prices/serials for customers, Pro Bono naming).
 - Org name uniqueness via `nameKey` (lower-cased) instead of a collation index. HIBP fail-open (TRD). Missing `If-Match` → 428 `PRECONDITION_REQUIRED`.
 
 ## Staging-lite server (demo, shared)
@@ -138,6 +139,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-07: Screens rebuilt on the legacy UI structure (owner rule): SHOP shell (top bar / bottom nav / footer), home carousel + logo band + category rows, catalogue banner + chips, product page, legacy sign-in layout; SIA top header with Admin menu, legacy home, products grid/list, product overview. Legacy images in `packages/web-app/src/assets/legacy/`.
 - 2026-11-07: P3 screens (SHOP catalogue/product/Pro Bono/search/home, SIA products + settings), J-10 in CI; API: staff `sellable` filter, `/reference?includeInactive`. Fixed: global link colour hid labels of buttons rendered as links (e.g. "Sign up"); e2e helpers reused one admin email across specs.
 - 2026-11-07: media-worker built; image paths aligned with the BSD layout (`public/products/<productId>/`); fixed a worker publishing outbox-only fields (consumers DLQ'd it), caught on the dev stack.
 - 2026-11-07: P3 catalog-svc backend + deploy wiring. Fixed on the way: JWKS_URL in prod/staging env pointed at a 404 path; prod `deploy.sh` failed with >1 service (other digests unset); contract: product responses `oneOf`→`anyOf`, `jobId` on media events, catalog health at root, missing 404s, implicit **428** for If-Match ops, strict bodies.

@@ -4879,19 +4879,27 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-01</td>
-<td>Hero (one primary action: Browse catalogue), featured MET/RAD products, how requesting works, Pro Bono band. The hero photo is picked up from <code>web/shop/src/assets/hero/hero-1600.webp</code> (+ <code>hero-800.webp</code>, record in <code>SOURCE.md</code>) when the owner adds it; until then the hero is text only</td>
+<td>Legacy Home structure: hero carousel (owner's image, radar, AWS), logo band with the "Online Stores" sign-in card, "Radar Spares" and "Met-service Spares" rows. Hero files in <code>web/shop/src/assets/hero/</code></td>
 </tr>
 <tr>
 <td>S-02, S-04, S-06</td>
-<td>Filter column (drawer on phones; two product columns), filters in the URL, "Load more". S-06 ranks by relevance</td>
+<td>Legacy Inventory/NCI structure: title + search banner, type (Pro Bono: project) chips, Filters menu, product grid; search results on the same page (<code>/search</code> redirects to <code>/catalogue?q=</code>)</td>
 </tr>
 <tr>
 <td>S-03</td>
-<td>Gallery with thumbnails, make/model, availability, Pro Bono badge with its limit, specs; never a price. Visitors get "Log in to request"; CIMH accounts a note; customers a quantity stepper with <strong>Add to request disabled</strong> until order-svc (P5)</td>
+<td>Legacy InventoryItem structure: thumbnail strip + large photo left, one card right (name, availability, Pro Bono limit, description, details, units per pack, quantity, <strong>Add to request disabled</strong> until order-svc, P5). No price or serials</td>
 </tr>
 <tr>
 <td>A-05, A-06, A-07</td>
-<td>List with search/filters (incl. sellable, inactive) and stock count; form with the explicit Pro Bono choice; tabs Details (If-Match), Images (upload, background-removal option, processing tiles, primary, remove), Stock (count only; by location with P4), History (admins: audit entries). Deactivate with a confirmation. "Create labels" comes with P4</td>
+<td>Legacy SIA structure: list with grid/list toggle, search, filters, stock count; product page = photos + description left, Info card right, then tabs Details (edit, explicit Pro Bono choice), Images (upload, background removal, processing tiles, primary, remove), History (admins). "Create labels" comes with P4</td>
+</tr>
+<tr>
+<td>Shells</td>
+<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer, no top bar on sign-in pages; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = legacy split layout on the met-enclosure photo</td>
+</tr>
+<tr>
+<td>A-01</td>
+<td>Legacy SIA Home structure: statement band, Radar / Hydro-Met spares cards, "What are you looking for today?" search, then the account counters</td>
 </tr>
 <tr>
 <td>A-19</td>
@@ -5426,7 +5434,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>Hero image (S-01 only)</td>
-<td>Generated with <strong>OpenArt.ai</strong>. Subject: meteorological and hydrological instruments in a Caribbean setting (e.g. an automatic weather station or radar dome under a clear sky). Style: realistic photo, natural light, calm, CIMH blues; no text, logos, people's faces or recognisable brands. Rules: it's the <strong>only</strong> generated image on the platform; it must not show or imply a specific product from the catalogue; check OpenArt's licence allows commercial use and keep the prompt, date and licence note in <code>assets/hero/SOURCE.md</code>; export WebP at 1600/800 widths, under 200 KB; alt text describes the scene</td>
+<td>Generated with <strong>OpenArt.ai</strong>. Subject: meteorological and hydrological instruments in a Caribbean setting (e.g. an automatic weather station or radar dome under a clear sky). Style: realistic photo, natural light, calm, CIMH blues; no text, logos, people's faces or recognisable brands. Rules: no other new generated images (the legacy carousel images, radar and AWS, are reused under the legacy-structure rule; see <code>packages/web-app/src/assets/legacy/SOURCE.md</code>); it must not show or imply a specific product from the catalogue; check OpenArt's licence allows commercial use and keep the prompt, date and licence note in <code>assets/hero/SOURCE.md</code>; export WebP at 1600/800 widths, under 200 KB; alt text describes the scene</td>
 </tr>
 <tr>
 <td>Logo</td>
@@ -5573,6 +5581,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 </tbody>
 </table>
+<blockquote>
+<p><strong>Structure rule (owner, 2026-11-07):</strong> every screen keeps the structure of the matching legacy page (<code>legacy/shop/src</code>, <code>legacy/sia/src</code>): same layout, navigation and section order. This brief supplies the modern look (tokens, type, spacing, components). Where this brief described a different layout, the legacy structure wins.</p>
+</blockquote>
 <h3 id="86-navigation">8.6 Navigation</h3>
 <table>
 <thead>
@@ -5584,11 +5595,11 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tbody>
 <tr>
 <td>SHOP</td>
-<td>Top app bar (64 px, <code>surface</code>, hairline bottom): logo left · Catalogue · Pro Bono · search (expands) · My requests · cart icon with badge · account menu. Mobile: a bottom nav with 4 items (Home, Catalogue, Requests, Account), with cart and search in the app bar</td>
+<td><strong>Legacy SHOP structure</strong> (TopAppBar, BottomNavBar, Footer): desktop top bar (72 px): logo left · Catalogue · Pro Bono · My requests centred (active = <code>primary</code> + underline) · theme, account menu (or Log in / Sign up) right; cart icon joins with P5. Phones: <strong>no top bar</strong>, a bottom navigation (Menu, Catalogue, Pro Bono, Requests; Menu holds Home, Profile, theme, Log in/out). Footer on every page (CIMH contact, stay connected + write to us, national met/hydro services, other resources). Sign-in pages have no top bar</td>
 </tr>
 <tr>
 <td>SIA</td>
-<td>Left side nav (248 px; icons + labels; collapsible); top bar holds the page title, <strong>global scan box</strong> and user menu. Active item: <code>primary-subtle</code> background + <code>primary</code> text + 3 px left bar</td>
+<td><strong>Legacy SIA structure</strong> (AppHeader): one horizontal header (64 px): logo + "SIA" left · work areas as links (Dashboard, Products; Inventory, Pick, Stow, Orders as they ship; active = <code>primary</code> + 3 px bottom bar) · <strong>Admin</strong> menu (Pending accounts, Accounts, Organisations, Audit log, Settings) · theme + user menu right. Phones: a menu button opens the same links in a drawer. The page title is the page's <code>h1</code> under the header (pages with their own heading set <code>meta.ownHeading</code>). Global scan box: added to the header with P4</td>
 </tr>
 <tr>
 <td>Mobile</td>
@@ -5607,15 +5618,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tbody>
 <tr>
 <td><strong>S-01 Home</strong></td>
-<td>Short hero (not full screen): <code>display</code> headline naming what CIMH supplies and to whom; one primary CTA "Browse catalogue"; the <strong>AI-generated hero image</strong> (§7) on the right. Then featured MET/RAD product cards (4-up), a 3-step "How requesting works" strip (icons + text) and a Pro Bono teaser band (<code>primary-subtle</code>)</td>
+<td><strong>Legacy Home structure</strong>: (1) full-width hero <strong>carousel</strong> (440–600 px), one slide per category (owner's hero image, radar, AWS; legacy images), dark gradient on the left with title, message and a white button into the catalogue; 15 s cycle, paused on hover/focus and for reduced motion; (2) logo band on the legacy gear line-art: CIMH logo + "The Instrumentation and Equipment Spares" + "Online Stores" sign-in card; (3) "Radar Spares" and (4) "Met-service Spares": centred heading + text + a sliding row of product cards + "View all". No prices</td>
 </tr>
 <tr>
 <td><strong>S-02 / S-04 Catalogue</strong></td>
-<td>Left filter column (240 px; drawer on mobile) + product grid; result count and sort at the top; "Load more" button at the bottom</td>
+<td><strong>Legacy Inventory/NCI structure</strong>: banner with the title ("Equipment and Spares" on the gear line-art; "Pro Bono Spares" on solid <code>primary</code>) and the search box on the right; a chip row under it (types; Pro Bono: projects) with a "Filters" menu (department, project, in stock); the product grid (cards: tall 5:6 photo tile, availability chip top-right, Pro Bono badge top-left, name, make · model, "N per pack"). Search results show on the same page (<code>?q=</code>; <code>/search</code> redirects). "Load more" (cursor) instead of page numbers</td>
 </tr>
 <tr>
 <td><strong>S-03 Product</strong></td>
-<td>Two columns: image gallery (main 4:3 + thumbnails) left; right: name (<code>h1</code>), make/model (mono for model number), availability chip, Pro Bono badge with max per request, quantity stepper, <strong>Add to request</strong> (primary). Specs table below</td>
+<td><strong>Legacy InventoryItem structure</strong>: left (3/4) a vertical thumbnail strip beside a large photo with previous/next arrows; right (1/4) one sticky card: name (<code>h1</code>), make/model, availability + Pro Bono badge with its limit, "Product description", "Details" (text + specs), "N in each pack", quantity stepper and a full-width <strong>Add to request</strong>. Phones: name above the photos. No price or serials</td>
 </tr>
 <tr>
 <td><strong>S-07 / S-08 Cart → Submit</strong></td>
@@ -5631,7 +5642,11 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td><strong>A-01 Dashboard</strong></td>
-<td>Grid of counters (4-up), then two lists: "Oldest waiting" requests and "Quotes expiring soon"</td>
+<td><strong>Legacy SIA Home structure</strong>: statement band on the gear line-art (greeting + "The CIMH Instrumentation and Equipment Spares"), Radar / Hydro-Met spares cards into Products, "What are you looking for today?" with a product search; then counters (accounts now; requests and quotes with P5)</td>
+</tr>
+<tr>
+<td><strong>A-05 / A-07 Products</strong></td>
+<td><strong>Legacy SIA ProductsView / ProductPage</strong>: list with a grid/list view toggle (remembered per device); product page = photos and a description card (serials, make/model, text) left, an "Info" card right (stock, low-stock level, cost, units per pack, department, shown to customers, id, Deactivate), then tabs Details (edit), Images, History (admins)</td>
 </tr>
 <tr>
 <td><strong>A-02 Queue</strong></td>

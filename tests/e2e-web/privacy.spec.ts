@@ -58,7 +58,7 @@ test.describe.serial('personal data: export and erasure', () => {
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
     await page.getByRole('textbox', { name: '6-digit code' }).fill(totp(admin.key))
-    await expect(page.getByRole('heading', { name: /Good to see you/ })).toBeVisible()
+    await expect(page.getByText(/Good to see you/)).toBeVisible()
 
     await page.goto(`${SIA}/admin/accounts?erasure=1`)
     const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\.')) })

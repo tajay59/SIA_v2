@@ -7,7 +7,7 @@ definePage({ meta: { guard: 'public', title: 'Catalogue' } })
 
 <template>
   <CatalogueBrowser
-    title="Catalogue"
+    title="Equipment and Spares"
     intro="Meteorological, radar and hydrological instruments, spares and supplies. Prices are quoted when you send a request."
   />
 </template>

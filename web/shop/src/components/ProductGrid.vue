@@ -41,13 +41,13 @@ const emit = defineEmits<{ clear: [] }>()
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: var(--sp-4);
+  gap: var(--sp-8) var(--sp-5, 20px);
 }
-/* Phones: two compact columns instead of one tall card per row. */
+/* Phones: two columns, as the legacy grid wrapped. */
 @media (max-width: 599.98px) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--sp-2);
+    gap: var(--sp-6) var(--sp-3);
   }
 }
 .empty {

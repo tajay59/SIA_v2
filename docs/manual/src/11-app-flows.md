@@ -233,10 +233,12 @@ Code: `web/shop`, `web/sia` (Vue 3 + Vuetify 4 + Vue Router 5 file-based routes)
 | Built | Notes |
 |---|---|
 | S-13 – S-19, S-20 | As specified. S-16 handles every account-state code of §2 |
-| S-01 | Hero (one primary action: Browse catalogue), featured MET/RAD products, how requesting works, Pro Bono band. The hero photo is picked up from `web/shop/src/assets/hero/hero-1600.webp` (+ `hero-800.webp`, record in `SOURCE.md`) when the owner adds it; until then the hero is text only |
-| S-02, S-04, S-06 | Filter column (drawer on phones; two product columns), filters in the URL, "Load more". S-06 ranks by relevance |
-| S-03 | Gallery with thumbnails, make/model, availability, Pro Bono badge with its limit, specs; never a price. Visitors get "Log in to request"; CIMH accounts a note; customers a quantity stepper with **Add to request disabled** until order-svc (P5) |
-| A-05, A-06, A-07 | List with search/filters (incl. sellable, inactive) and stock count; form with the explicit Pro Bono choice; tabs Details (If-Match), Images (upload, background-removal option, processing tiles, primary, remove), Stock (count only; by location with P4), History (admins: audit entries). Deactivate with a confirmation. "Create labels" comes with P4 |
+| S-01 | Legacy Home structure: hero carousel (owner's image, radar, AWS), logo band with the "Online Stores" sign-in card, "Radar Spares" and "Met-service Spares" rows. Hero files in `web/shop/src/assets/hero/` |
+| S-02, S-04, S-06 | Legacy Inventory/NCI structure: title + search banner, type (Pro Bono: project) chips, Filters menu, product grid; search results on the same page (`/search` redirects to `/catalogue?q=`) |
+| S-03 | Legacy InventoryItem structure: thumbnail strip + large photo left, one card right (name, availability, Pro Bono limit, description, details, units per pack, quantity, **Add to request disabled** until order-svc, P5). No price or serials |
+| A-05, A-06, A-07 | Legacy SIA structure: list with grid/list toggle, search, filters, stock count; product page = photos + description left, Info card right, then tabs Details (edit, explicit Pro Bono choice), Images (upload, background removal, processing tiles, primary, remove), History (admins). "Create labels" comes with P4 |
+| Shells | Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer, no top bar on sign-in pages; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = legacy split layout on the met-enclosure photo |
+| A-01 | Legacy SIA Home structure: statement band, Radar / Hydro-Met spares cards, "What are you looking for today?" search, then the account counters |
 | A-19 | Fees, email lists (active staff/admins), workflow, reference (departments; projects incl. inactive, rename, toggle) |
 | S-10 | Empty state until order-svc (P5) |
 | A-21, A-16, A-17, A-18, A-20 | As specified; A-16 suggests an organisation from the email domain, then the organisation text, and can create one in the dialog |
