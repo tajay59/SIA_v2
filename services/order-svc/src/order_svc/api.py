@@ -257,7 +257,7 @@ async def list_requests(
     scope: Literal["mine", "organisation", "all"] = "mine",
     status: Annotated[str | None, Query()] = None,
     type: Literal["PAID", "PROBONO"] | None = None,
-    year: Annotated[int | None, Query(ge=2020, le=9999)] = None,
+    year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
     customer: Annotated[str | None, Query(max_length=64)] = None,
     organisationId: Annotated[str | None, Query(max_length=64)] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,

@@ -98,7 +98,7 @@ paths:
         - { name: scope, in: query, schema: { type: string, enum: [mine, organisation, all], default: mine } }
         - { name: status, in: query, style: form, explode: false, schema: { type: array, items: { $ref: '#/components/schemas/RequestStatus' } } }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/RequestType' } }
-        - { name: year, in: query, schema: { type: integer, minimum: 2020 } }
+        - { name: year, in: query, schema: { type: integer, minimum: 2000, maximum: 2100 } }
         - { name: customer, in: query, description: staff/admin or same organisation, schema: { type: string } }
         - { name: organisationId, in: query, description: staff/admin only, schema: { type: string } }
         - { name: q, in: query, description: Request id or organisation/customer name prefix (staff), schema: { type: string, maxLength: 100 } }
