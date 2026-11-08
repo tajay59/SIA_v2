@@ -93,7 +93,9 @@ jobs:
           path: mobile/sia/app/build/reports
 
   e2e:
-    name: e2e (Playwright J-01 J-08 J-09 J-10 J-11)
+    # The name is a required check in branch protection: keep it as is (the job runs every journey in
+    # tests/e2e-web, J-09 and J-10 included). Renaming it blocks every PR until the protection is updated.
+    name: e2e (Playwright J-01 J-08 J-11)
     # MongoDB 8.0 won't start on kernel 6.19-7.0.13 (see integration).
     runs-on: ubuntu-22.04
     needs: web
