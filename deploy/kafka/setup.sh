@@ -56,6 +56,8 @@ consume() { # principal group topic...
 # Relays publish every service's outbox (one principal for all relays).
 produce relay identity.user.events catalog.product.events inventory.stock.events order.events document.events media.jobs audit.events
 produce media media.results
+# document-svc owns no collection, so no outbox: it publishes its own events (TAD §4.5).
+produce document document.events audit.events
 
 consume identity identity identity.user.events audit.events
 consume catalog catalog identity.user.events media.results inventory.stock.events

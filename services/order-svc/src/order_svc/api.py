@@ -257,7 +257,7 @@ async def list_requests(
     scope: Literal["mine", "organisation", "all"] = "mine",
     status: Annotated[str | None, Query()] = None,
     type: Literal["PAID", "PROBONO"] | None = None,
-    year: Annotated[int | None, Query(ge=2020, le=9999)] = None,
+    year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
     customer: Annotated[str | None, Query(max_length=64)] = None,
     organisationId: Annotated[str | None, Query(max_length=64)] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
@@ -429,7 +429,14 @@ async def access(
     user: Annotated[str, Query(min_length=1, max_length=64)],
     me: Principal = Depends(require_document_svc),
 ) -> dict[str, Any]:
-    return {"allowed": await svc(request).access(requestId, user)}
+    return await svc(request).access(requestId, user)
+
+
+@router.get("/internal/requests/{requestId}", tags=["internal"])
+async def internal_get(
+    requestId: str, request: Request, me: Principal = Depends(require_document_svc)
+) -> dict[str, Any]:
+    return await svc(request).internal_get(requestId)
 
 
 @router.post("/internal/requests/{requestId}/files", status_code=204, tags=["internal"])

@@ -243,6 +243,7 @@ Detailed steps go in the Backup and Disaster Recovery Plan (Documentation Index 
 ## 12a. Decisions
 - Pis unlock LUKS **manually after a reboot** (ops enters the passphrase over SSH via `dropbear-initramfs`). **Confirmed.** Consequence: after a power cut, ops must unlock both Pis; with only the host up, the replica set has **no majority, so no primary and no writes at all** (the platform is effectively down) until at least one Pi is unlocked, so this is in the Operations Run Book and a reboot alert pages ops.
 - Staging has its own small ClamAV only while testing uploads; otherwise uploads in staging use a ClamAV mock.
+- **Staging-lite** (shared demo server) runs document-svc with `SCAN_ENABLED=false`: clamd needs 1–1.5 GB and the box has ~1.5 GB free (owner decision 2026-11-08). Production always scans and fails closed.
 
 ## 13. Open questions
 

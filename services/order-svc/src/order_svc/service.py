@@ -1071,19 +1071,36 @@ class OrderService:
 
     # ================================================================== internal (document-svc) and events
 
-    async def access(self, rid: str, user: str) -> bool:
+    async def access(self, rid: str, user: str) -> dict[str, Any]:
+        """document-svc: may `user` see this request's files (allowed), act on it (canAct), and in what state?"""
         doc = await self.store.orders.find_one(
-            {"id": rid, "status": {"$ne": d.CART}}, {"customer": 1, "organisationId": 1}
+            {"id": rid, "status": {"$ne": d.CART}}, {"customer": 1, "organisationId": 1, "status": 1, "type": 1}
         )
         if doc is None:
-            return False
+            raise not_found("No request with this id")
+        out: dict[str, Any] = {"allowed": False, "canAct": False, "status": doc["status"], "type": doc.get("type")}
         acc = await self.deps.account(user)
         if not acc or acc.get("status") not in (None, "ACTIVE"):
-            return False
-        if acc.get("role") in ("staff", "admin") or doc["customer"] == user:
-            return True
+            return out
+        role = acc.get("role")
+        if role in ("staff", "admin") or doc["customer"] == user:
+            out["allowed"] = True
+            out["canAct"] = role == "admin" or doc["customer"] == user
+            return out
         org = doc.get("organisationId")
-        return bool(org and acc.get("organisationId") == org)
+        out["allowed"] = bool(org and acc.get("organisationId") == org)
+        return out
+
+    async def internal_get(self, rid: str) -> dict[str, Any]:
+        """document-svc renders PDFs from the staff view of the request."""
+        return self.view(await self._load(rid), Principal(sub="svc:document", role="staff"))
+
+    async def file_deleted(self, rid: str, fid: str, reason: str | None) -> bool:
+        res = await self.store.orders.update_one(
+            {"id": rid, "files": {"$elemMatch": {"id": fid, "deleted": {"$ne": True}}}},
+            {"$set": {"files.$.deleted": True, "files.$.deletedReason": reason}},
+        )
+        return bool(res.modified_count)
 
     async def attach_file(self, rid: str, f: dict[str, Any]) -> bool:
         """Idempotent: a file id is attached once. No version bump (a PDF arriving must not break If-Match)."""

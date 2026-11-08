@@ -21,6 +21,7 @@ from cimh_common.errors import ProblemError, conflict, not_found
 from cimh_common.outbox import OutboxEvent, new_event, outbox_push
 from cimh_common.paging import clamp_limit, decode_cursor, encode_cursor, page
 
+from .documents import LabelPdfs
 from .places import Places
 from .store import AVAILABLE, SET, Store, now
 
@@ -132,9 +133,21 @@ class _Short(Exception):
         self.lines = lines
 
 
+LABEL_PDF_MAX = 200  # document-svc /internal/labels limit
+
+
 class InventoryService:
-    def __init__(self, store: Store, places: Places, redis: Any = None, *, cache_seconds: int = 600) -> None:
+    def __init__(
+        self,
+        store: Store,
+        places: Places,
+        redis: Any = None,
+        *,
+        cache_seconds: int = 600,
+        label_pdfs: LabelPdfs | None = None,
+    ) -> None:
         self.store = store
+        self.label_pdfs = label_pdfs
         self.places = places
         self.redis = redis
         self.cache_seconds = cache_seconds
@@ -325,8 +338,12 @@ class InventoryService:
                 break
             else:  # pragma: no cover - five 32-bit clashes in a row
                 raise ProblemError(503, "DEPENDENCY_UNAVAILABLE", "Could not allocate unit barcodes; try again")
-        # The printable PDF/CSV comes from document-svc (P6); until then the screen renders the codes itself.
-        return {"barcodes": barcodes, "fileId": None}
+        # Printable PDF from document-svc; if it is unavailable the screen still renders the codes itself.
+        file_id = None
+        if self.label_pdfs is not None and len(barcodes) <= LABEL_PDF_MAX:  # larger batches: the screen draws them
+            stock = await self.store.stock.find_one({"id": product_id}, {"productName": 1})
+            file_id = await self.label_pdfs.render(product_id, (stock or {}).get("productName"), barcodes)
+        return {"barcodes": barcodes, "fileId": file_id}
 
     async def _unit_for_scan(self, barcode: str, s: Any) -> dict[str, Any]:
         doc = await self.store.storage.find_one({"barcode": barcode}, session=s)

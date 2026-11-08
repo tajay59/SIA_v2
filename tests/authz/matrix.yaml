@@ -168,6 +168,11 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin; generated documents cannot be deleted
+  POST /api/documents/v1/internal/labels:
+    roles:
+    - service
+    ownership: service
+    note: inventory-svc only (label PDFs)
   GET /api/documents/v1/files/{fileId}:
     roles: *id002
     ownership: same_org
@@ -606,6 +611,11 @@ endpoints:
     - service
     ownership: service
     note: document-svc; service token
+  GET /api/orders/v1/internal/requests/{requestId}:
+    roles:
+    - service
+    ownership: service
+    note: document-svc renders PDFs from the staff view
   POST /api/orders/v1/internal/requests/{requestId}/files:
     roles:
     - service

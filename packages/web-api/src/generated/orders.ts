@@ -1079,7 +1079,7 @@ export interface paths {
             };
             requestBody?: never;
             responses: {
-                /** @description Answer */
+                /** @description Answer. allowed = may see the files; canAct = the requester or an admin (may upload the signed agreement) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -1087,7 +1087,52 @@ export interface paths {
                     content: {
                         "application/json": {
                             allowed: boolean;
+                            canAct: boolean;
+                            status: string;
+                            /** @enum {string|null} */
+                            type?: "PAID" | "PROBONO" | null;
                         };
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/requests/{requestId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        /** The request as staff see it (document-svc renders quote, agreement and invoice PDFs from it; service token) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Request */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Request"];
                     };
                 };
                 404: components["responses"]["NotFound"];

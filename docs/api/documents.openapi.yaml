@@ -14,6 +14,7 @@ security:
 tags:
   - name: files
   - name: ops
+  - name: internal
 
 paths:
   /files:
@@ -40,8 +41,11 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/File' }
         '403': { $ref: './common.yaml#/components/responses/Forbidden' }
-        '413': { description: Too large }
-        '415': { description: Unsupported type }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '413': { description: 'Too large (FILE_TOO_LARGE)', content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } } }
+        '415': { description: 'Unsupported type (UNSUPPORTED_FILE_TYPE)', content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } } }
+        '422': { description: 'Validation failed, or FILE_INFECTED (quarantined)', content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } } }
 
   /files/{fileId}:
     parameters: [ { name: fileId, in: path, required: true, schema: { type: string } } ]
@@ -76,12 +80,41 @@ paths:
         content: { application/json: { schema: { type: object, required: [reason], properties: { reason: { type: string, minLength: 3 } } } } }
       responses:
         '204': { description: Deleted (audit logged) }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
+  /internal/labels:
+    post:
+      tags: [internal]
+      summary: Render a unit-label PDF (inventory-svc; service token)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [productId, barcodes]
+              properties:
+                productId: { type: string, minLength: 1, maxLength: 64 }
+                productName: { type: [string, 'null'], maxLength: 200 }
+                barcodes: { type: array, minItems: 1, maxItems: 200, items: { type: string, minLength: 1, maxLength: 80 } }
+      responses:
+        '201': { description: 'Stored (staff download it with GET /files/{id})', content: { application/json: { schema: { $ref: '#/components/schemas/File' } } } }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+
   /health/live:
-    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+    servers: [{ url: / }]
+    get: { tags: [ops], security: [], responses: { '200': { description: Alive, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } } } }
   /health/ready:
-    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+    servers: [{ url: / }]
+    get:
+      tags: [ops]
+      security: []
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
 
 components:
   schemas:
@@ -90,7 +123,7 @@ components:
       required: [id, requestId, kind, name, mime, size, sha256, uploadedAt]
       properties:
         id: { type: string }
-        requestId: { type: string }
+        requestId: { type: [string, 'null'], description: null for label batches }
         kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
         name: { type: string }
         mime: { type: string }

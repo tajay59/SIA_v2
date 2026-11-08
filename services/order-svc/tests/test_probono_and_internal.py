@@ -90,6 +90,32 @@ def test_file_access_answers(ctx: Ctx) -> None:
     assert r.status_code == 403  # only document-svc
 
 
+def test_access_tells_who_may_act_and_the_state(ctx: Ctx) -> None:
+    rid = probono(ctx)
+
+    def ask(user: str) -> dict[str, Any]:
+        r = ctx.client.get(ctx.url(f"/internal/requests/{rid}/access"), headers=DOCUMENT, params={"user": user})
+        assert r.status_code == 200
+        return dict(r.json())
+
+    assert ask("USRUSER") == {"allowed": True, "canAct": True, "status": "SUBMITTED", "type": "PROBONO"}
+    assert ask("USRPEER")["canAct"] is False
+    assert ask("USRSTAFF")["canAct"] is False
+    assert ask("USRSTAFF")["allowed"] is True
+    r = ctx.client.get(ctx.url("/internal/requests/ORDnope/access"), headers=DOCUMENT, params={"user": "USRUSER"})
+    assert r.status_code == 404
+
+
+def test_internal_staff_view_for_pdfs(ctx: Ctx) -> None:
+    rid = probono(ctx)
+    r = ctx.client.get(ctx.url(f"/internal/requests/{rid}"), headers=DOCUMENT)
+    assert r.status_code == 200
+    assert r.json()["id"] == rid
+    assert r.json()["shipTo"]["country"] == "BB"
+    assert ctx.client.get(ctx.url(f"/internal/requests/{rid}"), headers=STAFF).status_code == 403
+    assert ctx.client.get(ctx.url("/internal/requests/ORDnope"), headers=DOCUMENT).status_code == 404
+
+
 def test_files_attach_once_and_show_download_paths(ctx: Ctx) -> None:
     rid = probono(ctx)
     fid = ctx.attach(rid, "upload", "FILabc")
@@ -120,6 +146,11 @@ def test_consumer_routes_stock_and_document_events(ctx: Ctx) -> None:
     ctx.run(handle(envelope("document.generated", doc)))
     ctx.run(handle(envelope("document.generated", doc)))  # redelivery
     assert [f["id"] for f in ctx.get(rid)["files"]] == ["FILpdf"]
+    ctx.run(handle(envelope("document.deleted", {"orderId": rid, "fileId": "FILpdf", "reason": "wrong"})))
+    ctx.run(handle(envelope("document.deleted", {"orderId": rid, "fileId": "FILpdf", "reason": "wrong"})))
+    assert ctx.get(rid)["files"] == []
+    with pytest.raises(ValueError, match="lacks orderId"):
+        ctx.run(handle(envelope("document.deleted", {"fileId": "FILpdf"})))
     ctx.run(handle(envelope("stock.changed", {"productId": "PRO1"})))  # ignored
     ctx.run(handle(envelope("stock.reserved", {"orderId": "ORDmissing", "lines": []})))  # unknown order: no-op
     with pytest.raises(ValueError, match="lacks orderId"):

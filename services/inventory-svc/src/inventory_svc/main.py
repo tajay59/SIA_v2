@@ -14,6 +14,7 @@ from cimh_common.idempotency import IdempotencyStore
 
 from .api import router
 from .config import Settings
+from .documents import DocumentLabels, LabelPdfs
 from .places import CatalogPlaces, Places
 from .service import InventoryService
 from .store import Store
@@ -28,6 +29,7 @@ def build_app(
     redis: Any = None,
     token_verifier: TokenVerifier | None = None,
     places: Places | None = None,
+    label_pdfs: LabelPdfs | None = None,
     configure_logs: bool = True,
 ) -> FastAPI:
     s = settings or Settings.from_env()
@@ -56,6 +58,8 @@ def build_app(
         if not (s.catalog_url and s.identity_url and s.service_secret):
             raise RuntimeError("CATALOG_URL, IDENTITY_URL and SERVICE_SECRET are required (places)")
         places = CatalogPlaces(s.catalog_url, s.identity_url, s.service_secret)
+    if label_pdfs is None and s.document_url and s.identity_url and s.service_secret:
+        label_pdfs = DocumentLabels(s.document_url, s.identity_url, s.service_secret)
 
     store = Store(db)
 
@@ -81,7 +85,9 @@ def build_app(
 
     app.router.lifespan_context = lifespan
     app.state.settings = s
-    app.state.inventory = InventoryService(store, places, redis, cache_seconds=s.place_cache_seconds)
+    app.state.inventory = InventoryService(
+        store, places, redis, cache_seconds=s.place_cache_seconds, label_pdfs=label_pdfs
+    )
     app.state.idempotency = IdempotencyStore(redis, prefix="inv:idem")  # Redis ACL: inventory owns inv:*
     app.include_router(router, prefix=BASE)
     return app

@@ -107,7 +107,7 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-24 | I | Downloading another customer's signed agreement/quote | H | Permission check per download (owner/org or staff) before `X-Accel-Redirect`; `/_protected/` is `internal` in nginx | ✅ |
 | T-25 | T | Forged signed agreement (customer uploads an unsigned or edited PDF) | M | Staff verification required before purchasing; agreement PDF carries request id, quote version, total and a hash of the generated file printed in the footer; SHA-256 of the upload stored | ✅ · ⚠ no cryptographic e-signature (manual signature accepted by business decision) |
 | T-26 | D | Image-processing bombs (decompression bombs, huge dimensions) | M | Pillow `MAX_IMAGE_PIXELS`; size limit; media-worker isolated with memory limit and timeout | ✅ |
-| T-27 | E | Malware in uploads reaching staff machines | M | ClamAV scan in document-svc before files become downloadable (quarantine on hit) | ✅ (TR-SEC-6) |
+| T-27 | E | Malware in uploads reaching staff machines | M | ClamAV scan in document-svc before files become downloadable (quarantine on hit, fail closed if clamd is down); type from magic bytes; images re-encoded. Built in P6, EICAR test passes. **Staging-lite does not scan** (no memory; owner decision 2026-11-08) | ✅ (TR-SEC-6) |
 
 ### 5.5 Messaging, data stores and infrastructure
 
