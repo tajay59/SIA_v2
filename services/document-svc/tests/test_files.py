@@ -277,3 +277,12 @@ def test_inventory_renders_labels_for_staff_only(ctx: Ctx) -> None:
     deleted = ctx.client.request("DELETE", ctx.url(f"/files/{f['id']}"), headers=STAFF, json={"reason": "nope"})
     assert deleted.status_code == 409
     assert deleted.json()["code"] == "GENERATED_DOCUMENT"
+
+
+def test_upload_kinds_match_the_api() -> None:
+    from typing import get_args
+
+    from document_svc.api import UploadKind
+    from document_svc.service import UPLOAD_KINDS
+
+    assert set(get_args(UploadKind)) == set(UPLOAD_KINDS)

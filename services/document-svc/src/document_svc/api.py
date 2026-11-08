@@ -13,11 +13,10 @@ from cimh_common.auth import Principal
 from cimh_common.authz import current_principal, require_service, require_staff
 from cimh_common.errors import ProblemError, forbidden
 
-from .service import UPLOAD_KINDS, DocumentService
+from .service import DocumentService
 
 router = APIRouter()
 UploadKind = Literal["supplier_quote", "signed_agreement", "upload", "commercial_invoice"]
-assert set(UPLOAD_KINDS) == set(UploadKind.__args__)  # type: ignore[attr-defined]
 
 
 class Strict(BaseModel):
