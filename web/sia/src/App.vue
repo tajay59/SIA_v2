@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * SIA shell, same structure as the legacy SIA AppHeader: one horizontal header with the CIMH logo on the
- * left, the work areas as links in legacy order (Products, Inventory, Pick, Stow; Orders joins with P5),
+ * left, the work areas as links in legacy order (Products, Requests (legacy Orders), Inventory, Pick, Stow),
  * Reports and Admin menus, then the scan box, theme and profile on the right. The scan box takes any
  * unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory →
  * Lookup on it (APD "global scan box"). Phones: a menu button opens the same links. Pages show their title as the page heading under the header (pages with
@@ -27,6 +27,7 @@ const drawer = ref(false)
 const work = computed(() => [
   { title: 'Dashboard', to: '/', show: true },
   { title: 'Products', to: '/products', show: true },
+  { title: 'Requests', to: '/requests', show: true },
   { title: 'Inventory', to: '/inventory', show: true },
   { title: 'Pick', to: '/pick', show: true },
   { title: 'Stow', to: '/stow', show: true },

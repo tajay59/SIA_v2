@@ -921,6 +921,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/picks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pick a unit reserved for a request (order-svc `POST /requests/{id}/picks`)
+         * @description Same rules as `/pick` with `orderId`; `pickedBy` is the staff member who scanned (recorded in history).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description Unique per scan (device-generated ULID); replays from the mobile offline queue return the first result. */
+                    "Idempotency-Key": components["parameters"]["ScanKey"];
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        unit: string;
+                        orderId: string;
+                        pickedBy: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Picked */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Unit"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/reservations/{orderId}": {
         parameters: {
             query?: never;

@@ -159,6 +159,7 @@ paths:
         '403': { $ref: './common.yaml#/components/responses/Forbidden' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/accept:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -188,6 +189,7 @@ paths:
         '403': { $ref: './common.yaml#/components/responses/Forbidden' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/reject-agreement:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -204,6 +206,7 @@ paths:
       responses:
         '200': { description: AWAITING_AGREEMENT, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/decline:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -219,6 +222,7 @@ paths:
       responses:
         '200': { description: Declined, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/cancel:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -234,6 +238,7 @@ paths:
       responses:
         '200': { description: CANCELLED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/start-quoting:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -247,6 +252,7 @@ paths:
         '200': { description: 'QUOTING; lines carry `cimhAvailable`', content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/quote-draft:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -275,6 +281,7 @@ paths:
         '200': { description: Draft saved, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/send-quote:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -288,6 +295,7 @@ paths:
         '200': { description: QUOTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { description: Draft incomplete (every line needs a supplier price or a CIMH option) }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/purchase-orders:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -312,6 +320,7 @@ paths:
       responses:
         '200': { description: PURCHASING, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/approve:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -324,6 +333,7 @@ paths:
       responses:
         '200': { description: APPROVED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/reject:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -339,13 +349,14 @@ paths:
       responses:
         '200': { description: REJECTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/picks:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [staff-actions]
       summary: Pick a scanned unit against a line (staff); PROBONO APPROVED → PICKING on first pick
-      description: 'Delegates to inventory-svc /pick with orderId; the unit must be reserved for this request. Only CIMH-stock (choice CIMH) and Pro Bono lines can be picked; supplier lines ship direct (409 LINE_NOT_PICKABLE).'
+      description: 'Delegates to inventory-svc /internal/picks; the unit must be reserved for this request. Only CIMH-stock (choice CIMH) and Pro Bono lines can be picked; supplier lines ship direct (409 LINE_NOT_PICKABLE). Also 409 LINE_FULLY_PICKED, UNIT_WRONG_PRODUCT and the inventory unit codes. Allowed while PURCHASING (paid) or APPROVED/PICKING (Pro Bono).'
       parameters:
         - { name: Idempotency-Key, in: header, required: true, schema: { type: string, maxLength: 64 } }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -355,12 +366,13 @@ paths:
       responses:
         '200': { description: Picked, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/ship:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [staff-actions]
-      summary: Record shipment, PURCHASING/PICKING → SHIPPED (staff)
+      summary: Record shipment, PURCHASING/PICKING → SHIPPED (staff); every CIMH/Pro Bono unit must be picked first (409 PICKING_INCOMPLETE)
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -371,6 +383,7 @@ paths:
         '200': { description: SHIPPED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/deliver:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -386,6 +399,7 @@ paths:
       responses:
         '200': { description: DELIVERED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /internal/requests/{requestId}/access:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -396,6 +410,7 @@ paths:
         - { name: user, in: query, required: true, schema: { type: string } }
       responses:
         '200': { description: Answer, content: { application/json: { schema: { type: object, required: [allowed], properties: { allowed: { type: boolean } } } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /internal/requests/{requestId}/files:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -407,11 +422,22 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/FileRef' } } }
       responses:
         '204': { description: Attached }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /health/live:
-    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+    servers: [{ url: / }]   # served at the root, not under the API base path
+    get:
+      tags: [ops]
+      security: []
+      responses: { '200': { description: Alive, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } } }
   /health/ready:
-    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+    servers: [{ url: / }]
+    get:
+      tags: [ops]
+      security: []
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
 
 components:
   parameters:
@@ -521,8 +547,7 @@ components:
             required: [lineId, unitPrice, total]
             properties:
               lineId: { type: string }
-              unitCostBBD: { $ref: './common.yaml#/components/schemas/Money' }
-              adminFee: { $ref: './common.yaml#/components/schemas/Money' }
+              unitCostBBD: { $ref: './common.yaml#/components/schemas/Money', description: staff/admin only }
               unitPrice: { $ref: './common.yaml#/components/schemas/Money' }
               total: { $ref: './common.yaml#/components/schemas/Money' }
         total: { $ref: './common.yaml#/components/schemas/Money' }
@@ -576,6 +601,14 @@ components:
             shipTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
             billTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
             notes: { type: [string, 'null'] }
+            splitFrom: { type: [string, 'null'], description: Sibling request when a mixed cart was split }
+            adminFee:
+              oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ]
+              description: Admin fee in the request currency, charged once per request (legacy rule) and included in `agreement.total`; set when the quote is sent
+            quoteDraft: { type: object, description: 'staff/admin only: the unsent draft (supplier prices, CIMH lines, exchange rate)' }
+            approval: { type: [object, 'null'], description: Pro Bono approval (by, at) }
+            rejection: { type: [object, 'null'], description: Pro Bono rejection (by, at, reason) }
+            invoice: { type: [object, 'null'], properties: { number: { type: string }, date: { type: string } } }
             quotes: { type: array, items: { $ref: '#/components/schemas/SupplierQuote' }, description: All versions; latest last }
             cimhQuote: { oneOf: [ { $ref: '#/components/schemas/CimhQuote' }, { type: 'null' } ] }
             acceptance:

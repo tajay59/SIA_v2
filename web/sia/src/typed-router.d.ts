@@ -171,6 +171,27 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/requests/': RouteRecordInfo<
+      '/requests/',
+      '/requests',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
+    '/requests/[id]/': RouteRecordInfo<
+      '/requests/[id]/',
+      '/requests/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/requests/[id]/quote': RouteRecordInfo<
+      '/requests/[id]/quote',
+      '/requests/:id/quote',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
     '/reset-password': RouteRecordInfo<
       '/reset-password',
       '/reset-password',
@@ -367,6 +388,30 @@ declare module 'vue-router/auto-routes' {
     'src/pages/reports/stock.vue': {
       routes:
         | '/reports/stock'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/requests/index.vue': {
+      routes:
+        | '/requests/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/requests/[id]/index.vue': {
+      routes:
+        | '/requests/[id]/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/requests/[id]/quote.vue': {
+      routes:
+        | '/requests/[id]/quote'
       views:
         | never
       pathParamNames:

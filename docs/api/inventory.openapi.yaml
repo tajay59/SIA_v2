@@ -348,6 +348,30 @@ paths:
                   lines: { type: array, items: { type: object, required: [lineId, units], properties: { lineId: { type: string }, units: { type: array, items: { type: string } } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
+  /internal/picks:
+    post:
+      tags: [internal]
+      summary: Pick a unit reserved for a request (order-svc `POST /requests/{id}/picks`)
+      description: Same rules as `/pick` with `orderId`; `pickedBy` is the staff member who scanned (recorded in history).
+      parameters:
+        - { $ref: '#/components/parameters/ScanKey' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [unit, orderId, pickedBy]
+              properties:
+                unit: { type: string, maxLength: 128 }
+                orderId: { type: string, maxLength: 64 }
+                pickedBy: { type: string, maxLength: 64 }
+      responses:
+        '200': { description: Picked, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
   /internal/reservations/{orderId}:
     parameters: [ { name: orderId, in: path, required: true, schema: { type: string } } ]
     delete:

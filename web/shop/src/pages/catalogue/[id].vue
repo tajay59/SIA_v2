@@ -3,7 +3,7 @@
  * S-03 product, same structure as the legacy InventoryItem page: left (about 3/4) a vertical strip of
  * thumbnails beside a large photo carousel; right (1/4) one card with the name, availability, product
  * description, details, units per pack, quantity and a full-width button. On phones the name sits above
- * the photos. v2 rules: no price and no serial numbers for customers; requests (the cart) arrive with P5.
+ * the photos. v2 rules: no price and no serial numbers for customers. The button adds to the cart (S-07).
  */
 import {
   ApiError,
@@ -15,23 +15,44 @@ import {
   ProductBadges,
   ProductImage,
   typeLabel,
+  useCart,
+  useNotify,
   useReference,
   useSession,
 } from '@cimh/web-app'
 import { mdiArrowLeft, mdiChevronLeft, mdiChevronRight, mdiMinus, mdiPlus } from '@mdi/js'
 import { computed, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 definePage({ meta: { guard: 'public', title: 'Product' } })
 const route = useRoute('/catalogue/[id]')
 const session = useSession()
+const router = useRouter()
 const { mdAndUp } = useDisplay()
 const { reference } = useReference()
 const product = ref<ProductPublic | null>(null)
 const missing = ref(false)
 const index = ref(0)
 const qty = ref(1)
+const cart = useCart()
+const notify = useNotify()
+const adding = ref(false)
+
+async function addToRequest() {
+  if (!product.value) return
+  adding.value = true
+  try {
+    await cart.add(product.value.id, qty.value)
+    notify.toast(`Added ${qty.value} × ${product.value.name} to your cart`, 'success', {
+      action: { label: 'View cart', run: () => void router.push('/cart') },
+    })
+  } catch (e) {
+    notify.report(e)
+  } finally {
+    adding.value = false
+  }
+}
 
 async function load(id: string) {
   product.value = null
@@ -166,8 +187,8 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
                   <v-btn :icon="mdiPlus" size="small" variant="text" aria-label="More" :disabled="qty >= max" @click="qty++" />
                 </div>
               </div>
-              <v-btn color="primary" size="large" block disabled>Add to request</v-btn>
-              <p class="t-caption muted">Adding items to a request opens with the next release. Prices are quoted after you send a request.</p>
+              <v-btn color="primary" size="large" block :loading="adding" @click="addToRequest">Add to request</v-btn>
+              <p class="t-caption muted">Prices are quoted after you send a request.</p>
             </template>
           </div>
         </aside>

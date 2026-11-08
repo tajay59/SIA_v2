@@ -143,12 +143,13 @@ Updated **in the same transaction** as every scan, with counts recomputed from `
 | Common | `id` (`ORD…`/`CRT…`), `type` (`PAID`/`PROBONO`/null), **`status`**, `customer`, `customerSnapshot`, `organisationId`, `lines[]`, `currency`, `shipTo`, `notes`, `version`, `createdAt`, `updatedAt`, `submittedAt`, `history[]`, `outbox[]` |
 | Line | `lineId`, `productId`, `product` (details copied at submission), `qty`, `choice` (CIMH/SUPPLIER), `cimhAvailable`, `reservation{status, units[]}`, `picked[]` |
 | Supplier quotes | `quotes[]`: `id`, `version`, `supplier`, `lines{unitPrice, total}`, `total`, `fileIds`, `expiresAt` (+30 d), `sentAt/By`. **Every version is kept** |
-| CIMH quote | `cimhQuote`: `lines{unitCostBBD, adminFee, unitPrice, total}`, **`exchangeRate`** (required for USD), `total`, `fileId` |
+| CIMH quote | `cimhQuote`: `lines{unitCostBBD, unitPrice, total}`, **`exchangeRate`** (required for USD), `total`, `fileId` |
+| Quote state | `quoteVersion`, `quoteExpiresAt`, **`adminFee`** (once per request, in the request currency), `quoteDraft` (staff) |
 | Decision | `acceptance{quoteVersion, choices[], by, at, ip}` or `decline{by, at, reason}` |
 | Fulfilment | `purchaseOrders[]`, `approval` / `rejection` (PROBONO), `shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}`, `invoice{…}`, `files[]`, `cancellation{by, at, reason, auto}` |
 
 Key rules:
-- One cart per user (a unique partial index).
+- One cart per user (only carts carry `cartOf`; a sparse unique index).
 - Accounts with `isCimh` can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.

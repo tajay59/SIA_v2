@@ -193,9 +193,9 @@ auth/         shared token-checking library (from packages/)
 | **Responsibilities** | Sites, locations, shelves (QR), unit labels, stow, pick, relocate, self-assign, lookups, stock counts, low-stock detection, **reservations** |
 | **Owns** | `storage`, `history`, `stock` (per-product counts + outbox, BSD §5.11). Sites/shelves records are kept in `misc` through catalog-svc's internal places API (looked up by barcode, cached in Redis); see the BSD |
 | **Public API** | `/api/inventory/v1/*`: sites, shelves, units, stow, pick, relocate, lookup, stock |
-| **Internal API** | `POST /internal/availability` (for each product, whether the full quantity is available), `POST /internal/reservations`, `DELETE /internal/reservations/{orderId}` |
+| **Internal API** | `POST /internal/availability` (for each product, whether the full quantity is available), `POST /internal/reservations`, `DELETE /internal/reservations/{orderId}`, `POST /internal/picks` (order-svc picks a reserved unit for a staff member) |
 | **Publishes** | `inventory.stock.events`: `stock.changed`, `stock.low`, `stock.reserved`, `stock.released`, `unit.stowed`, `unit.picked` |
-| **Consumes** | `catalog.product.events` (name, threshold, active → `stock`); `order.events`: `order.accepted` (reserve CIMH-stock items), `order.probono_approved` (reserve PROBONO), `order.cancelled` (release), `order.shipped` (mark reserved units picked) — the order handlers arrive with order-svc (P5) |
+| **Consumes** | `catalog.product.events` (name, threshold, active → `stock`); `order.events`: `order.accepted` (reserve the CIMH-chosen lines), `order.probono_approved` (reserve every line), `order.cancelled` / `order.expired` / `order.agreement_rejected` (release what is held). A shortfall publishes `stock.reservation_failed`; nothing is half-reserved. Units are marked picked by the pick itself (`/internal/picks`), not at shipping |
 | **Concurrency** | Every scan and every reservation is **one multi-document transaction** (unit + `history` + `stock` counts + events; §7.3); scans carry an `Idempotency-Key` (Redis, 24 h) |
 
 ### 4.4 order-svc
@@ -204,11 +204,11 @@ auth/         shared token-checking library (from packages/)
 | **Responsibilities** | Cart; submission with automatic split into paid and Pro Bono requests; paid and Pro Bono status flows; supplier quotes; CIMH stock quote; acceptance per item; purchasing; shipping (carrier + manual tracking number); cancellation; organisation-wide visibility |
 | **Owns** | `orders` (carts are stored as `orders` documents with `status: CART`; see the BSD) |
 | **Public API** | `/api/orders/v1/*`: cart, requests, quotes, acceptance, purchase orders, shipping, staff queue |
-| **Internal API** | `GET /internal/requests/{id}/access?user=` (document-svc asks whether a user may see a request's files) |
-| **Publishes** | `order.events`: `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised`, `order.agreement_requested`, `order.agreement_rejected`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired`, `order.reservation_failed` |
-| **Consumes** | `document.events` (attach generated or uploaded files to `files[]`); `inventory.stock.events` (`stock.reserved`, or reservation failed → move the request back for requoting); `identity.user.events` (`user.suspended` → block that user's open carts) |
-| **Scheduled jobs** | Quote expiry after 30 days, plus a reminder 3 days before |
-| **Calls (HTTP)** | catalog-svc (product snapshots, admin fee, Pro Bono limits); inventory-svc (availability when quoting starts) |
+| **Internal API** | `GET /internal/requests/{id}/access?user=` (document-svc asks whether a user may see a request's files); `POST /internal/requests/{id}/files` (document-svc attaches file metadata; normally via `document.events`) |
+| **Publishes** | `order.events`: `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised`, `order.agreement_requested`, `order.agreement_rejected`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired` (a failed reservation is reported by inventory as `stock.reservation_failed`) |
+| **Consumes** | `document.events` (attach generated or uploaded files to `files[]`; the agreement and CIMH-quote PDF ids are linked); `inventory.stock.events` (`stock.reserved` → line `RESERVED` + units, `stock.reservation_failed` → line `FAILED` for staff to requote, `stock.released` → `RELEASED`); `identity.user.events` (`user.suspended` → block that user's open carts; **not built yet**) |
+| **Scheduled jobs** | `order-jobs`: quote expiry after 30 days (`QUOTED`/`AWAITING_AGREEMENT` → `CANCELLED`, `order.expired`); carts untouched for 180 days are emptied. The reminder 3 days before expiry comes with notification-svc (P6) |
+| **Calls (HTTP)** | catalog-svc (`/internal/products/summaries`: snapshots, cost, Pro Bono limits; `/internal/fees`: admin fee); inventory-svc (`/internal/availability` when quoting starts, `/internal/picks`); identity-svc (`/internal/accounts/{id}`: names and organisation at submission, file-access checks) |
 
 ### 4.5 document-svc
 | Aspect | Detail |
@@ -272,7 +272,8 @@ Used **only** where the caller needs an answer immediately:
 | Caller → callee | Call | Why it's synchronous |
 |---|---|---|
 | order-svc → catalog-svc | Bulk product summaries, admin fee, Pro Bono limits | Needed to check the cart and save product details on the request at submission |
-| order-svc → inventory-svc | Availability check | Staff need the CIMH stock option when they start quoting |
+| order-svc → inventory-svc | Availability check; picks | Staff need the CIMH stock option when they start quoting; a pick must be checked against the request's line first |
+| order-svc → identity-svc | Account summary | Names and organisation copied at submission; file-access answers for document-svc |
 | document-svc → order-svc | Access check | Has to be answered before a file is served |
 | notification-svc → catalog-svc | Email lists (cached) | Needed to address an email |
 | notification-svc → identity-svc | `GET /internal/codes/{codeRef}`: claim a verification/reset code once | Codes must never be in Kafka (retained/compacted); identity stores them hashed plus one sealed copy |

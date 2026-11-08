@@ -313,6 +313,13 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/ProductStaff' } }
 
+  /internal/fees:
+    get:
+      tags: [internal]
+      summary: Fee settings for order-svc (service token); the `admin` fee is added once to every paid quote
+      responses:
+        '200': { description: Fees, content: { application/json: { schema: { $ref: '#/components/schemas/Fees' } } } }
+
   /internal/places:
     get:
       tags: [internal]

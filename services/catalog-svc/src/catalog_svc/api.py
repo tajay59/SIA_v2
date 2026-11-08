@@ -390,6 +390,12 @@ async def summaries(body: IdsIn, request: Request, me: Principal = Depends(requi
     return {"items": await svc(request).summaries(body.ids)}
 
 
+@router.get("/internal/fees", tags=["internal"])
+async def internal_fees(request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+    """order-svc: the admin fee added to paid quotes (PRD O15)."""
+    return await svc(request).fees()
+
+
 @router.get("/internal/places", tags=["internal"])
 async def places(
     request: Request,

@@ -775,7 +775,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Bulk product snapshots for order-svc (service token) */
+        /** Bulk product snapshots for order-svc and inventory-svc (service token) */
         post: {
             parameters: {
                 query?: never;
@@ -804,6 +804,42 @@ export interface paths {
                 };
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/fees": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Fee settings for order-svc (service token); the `admin` fee is added once to every paid quote */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Fees */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Fees"];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;

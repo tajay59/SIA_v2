@@ -52,6 +52,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/cart': RouteRecordInfo<
+      '/cart',
+      '/cart',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/catalogue/': RouteRecordInfo<
       '/catalogue/',
       '/catalogue',
@@ -99,6 +106,20 @@ declare module 'vue-router/auto-routes' {
       '/requests',
       Record<never, never>,
       Record<never, never>,
+      | never
+    >,
+    '/requests/[id]/': RouteRecordInfo<
+      '/requests/[id]/',
+      '/requests/:id',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
+      | never
+    >,
+    '/requests/[id]/agreement': RouteRecordInfo<
+      '/requests/[id]/agreement',
+      '/requests/:id/agreement',
+      { id: ParamValue<true> },
+      { id: ParamValue<false> },
       | never
     >,
     '/reset-password': RouteRecordInfo<
@@ -166,6 +187,14 @@ declare module 'vue-router/auto-routes' {
       pathParamNames:
         | never
     }
+    'src/pages/cart.vue': {
+      routes:
+        | '/cart'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
     'src/pages/catalogue/index.vue': {
       routes:
         | '/catalogue/'
@@ -217,6 +246,22 @@ declare module 'vue-router/auto-routes' {
     'src/pages/requests/index.vue': {
       routes:
         | '/requests/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/requests/[id]/index.vue': {
+      routes:
+        | '/requests/[id]/'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/requests/[id]/agreement.vue': {
+      routes:
+        | '/requests/[id]/agreement'
       views:
         | never
       pathParamNames:

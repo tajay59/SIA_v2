@@ -1399,7 +1399,11 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 <tr>
 <td>CIMH quote</td>
-<td><code>cimhQuote</code>: <code>lines{unitCostBBD, adminFee, unitPrice, total}</code>, <strong><code>exchangeRate</code></strong> (required for USD), <code>total</code>, <code>fileId</code></td>
+<td><code>cimhQuote</code>: <code>lines{unitCostBBD, unitPrice, total}</code>, <strong><code>exchangeRate</code></strong> (required for USD), <code>total</code>, <code>fileId</code></td>
+</tr>
+<tr>
+<td>Quote state</td>
+<td><code>quoteVersion</code>, <code>quoteExpiresAt</code>, <strong><code>adminFee</code></strong> (once per request, in the request currency), <code>quoteDraft</code> (staff)</td>
 </tr>
 <tr>
 <td>Decision</td>
@@ -1412,7 +1416,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tbody>
 </table>
 <p>Key rules:
-- One cart per user (a unique partial index).
+- One cart per user (only carts carry <code>cartOf</code>; a sparse unique index).
 - Accounts with <code>isCimh</code> can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.</p>
@@ -3877,11 +3881,12 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td><code>cancel</code></td>
 <td>requester/staff/admin</td>
-<td>up to <code>ACCEPTED</code></td>
-<td>up to <code>APPROVED</code></td>
+<td>up to <code>AWAITING_AGREEMENT</code> (customer); <code>ACCEPTED</code> staff/admin only</td>
+<td><code>SUBMITTED</code> (customer); <code>APPROVED</code> staff/admin only</td>
 </tr>
 </tbody>
 </table>
+<p>Every illegal action returns <strong>409 <code>ORDER_ILLEGAL_TRANSITION</code></strong>; a stale <code>If-Match</code> returns 409 <code>VERSION_CONFLICT</code>. The admin fee is charged once per request and included in the agreement total. Shipping needs every CIMH-stock and Pro Bono unit picked first (409 <code>PICKING_INCOMPLETE</code>).</p>
 <p>Status diagrams: <a href="#53-paid-request-quote-to-delivery">Chapter 5</a>.</p>
 <h2 id="105-endpoint-summary">10.5 Endpoint summary</h2>
 <table>
@@ -4117,7 +4122,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-08</td>
-<td><code>/cart/submit</code></td>
+<td><code>/cart</code> (steps 2–3)</td>
 <td>Submit request</td>
 <td>customer</td>
 <td>Shipping address (saved list or new), billing (same as shipping by default), currency <strong>BBD/USD</strong> (only if paid lines), notes, review</td>
@@ -4125,7 +4130,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-09</td>
-<td><code>/requests/submitted</code></td>
+<td><code>/cart</code> (step 4)</td>
 <td>Request submitted</td>
 <td>customer</td>
 <td>One or two request ids, "What happens next"</td>

@@ -1,12 +1,21 @@
 <script setup lang="ts">
 /**
- * A-01 dashboard. Request, stock and quote counters need order- and inventory-svc (P4/P5); for now the
- * identity counters that exist: pending approvals (admin) and accounts waiting for email verification.
+ * A-01 dashboard: the legacy SIA home (statement, spares cards, search) followed by the counters. Requests:
+ * new, quoting, agreements to verify, to pick, to ship, quotes expiring within 3 days; low stock; accounts.
+ * Each request counter opens the desk (A-02) filtered. Counts stop at 100 ("100+": one page).
  */
-import { call, identity, useNotify, useSession } from '@cimh/web-app'
+import { call, identity, inventory, orders, type RequestSummary, useNotify, useSession } from '@cimh/web-app'
 import aws from '@cimh/web-app/assets/legacy/hero-aws-800.webp'
 import radar from '@cimh/web-app/assets/legacy/hero-radar-960.webp'
-import { mdiAccountCheckOutline, mdiAccountGroupOutline, mdiDomain, mdiEmailOutline, mdiMagnify } from '@mdi/js'
+import {
+  mdiAccountCheckOutline,
+  mdiAccountGroupOutline,
+  mdiAlertOutline,
+  mdiClipboardTextOutline,
+  mdiDomain,
+  mdiEmailOutline,
+  mdiMagnify,
+} from '@mdi/js'
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -30,7 +39,30 @@ async function count(status: 'PENDING_APPROVAL' | 'PENDING_VERIFICATION'): Promi
 }
 const label = (n: number | null) => (n === null ? '…' : n > 100 ? '100+' : String(n))
 
+type Counter = { key: string; title: string; status: string; n: number | null; filter?: (r: RequestSummary) => boolean }
+const counters = ref<Counter[]>([
+  { key: 'new', title: 'New requests', status: 'SUBMITTED', n: null },
+  { key: 'quoting', title: 'Being quoted', status: 'QUOTING', n: null },
+  { key: 'expiring', title: 'Quotes expiring in 3 days', status: 'QUOTED', n: null,
+    filter: (r) => !!r.quoteExpiresAt && Date.parse(r.quoteExpiresAt) - Date.now() < 3 * 86_400_000 },
+  { key: 'verify', title: 'Agreements to verify', status: 'ACCEPTED', n: null },
+  { key: 'pick', title: 'To pick', status: 'APPROVED,PICKING,PURCHASING', n: null },
+  { key: 'ship', title: 'To ship', status: 'PURCHASING,PICKING', n: null },
+])
+const low = ref<number | null>(null)
+async function countRequests(c: Counter): Promise<number> {
+  const res = (await call(() =>
+    orders.GET('/requests', { params: { query: { scope: 'all', status: c.status, limit: 100 } as any } }),
+  )) as { items: RequestSummary[]; nextCursor: string | null }
+  const items = c.filter ? res.items.filter(c.filter) : res.items
+  return res.nextCursor && !c.filter ? 101 : items.length
+}
+
 onMounted(async () => {
+  void Promise.all(counters.value.map(async (c) => (c.n = await countRequests(c)))).catch((e) => notify.report(e))
+  void call(() => inventory.GET('/stock/low', { params: { query: { limit: 100 } } }))
+    .then((r) => (low.value = r.nextCursor ? 101 : r.items.length))
+    .catch(() => undefined)
   try {
     ;[pending.value, unverified.value] = await Promise.all([count('PENDING_APPROVAL'), count('PENDING_VERIFICATION')])
   } catch (e) {
@@ -71,6 +103,28 @@ onMounted(async () => {
           <v-btn type="submit" color="primary" size="large">Explore products</v-btn>
         </form>
       </v-card>
+
+      <section class="stack-sm">
+        <h2 class="t-h3">Requests</h2>
+        <div class="tiles">
+          <v-card
+            v-for="c in counters"
+            :key="c.key"
+            :to="{ path: '/requests', query: { status: c.status, ...(c.key === 'expiring' ? { sort: 'oldest' } : {}) } }"
+            class="tile"
+            :class="{ attention: (c.n ?? 0) > 0 }"
+          >
+            <v-icon :icon="mdiClipboardTextOutline" color="primary" />
+            <span class="t-display tnum">{{ label(c.n) }}</span>
+            <span class="t-label">{{ c.title }}</span>
+          </v-card>
+          <v-card to="/reports/stock" class="tile" :class="{ attention: (low ?? 0) > 0 }">
+            <v-icon :icon="mdiAlertOutline" color="primary" />
+            <span class="t-display tnum">{{ label(low) }}</span>
+            <span class="t-label">Products low on stock</span>
+          </v-card>
+        </div>
+      </section>
 
       <section class="stack-sm">
         <h2 class="t-h3">Accounts</h2>

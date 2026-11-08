@@ -108,7 +108,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('pick with a reason; a second pick is refused (A-10)', async ({ page }) => {
     await login(page, staff)
-    await page.getByRole('link', { name: 'Pick' }).click()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Pick' }).click()
     await page.getByRole('button', { name: /^Pick Take units/ }).click()
     await page.getByLabel('Reason').fill('Station repair')
     await scanInto(page, 'Unit', units[0]!)

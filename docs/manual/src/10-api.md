@@ -68,7 +68,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | `picks` | staff | pick **CIMH-stock lines only** (supplier items ship direct) | `APPROVED → PICKING` |
 | `ship` | staff | `PURCHASING → SHIPPED` | `PICKING → SHIPPED` |
 | `deliver` | staff | `SHIPPED → DELIVERED` | `SHIPPED → DELIVERED` |
-| `cancel` | requester/staff/admin | up to `ACCEPTED` | up to `APPROVED` |
+| `cancel` | requester/staff/admin | up to `AWAITING_AGREEMENT` (customer); `ACCEPTED` staff/admin only | `SUBMITTED` (customer); `APPROVED` staff/admin only |
+
+Every illegal action returns **409 `ORDER_ILLEGAL_TRANSITION`**; a stale `If-Match` returns 409 `VERSION_CONFLICT`. The admin fee is charged once per request and included in the agreement total. Shipping needs every CIMH-stock and Pro Bono unit picked first (409 `PICKING_INCOMPLETE`).
 
 Status diagrams: [Chapter 5](05-workflows.md#53-paid-request-quote-to-delivery).
 
