@@ -44,3 +44,29 @@ def test_catalog_reads_use_indexes(stack: Any) -> None:
     assert len(graded) > 40
     bad = [g for g in graded if g.grade != "OK"]
     assert not bad, "\n" + report(bad)
+
+
+@pytest.mark.req("TR-DATA-5")
+def test_inventory_reads_use_indexes(stack: Any) -> None:
+    from explain_inventory import collect, seed
+    from pymongo import AsyncMongoClient
+    from querylog import explain_all, report
+
+    from inventory_svc.store import Store
+
+    async def go() -> list[Any]:
+        client: AsyncMongoClient[dict[str, Any]] = AsyncMongoClient(stack.mongo_url, tz_aware=True)
+        name = f"itest_inv_plans_{uuid.uuid4().hex[:8]}"
+        db = client[name]
+        try:
+            await Store(db).ensure_indexes()
+            await seed(db, 20_000)
+            return await explain_all(db, await collect(db))
+        finally:
+            await client.drop_database(name)
+            await client.close()
+
+    graded = asyncio.run(go())
+    assert len(graded) > 40
+    bad = [g for g in graded if g.grade != "OK"]
+    assert not bad, "\n" + report(bad)

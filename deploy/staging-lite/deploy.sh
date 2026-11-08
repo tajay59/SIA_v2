@@ -16,7 +16,7 @@ TAG=staging
 EDGE=0; [[ "${1:-}" == "--edge" ]] && EDGE=1
 HERE=$(cd "$(dirname "$0")" && pwd)
 
-for svc in identity-svc catalog-svc media-worker; do
+for svc in identity-svc catalog-svc inventory-svc media-worker; do
   echo "== build $svc"
   docker build -q -f "services/$svc/Dockerfile" --build-arg APP_VERSION="$(git rev-parse --short HEAD)" \
     -t "cimh/$svc:$TAG" . >/dev/null
@@ -49,11 +49,13 @@ umask 077
 [ -s service_secrets ] || printf 'notification=%s\norder=%s\ncatalog=%s\ninventory=%s\ndocument=%s\nmedia=%s\n' \
   "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" \
   "$(openssl rand -hex 24)" "$(openssl rand -hex 24)" > service_secrets
-# Each calling service gets only its own line (catalog -> identity internal API).
-grep '^catalog=' service_secrets | cut -d= -f2- | tr -d '\n' > service_secret_catalog
+# Each calling service gets only its own line (catalog, inventory -> identity internal API).
+for s in catalog inventory; do
+  rm -f "service_secret_$s"; grep "^$s=" service_secrets | cut -d= -f2- | tr -d '\n' > "service_secret_$s"
+done
 # Containers run as uid 10001 and read the secrets via bind mounts.
-chown 10001 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog
-chmod 400 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog
+chown 10001 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog service_secret_inventory
+chmod 400 jwt_private_key.pem data_key code_pepper service_secrets service_secret_catalog service_secret_inventory
 EOF
 
 echo "== start stack"

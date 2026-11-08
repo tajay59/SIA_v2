@@ -38,13 +38,15 @@ def decode_cursor(cursor: str) -> tuple[Any, str]:
         raise ProblemError(422, "VALIDATION_FAILED", "invalid cursor") from exc
 
 
-def after_cursor(field: str, cursor: str | None, descending: bool = False) -> dict[str, Any]:
+def after_cursor(field: str, cursor: str | None, descending: bool = False, id_field: str = "id") -> dict[str, Any]:
     """Mongo filter for items strictly after the cursor in (field, id) order."""
     if not cursor:
         return {}
     value, item_id = decode_cursor(cursor)
     op = "$lt" if descending else "$gt"
-    return {"$or": [{field: {op: value}}, {field: value, "id": {op: item_id}}]}
+    if field == id_field:  # the sort key is already unique
+        return {field: {op: item_id}}
+    return {"$or": [{field: {op: value}}, {field: value, id_field: {op: item_id}}]}
 
 
 async def page(
@@ -55,17 +57,20 @@ async def page(
     cursor: str | None,
     limit: int | None,
     descending: bool = False,
+    id_field: str = "id",
 ) -> tuple[list[dict[str, Any]], str | None]:
+    """One page sorted by (sort_field, id_field); `id_field` must be unique (`barcode` for units)."""
     n = clamp_limit(limit)
     query = dict(filter)
-    after = after_cursor(sort_field, cursor, descending)
+    after = after_cursor(sort_field, cursor, descending, id_field)
     if after:
         query = {"$and": [query, after]} if query else after
     direction = -1 if descending else 1
-    docs = await collection.find(query).sort([(sort_field, direction), ("id", direction)]).limit(n + 1).to_list()
+    order = [(sort_field, direction)] if sort_field == id_field else [(sort_field, direction), (id_field, direction)]
+    docs = await collection.find(query).sort(order).limit(n + 1).to_list()
     next_cursor = None
     if len(docs) > n:
         docs = docs[:n]
         last = docs[-1]
-        next_cursor = encode_cursor(last.get(sort_field), last["id"])
+        next_cursor = encode_cursor(last.get(sort_field), last[id_field])
     return docs, next_cursor

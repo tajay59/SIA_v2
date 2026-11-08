@@ -125,5 +125,5 @@ figcaption{color:#9198a1;font-size:13px;margin-top:6px}
 </html>
 """
 out = page.replace("__TOC__", "".join(toc)).replace("__BODY__", "\n".join(sections))
-(M / "index.html").write_text(out, encoding="utf-8")
+(M / "index.html").write_text(out, encoding="utf-8", newline="\n")  # LF on Windows too (.gitattributes)
 print("wrote", M / "index.html", len(out), "bytes;", len(sections), "chapters")

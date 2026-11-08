@@ -55,7 +55,7 @@ v2 changes the order model to a **request → quote → accept → purchase → 
    |---|---|
    | identity-svc | `accounts`, `temp`, **`organisations`** (new), **`auditlog`** (new) |
    | catalog-svc | `product`, `xuser` (view), `misc` (reference data: sites/shelves are read through inventory-svc's API) |
-   | inventory-svc | `storage`, `history` |
+   | inventory-svc | `storage`, `history`, `stock` (new) |
    | order-svc | `orders` |
    | document-svc | file metadata stored on `orders.files[]` through order-svc's API (no collection of its own) |
    | notification-svc | none (reads email lists from catalog-svc's API) |

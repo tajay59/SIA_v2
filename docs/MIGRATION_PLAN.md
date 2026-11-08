@@ -113,7 +113,9 @@ Field-level targets are in the [BSD](BSD.md). Order of execution follows depende
 | other fields | unchanged; add `active:true`, `inStock` (computed from storage), `createdAt/updatedAt` = cut-over, `outbox:[]`, `version:1` |
 
 ### M04 `storage`
-Unchanged fields + `reservedFor:null`, `reservedAt:null`, `assignedTo` (**mapped from legacy self-stow data**: units stowed to a person rather than a shelf become `assignedTo: <accountId>`; the exact field rule is listed in the DR-1 report), `updatedAt`. Indexes rebuilt per BSD §5.8 (`barcode` **unique**).
+Unchanged fields + `assignedTo` (**mapped from legacy self-stow data**: units stowed to a person rather than a shelf become `assignedTo: <accountId>` and `stowed: false`; the exact field rule is listed in the DR-1 report), `updatedAt`. `reservedFor`/`reservedAt` are left absent (= free). Indexes rebuilt per BSD §5.8 (`barcode` **unique**).
+
+Then build **`stock`** (BSD §5.11): one document per product with `productName`, `type`, `threshold`, `active` from `product`, counts computed from the migrated `storage`, `low`, `outbox: []` (no events at cut-over). Check: for every product, `available + reserved` = stowed, unpicked units.
 
 ### M05 `history`
 | Legacy `operation` | v2 |

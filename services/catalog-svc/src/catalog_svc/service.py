@@ -614,6 +614,8 @@ class CatalogService:
         for key in ("kind", "site", "location"):
             if filters.get(key):
                 q[key] = filters[key]
+        if filters.get("barcode"):  # a scanned code: the place's id is its barcode
+            q["id"] = filters["barcode"]
         docs = await self.store.misc.find(q).sort([("kind", 1), ("id", 1)]).to_list()
         return [_place(d) for d in docs]
 

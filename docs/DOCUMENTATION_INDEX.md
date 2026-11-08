@@ -115,7 +115,7 @@ Every document to be produced for the CIMH Stores Platform (SHOP · SIA · SIA M
 - **Collection ownership by service:**
   - identity: `accounts`, `temp`, `organisations`, `auditlog`
   - catalog: `product`, `xuser`, `misc`
-  - inventory: `storage`, `history`
+  - inventory: `storage`, `history`, `stock` (new)
   - order: `orders`
 - **Per collection:**
   - Field-level schema (name, type, required, validation).

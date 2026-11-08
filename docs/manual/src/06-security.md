@@ -64,7 +64,7 @@ Source: [Security and Threat Model](../SECURITY.md), [TAD §8](../TAD.md), [TRD 
 | A2 | Personal data (names, emails, phones, addresses, organisation, IPs) | `accounts`, `orders` (`customerSnapshot`, `shipTo`, `billTo`), `auditlog` | **High** | Privacy law (Barbados Data Protection Act 2019), trust |
 | A3 | Signed payment agreements and quotes | File volume, `orders.agreement` | **High** | Legal commitment to pay; financial dispute evidence |
 | A4 | Pricing and supplier data (cost, supplier names, purchase orders, exchange rates) | `product.cost`, `orders.quotes`, `purchaseOrders` | **High** | Commercial confidentiality |
-| A5 | Stock integrity (units, reservations, history) | `storage`, `history` | **High** | Theft concealment, overselling |
+| A5 | Stock integrity (units, reservations, history) | `storage`, `history`, `stock` | **High** | Theft concealment, overselling |
 | A6 | Request status integrity (who accepted what, when) | `orders.history`, `auditlog` | **High** | Non-repudiation of acceptance |
 | A7 | Service secrets (DB users, JWT signing key, SMTP, service credentials, backup keys) | `.env` / Docker secrets | **Critical** | Full compromise |
 | A8 | Availability of SHOP/SIA/Mobile | Main host | Medium | Operations stop |

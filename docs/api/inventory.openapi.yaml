@@ -54,6 +54,7 @@ paths:
         content: { application/json: { schema: { type: object, required: [name], properties: { name: { type: string }, description: { type: string } } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Location' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /locations/{location}/shelves:
     parameters: [ { name: location, in: path, required: true, schema: { type: string } } ]
@@ -66,6 +67,7 @@ paths:
         content: { application/json: { schema: { type: object, required: [count], properties: { count: { type: integer, minimum: 1, maximum: 200 } } } } }
       responses:
         '201': { description: Created, content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Shelf' } } } } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /shelves/{barcode}:
     parameters: [ { name: barcode, in: path, required: true, schema: { type: string } } ]
@@ -95,6 +97,7 @@ paths:
                   - type: object
                     required: [items]
                     properties: { items: { type: array, items: { $ref: '#/components/schemas/Unit' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /units/{barcode}:
     parameters: [ { name: barcode, in: path, required: true, schema: { type: string } } ]
@@ -133,12 +136,14 @@ paths:
                 required: [barcodes, fileId]
                 properties:
                   barcodes: { type: array, items: { type: string } }
-                  fileId: { type: string, description: Download via documents API }
+                  fileId: { type: [string, 'null'], description: 'Download via documents API. null until document-svc (P6) builds the label file; SIA renders the codes itself meanwhile' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /stow:
     post:
       tags: [scans]
       summary: Stow a unit on a shelf
+      description: 'A legacy label (`<productId>_<code>`) without a unit record creates it on first stow. Stowing a unit already on this shelf returns it unchanged; on another shelf -> 409 UNIT_ALREADY_STOWED (use /relocate). An issued unit -> 409 UNIT_ASSIGNED.'
       parameters:
         - { $ref: '#/components/parameters/ScanKey' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -174,6 +179,7 @@ paths:
                 - required: [orderId]
       responses:
         '200': { description: Picked, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
   /relocate:
@@ -188,6 +194,7 @@ paths:
         content: { application/json: { schema: { type: object, required: [unit, toShelf], properties: { unit: { type: string }, toShelf: { type: string } } } } }
       responses:
         '200': { description: Moved, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
   /assign:
@@ -202,6 +209,8 @@ paths:
         content: { application/json: { schema: { type: object, required: [unit, accountId], properties: { unit: { type: string }, accountId: { type: string } } } } }
       responses:
         '200': { description: Assigned, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
   /unassign:
     post:
@@ -215,6 +224,8 @@ paths:
         content: { application/json: { schema: { type: object, required: [unit], properties: { unit: { type: string } } } } }
       responses:
         '200': { description: Unassigned, content: { application/json: { schema: { $ref: '#/components/schemas/Unit' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
   /products/{productId}/stock:
     parameters: [ { name: productId, in: path, required: true, schema: { type: string } } ]
@@ -335,7 +346,7 @@ paths:
                 required: [lines]
                 properties:
                   lines: { type: array, items: { type: object, required: [lineId, units], properties: { lineId: { type: string }, units: { type: array, items: { type: string } } } } }
-        '409': { description: Insufficient stock; nothing reserved (code RESERVATION_FAILED) }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
   /internal/reservations/{orderId}:
     parameters: [ { name: orderId, in: path, required: true, schema: { type: string } } ]
@@ -346,9 +357,19 @@ paths:
         '204': { description: Released }
 
   /health/live:
-    get: { tags: [ops], security: [], responses: { '200': { description: Alive } } }
+    servers: [{ url: / }]   # served at the root, not under the API base path
+    get:
+      tags: [ops]
+      security: []
+      responses: { '200': { description: Alive, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } } }
   /health/ready:
-    get: { tags: [ops], security: [], responses: { '200': { description: Ready }, '503': { description: Not ready } } }
+    servers: [{ url: / }]
+    get:
+      tags: [ops]
+      security: []
+      responses:
+        '200': { description: Ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
+        '503': { description: Not ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
 
 components:
   parameters:
@@ -444,8 +465,11 @@ components:
             required: [site, location, shelf, count]
             properties:
               site: { type: string }
+              siteName: { type: string }
               location: { type: string }
+              locationName: { type: string }
               shelf: { type: string }
+              shelfNumber: { type: integer }
               count: { type: integer }
     HistoryEntry:
       type: object
@@ -457,7 +481,11 @@ components:
         site: { type: [string, 'null'] }
         location: { type: [string, 'null'] }
         shelf: { type: [string, 'null'] }
-        from: { type: [object, 'null'] }
-        user: { type: string }
+        from:
+          type: [object, 'null']
+          description: Where the unit was before a relocate or assign
+          properties: { site: { type: [string, 'null'] }, location: { type: [string, 'null'] }, shelf: { type: [string, 'null'] } }
+        user: { type: string, description: Account id of the staff member who scanned }
+        accountId: { type: [string, 'null'], description: 'assign / unassign: the person the unit was issued to' }
         orderId: { type: [string, 'null'] }
         date: { $ref: './common.yaml#/components/schemas/Timestamp' }

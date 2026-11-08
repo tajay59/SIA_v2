@@ -76,6 +76,10 @@ class AsyncCollection:
     async def count_documents(self, *a: Any, **kw: Any) -> int:
         return int(self._c.count_documents(*a, **kw))
 
+    async def aggregate(self, pipeline: list[dict[str, Any]], **kw: Any) -> _AsyncCursor:
+        # PyMongo Async: `await coll.aggregate(...)` returns a cursor.
+        return _AsyncCursor(iter(list(self._c.aggregate(pipeline))))
+
     async def create_index(self, keys: Any, **kw: Any) -> str:
         kw.pop("collation", None)  # mongomock doesn't support collations
         kw.pop("partialFilterExpression", None)
