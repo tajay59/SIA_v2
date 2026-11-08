@@ -54,7 +54,7 @@ Source: [App Flow Document (APD)](../APD.md). It shows what happens on each clic
 
 ![SIA navigation map](images/20-sia-sitemap.svg)
 
-**Side navigation:** Dashboard · Request desk · Catalogue · Inventory (Sites, Stow, Pick, Lookup, Labels) · Reports · Admin (admin only) · Profile. A **global scan box** accepts a unit, shelf or request barcode → opens the matching screen.
+**Navigation** (legacy SIA top header; drawer below 1280 px): Dashboard · Products · Inventory (Labels, Location, Lookup) · Pick · Stow · Request desk (P5) · Reports ▾ · Admin ▾ · Profile. The **scan box** in the header takes a unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory → Lookup on it; request codes open the request desk once it exists (P5).
 
 | ID | Route | Screen | Guard | Main content | Actions → next |
 |---|---|---|---|---|---|
@@ -65,13 +65,13 @@ Source: [App Flow Document (APD)](../APD.md). It shows what happens on each clic
 | A-05 | `/products` | Products | staff | Search, filters (type, department, sellable, Pro Bono, inactive), table with stock count | Row → A-07 · New → A-06 |
 | A-06 | `/products/new` | New product | staff | Form (all ProductInput fields; **Pro Bono** toggle required, max per request when on) | Save → A-07 (then add images) |
 | A-07 | `/products/[id]` | Product | staff | Tabs: Details (edit), Images (upload, background-removal option, set primary, remove), Stock (by location), History | Save ↺ · Deactivate ⧉ · Create labels → A-12 (prefilled) |
-| A-08 | `/inventory/sites` | Sites and shelves | staff | Tree site → location → shelves; QR per shelf (print) | New site/location ⧉ · Add shelves ⧉ · Shelf → A-11 |
-| A-09 | `/inventory/stow` | Stow | staff | Step 1 scan/enter **shelf**; step 2 scan **units** (repeat); running list | Each scan ↺ (success/fail chip) · Change shelf → step 1 |
-| A-10 | `/inventory/pick` | Pick | staff | Mode **Reason** (scan unit + reason) or **For request** (request id → lines; scan units per line; only CIMH/Pro Bono lines) | Scan ↺ · Request done → A-03 |
-| A-11 | `/inventory/lookup` | Lookup | staff | Scan/enter shelf or product → units (paged) / locations | Unit → unit ⧉ (relocate, assign) |
-| A-12 | `/inventory/labels` | Labels | staff | Product, quantity, serials, PDF/CSV | Create → download |
-| A-13 | `/reports/stock` | Stock levels | staff | Low stock first; per product available/reserved/picked | → A-07 |
-| A-14 | `/reports/assignments` | Who has what | staff | Units issued to people | Unassign ⧉ |
+| A-08 | `/inventory?op=location` | Inventory → **Location** (legacy arrow tabs) | staff | ‹ Site · Location · Shelves › forms; below, tree site → location → shelves with printable QR codes | Register site / Create location / Add shelves (QR sheet shown) · Shelf → A-11 |
+| A-09 | `/stow` | Stow (legacy numbered steps) | staff | 1. Select shelf (scan, validated, "You have selected Location › Shelf n"); 2. Scan units (repeat); running ✓/✗ list with the reason | Each scan ↺ (Retry reuses its Idempotency-Key) · Change shelf → step 1 |
+| A-10 | `/pick` | Pick (legacy operation buttons) | staff | **Pick** (reason, then scan units) · **Relocate** (target shelf, then units) · **Issue / Return** (person, then units; legacy self-stow) · **Pick Order** (request lines; with P5) | Scan ↺ · Request done → A-03 |
+| A-11 | `/inventory?op=lookup&code=` | Inventory → **Lookup** | staff | Scan/enter a shelf (units, paged), unit (card) or product code, or search a product by name (stock by location) | Unit card: Move · Issue · Return · Pick ↺ · Create labels → A-12 |
+| A-12 | `/inventory?op=labels&product=` | Inventory → **Labels** (legacy "Product"; products are created in A-06) | staff | Product, quantity, serials (optional, one per unit) | Create → QR label sheet (print) + legacy CSV; server PDF with document-svc (P6) |
+| A-13 | `/reports/stock` | Stock levels | staff | Low stock (available ≤ alert level) with available/alert/reserved/issued/picked; any product's stock via search | → A-07 Stock tab |
+| A-14 | `/reports/assignments` | Who has what | staff | Units issued to people, grouped by person; filter one person | Return ↺ |
 | A-15 | `/reports/history` | Movement history | staff | Filters unit, user, operation, dates | — |
 | A-16 | `/admin/approvals` | Pending accounts | admin | Oldest first; organisation text, email domain, suggested organisation match; checkbox multi-select | **Approve** ⧉ (pick/create organisation, role) ↺ · **Deny** ⧉ reason ↺ · Bulk approve/deny ⧉ (207 results) ↺ |
 | A-17 | `/admin/accounts` · `/admin/accounts/[id]` | Accounts | admin (staff read) | List with filters (incl. "asked to be deleted"); detail with status history | Role ⧉ · Suspend ⧉ / Reactivate · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered |

@@ -4223,7 +4223,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </table>
 <h2 id="113-sia-screens-staff-and-admin">11.3 SIA: screens (staff and admin)</h2>
 <figure><a href="images/20-sia-sitemap.svg" target="_blank" title="Open full size"><img alt="SIA navigation map" src="images/20-sia-sitemap.svg" loading="lazy"></a><figcaption>SIA navigation map</figcaption></figure>
-<p><strong>Side navigation:</strong> Dashboard · Request desk · Catalogue · Inventory (Sites, Stow, Pick, Lookup, Labels) · Reports · Admin (admin only) · Profile. A <strong>global scan box</strong> accepts a unit, shelf or request barcode → opens the matching screen.</p>
+<p><strong>Navigation</strong> (legacy SIA top header; drawer below 1280 px): Dashboard · Products · Inventory (Labels, Location, Lookup) · Pick · Stow · Request desk (P5) · Reports ▾ · Admin ▾ · Profile. The <strong>scan box</strong> in the header takes a unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory → Lookup on it; request codes open the request desk once it exists (P5).</p>
 <table>
 <thead>
 <tr>
@@ -4294,59 +4294,59 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>A-08</td>
-<td><code>/inventory/sites</code></td>
-<td>Sites and shelves</td>
+<td><code>/inventory?op=location</code></td>
+<td>Inventory → <strong>Location</strong> (legacy arrow tabs)</td>
 <td>staff</td>
-<td>Tree site → location → shelves; QR per shelf (print)</td>
-<td>New site/location ⧉ · Add shelves ⧉ · Shelf → A-11</td>
+<td>‹ Site · Location · Shelves › forms; below, tree site → location → shelves with printable QR codes</td>
+<td>Register site / Create location / Add shelves (QR sheet shown) · Shelf → A-11</td>
 </tr>
 <tr>
 <td>A-09</td>
-<td><code>/inventory/stow</code></td>
-<td>Stow</td>
+<td><code>/stow</code></td>
+<td>Stow (legacy numbered steps)</td>
 <td>staff</td>
-<td>Step 1 scan/enter <strong>shelf</strong>; step 2 scan <strong>units</strong> (repeat); running list</td>
-<td>Each scan ↺ (success/fail chip) · Change shelf → step 1</td>
+<td>1. Select shelf (scan, validated, "You have selected Location › Shelf n"); 2. Scan units (repeat); running ✓/✗ list with the reason</td>
+<td>Each scan ↺ (Retry reuses its Idempotency-Key) · Change shelf → step 1</td>
 </tr>
 <tr>
 <td>A-10</td>
-<td><code>/inventory/pick</code></td>
-<td>Pick</td>
+<td><code>/pick</code></td>
+<td>Pick (legacy operation buttons)</td>
 <td>staff</td>
-<td>Mode <strong>Reason</strong> (scan unit + reason) or <strong>For request</strong> (request id → lines; scan units per line; only CIMH/Pro Bono lines)</td>
+<td><strong>Pick</strong> (reason, then scan units) · <strong>Relocate</strong> (target shelf, then units) · <strong>Issue / Return</strong> (person, then units; legacy self-stow) · <strong>Pick Order</strong> (request lines; with P5)</td>
 <td>Scan ↺ · Request done → A-03</td>
 </tr>
 <tr>
 <td>A-11</td>
-<td><code>/inventory/lookup</code></td>
-<td>Lookup</td>
+<td><code>/inventory?op=lookup&amp;code=</code></td>
+<td>Inventory → <strong>Lookup</strong></td>
 <td>staff</td>
-<td>Scan/enter shelf or product → units (paged) / locations</td>
-<td>Unit → unit ⧉ (relocate, assign)</td>
+<td>Scan/enter a shelf (units, paged), unit (card) or product code, or search a product by name (stock by location)</td>
+<td>Unit card: Move · Issue · Return · Pick ↺ · Create labels → A-12</td>
 </tr>
 <tr>
 <td>A-12</td>
-<td><code>/inventory/labels</code></td>
-<td>Labels</td>
+<td><code>/inventory?op=labels&amp;product=</code></td>
+<td>Inventory → <strong>Labels</strong> (legacy "Product"; products are created in A-06)</td>
 <td>staff</td>
-<td>Product, quantity, serials, PDF/CSV</td>
-<td>Create → download</td>
+<td>Product, quantity, serials (optional, one per unit)</td>
+<td>Create → QR label sheet (print) + legacy CSV; server PDF with document-svc (P6)</td>
 </tr>
 <tr>
 <td>A-13</td>
 <td><code>/reports/stock</code></td>
 <td>Stock levels</td>
 <td>staff</td>
-<td>Low stock first; per product available/reserved/picked</td>
-<td>→ A-07</td>
+<td>Low stock (available ≤ alert level) with available/alert/reserved/issued/picked; any product's stock via search</td>
+<td>→ A-07 Stock tab</td>
 </tr>
 <tr>
 <td>A-14</td>
 <td><code>/reports/assignments</code></td>
 <td>Who has what</td>
 <td>staff</td>
-<td>Units issued to people</td>
-<td>Unassign ⧉</td>
+<td>Units issued to people, grouped by person; filter one person</td>
+<td>Return ↺</td>
 </tr>
 <tr>
 <td>A-15</td>

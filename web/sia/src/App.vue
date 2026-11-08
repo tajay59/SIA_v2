@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
  * SIA shell, same structure as the legacy SIA AppHeader: one horizontal header with the CIMH logo on the
- * left, the work areas as links (Products; Inventory, Pick, Stow and Orders join as their phases ship),
- * an Admin menu for account and settings pages, and the theme + profile on the right. Phones: a menu
- * button opens the same links. Pages show their title as the page heading under the header (pages with
+ * left, the work areas as links in legacy order (Products, Inventory, Pick, Stow; Orders joins with P5),
+ * Reports and Admin menus, then the scan box, theme and profile on the right. The scan box takes any
+ * unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory →
+ * Lookup on it (APD "global scan box"). Phones: a menu button opens the same links. Pages show their title as the page heading under the header (pages with
  * their own heading set `meta.ownHeading`). Bare layout (login, MFA setup…) shows no header.
  */
 import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
 import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
-import { mdiAccountCircleOutline, mdiChevronDown, mdiLogout, mdiMenu, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
+import { mdiAccountCircleOutline, mdiBarcodeScan, mdiChevronDown, mdiLogout, mdiMenu, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
 import { computed, ref } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
@@ -18,7 +19,7 @@ const session = useSession()
 const route = useRoute()
 const router = useRouter()
 const { dark, toggle } = useThemeMode()
-const { mdAndUp } = useDisplay()
+const { lgAndUp: wide } = useDisplay()
 const brand = computed(() => (dark.value ? logoWhite : logo))
 const bare = computed(() => route.meta.layout === 'bare' || !session.isStaff || session.needsMfaSetup)
 const drawer = ref(false)
@@ -26,7 +27,25 @@ const drawer = ref(false)
 const work = computed(() => [
   { title: 'Dashboard', to: '/', show: true },
   { title: 'Products', to: '/products', show: true },
+  { title: 'Inventory', to: '/inventory', show: true },
+  { title: 'Pick', to: '/pick', show: true },
+  { title: 'Stow', to: '/stow', show: true },
 ])
+const reports = [
+  { title: 'Stock levels', to: '/reports/stock' },
+  { title: 'Who has what', to: '/reports/assignments' },
+  { title: 'Movement history', to: '/reports/history' },
+]
+const reportsActive = computed(() => route.path.startsWith('/reports'))
+
+const scanCode = ref('')
+function openScan() {
+  const code = scanCode.value.trim()
+  if (!code) return
+  scanCode.value = ''
+  drawer.value = false
+  void router.push({ path: '/inventory', query: { op: 'lookup', code } })
+}
 const admin = computed(() =>
   [
     { title: 'Pending accounts', to: '/admin/approvals', show: session.isAdmin },
@@ -56,10 +75,20 @@ async function logout() {
             <span class="brand-name">SIA</span>
           </router-link>
 
-          <nav v-if="mdAndUp" class="nav" aria-label="Main">
+          <nav v-if="wide" class="nav" aria-label="Main">
             <router-link v-for="n in work.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link" :class="{ on: isActive(n.to) }">
               {{ n.title }}
             </router-link>
+            <v-menu location="bottom start">
+              <template #activator="{ props }">
+                <button v-bind="props" type="button" class="nav-link" :class="{ on: reportsActive }">
+                  Reports <v-icon :icon="mdiChevronDown" size="18" />
+                </button>
+              </template>
+              <v-list density="compact" min-width="220">
+                <v-list-item v-for="r in reports" :key="r.to" :to="r.to" :title="r.title" />
+              </v-list>
+            </v-menu>
             <v-menu location="bottom start">
               <template #activator="{ props }">
                 <button v-bind="props" type="button" class="nav-link" :class="{ on: adminActive }">
@@ -73,6 +102,19 @@ async function logout() {
           </nav>
 
           <div class="right">
+            <form v-if="wide" class="scanbox" role="search" @submit.prevent="openScan">
+              <v-text-field
+                v-model="scanCode"
+                density="compact"
+                variant="outlined"
+                hide-details
+                placeholder="Scan a code"
+                aria-label="Scan or type a unit, shelf or product code"
+                :prepend-inner-icon="mdiBarcodeScan"
+                autocomplete="off"
+                spellcheck="false"
+              />
+            </form>
             <v-btn
               variant="text"
               :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
@@ -90,14 +132,19 @@ async function logout() {
                 <v-list-item :prepend-icon="mdiLogout" title="Log out" @click="logout" />
               </v-list>
             </v-menu>
-            <v-btn v-if="!mdAndUp" variant="text" :icon="mdiMenu" aria-label="Open navigation" @click="drawer = !drawer" />
+            <v-btn v-if="!wide" variant="text" :icon="mdiMenu" aria-label="Open navigation" @click="drawer = !drawer" />
           </div>
         </div>
       </v-app-bar>
 
-      <v-navigation-drawer v-if="!mdAndUp" v-model="drawer" temporary location="right" width="280">
+      <v-navigation-drawer v-if="!wide" v-model="drawer" temporary location="right" width="280">
         <v-list nav density="comfortable" color="primary">
+          <form class="pa-2" role="search" @submit.prevent="openScan">
+            <v-text-field v-model="scanCode" density="compact" hide-details placeholder="Scan a code" aria-label="Scan or type a unit, shelf or product code" :prepend-inner-icon="mdiBarcodeScan" />
+          </form>
           <v-list-item v-for="n in work.filter((x) => x.show)" :key="n.to" :to="n.to" :title="n.title" :exact="n.to === '/'" @click="drawer = false" />
+          <v-list-subheader>Reports</v-list-subheader>
+          <v-list-item v-for="r in reports" :key="r.to" :to="r.to" :title="r.title" @click="drawer = false" />
           <v-list-subheader>Admin</v-list-subheader>
           <v-list-item v-for="a in admin" :key="a.to" :to="a.to" :title="a.title" @click="drawer = false" />
         </v-list>
@@ -179,6 +226,9 @@ async function logout() {
   height: 3px;
   border-radius: 3px 3px 0 0;
   background: rgb(var(--v-theme-primary));
+}
+.scanbox {
+  width: 200px;
 }
 .right {
   margin-left: auto;

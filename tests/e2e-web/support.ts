@@ -130,3 +130,27 @@ export async function staffAccount(prefix = 'staff'): Promise<string> {
   mongo(`db.accounts.updateOne({ email: ${JSON.stringify(email)} }, { $set: { role: 'staff' }, $inc: { version: 1 } }); return true`)
   return email
 }
+
+export const CATALOG = process.env.CATALOG_URL ?? 'http://localhost:18002'
+
+/** A Bearer token for an account (mobile-style login), for setting up data through the APIs. */
+export async function bearer(email: string): Promise<string> {
+  const r = await req(`${API}/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: PASSWORD, client: 'mobile' }),
+  })
+  if (!r.ok) throw new Error(`login ${email}: ${r.status} ${await r.text()}`)
+  return ((await r.json()) as { accessToken: string }).accessToken
+}
+
+/** A product created through catalog-svc by a staff member; returns its id. */
+export async function apiProduct(staffEmail: string, name: string, threshold = 0): Promise<string> {
+  const r = await req(`${CATALOG}/api/catalog/v1/products`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${await bearer(staffEmail)}` },
+    body: JSON.stringify({ name, type: 'EQUIP', department: 'Hydrology', sellable: false, probono: false, threshold }),
+  })
+  if (r.status !== 201) throw new Error(`product: ${r.status} ${await r.text()}`)
+  return ((await r.json()) as { id: string }).id
+}

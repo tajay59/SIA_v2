@@ -10,6 +10,8 @@ import {
   catalog,
   identity,
   ifMatch,
+  inventory,
+  type ProductStock,
   type ProductPatch,
   type ProductStaff,
   primaryImage,
@@ -110,6 +112,21 @@ async function deactivate() {
   }
 }
 
+// Stock (A-07 Stock tab): counts and units per shelf, from inventory-svc.
+const stock = ref<ProductStock | null>(null)
+watch(
+  () => [tab.value, product.value?.id],
+  async () => {
+    if (tab.value !== 'stock' || !product.value) return
+    try {
+      stock.value = await call(() => inventory.GET('/products/{productId}/stock', { params: { path: { productId: product.value!.id } } }))
+    } catch (e) {
+      notify.report(e)
+    }
+  },
+  { immediate: true },
+)
+
 // History (admins): audit entries recorded for this product (cost changes, deactivation…).
 const history = ref<AuditEntry[] | null>(null)
 watch(
@@ -188,7 +205,7 @@ watch(
               <dt>Shown to customers</dt><dd>{{ product.active && product.sellable ? 'Yes' : 'No' }}</dd>
               <dt>Id</dt><dd class="t-mono">{{ product.id }}</dd>
             </dl>
-            <p class="t-caption muted mt-3">Stock by site, location and shelf, and label printing, come with the inventory service.</p>
+            <v-btn class="mt-4" block variant="tonal" :to="{ path: '/inventory', query: { op: 'labels', product: product.id } }">Create labels</v-btn>
             <v-btn v-if="product.active" class="mt-4" block variant="outlined" color="error" @click="deactivateOpen = true">Deactivate</v-btn>
           </v-card>
         </aside>
@@ -197,6 +214,7 @@ watch(
       <v-tabs v-model="tab" color="primary">
         <v-tab value="details">Details</v-tab>
         <v-tab value="images">Images ({{ product.images.length }})</v-tab>
+        <v-tab value="stock">Stock</v-tab>
         <v-tab v-if="session.isAdmin" value="history">History</v-tab>
       </v-tabs>
 
@@ -206,6 +224,29 @@ watch(
         </v-window-item>
         <v-window-item value="images">
           <div class="pt-4"><ProductImagesPanel :product="product" @updated="(p) => (product = p)" /></div>
+        </v-window-item>
+        <v-window-item value="stock">
+          <div class="pt-4 stack-sm">
+            <v-skeleton-loader v-if="!stock" type="table-row@3" />
+            <template v-else>
+              <p class="t-body tnum">
+                <strong>{{ stock.available }}</strong> available · {{ stock.reserved }} reserved · {{ stock.assigned ?? 0 }} issued ·
+                {{ stock.picked }} picked
+              </p>
+              <p v-if="!stock.byLocation.length" class="t-body muted">Nothing of this product is on a shelf.</p>
+              <v-table v-else density="compact">
+                <thead><tr><th>Site</th><th>Location</th><th>Shelf</th><th class="text-right">Units</th></tr></thead>
+                <tbody>
+                  <tr v-for="b in stock.byLocation" :key="b.shelf">
+                    <td>{{ b.siteName ?? b.site }}</td>
+                    <td>{{ b.locationName ?? b.location }}</td>
+                    <td><router-link :to="{ path: '/inventory', query: { op: 'lookup', code: b.shelf } }">Shelf {{ b.shelfNumber ?? '?' }}</router-link></td>
+                    <td class="text-right tnum">{{ b.count }}</td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </template>
+          </div>
         </v-window-item>
         <v-window-item v-if="session.isAdmin" value="history">
           <div class="pt-4">
