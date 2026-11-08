@@ -74,7 +74,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
       return db.misc.find({ kind: 'shelf', location: loc.id }).sort({ number: 1 }).toArray().map((s) => s.id);`)
     expect(shelves).toHaveLength(2)
     await page.getByRole('button', { name: new RegExp(siteName) }).click()
-    await expect(page.getByText('2 shelves')).toBeVisible()
+    await expect(page.getByText('2 shelves', { exact: true })).toBeVisible() // not the "2 shelves added" toast
   })
 
   test('create three unit labels for the product (A-12)', async ({ page }) => {
@@ -128,7 +128,8 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
     await box.fill(units[1]!)
     await box.press('Enter')
-    await expect(page.getByText(units[1]!, { exact: true })).toBeVisible() // the unit card replaced the shelf list
+    // Only the unit card has a Move button; once it shows, the shelf list (with its own chips) is gone.
+    await expect(page.getByRole('button', { name: 'Move' })).toBeVisible()
     await expect(page.getByText('On shelf', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Move' }).click()
     await scanInto(page, 'New shelf', shelves[1]!)
