@@ -449,6 +449,10 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `customer` | Id | R | ⟲ | → `accounts.id` (the requester) |
 | `customerSnapshot` | `{ firstname, lastname, email }` | R | ⟲ (`firstname`, `lastname`) | PII; copied at submission |
 | `organisationId` | Id? | | ✚ | Copied from the account at submission (drives organisation visibility) |
+| `customerName`, `organisationName` | string? | | ✚ | Copied at submission for the staff queue search (prefix) |
+| `cartOf` | Id? | | ✚ | Carts only: = `customer`. Sparse unique index → one cart per user |
+| `splitFrom` | Id? | | ✚ | The sibling request when a mixed cart was split |
+| `statusAt` | Timestamp | | ✚ | When the current status began (staff queue "waiting" sort) |
 | `lines` | Line[] | R | ⟲ (`cart`, `ncicart`) | See below |
 | `currency` | Currency? | | ✚ | Chosen at submission; `null` for Pro Bono and carts |
 | `shipTo` | Address & `{ firstname, lastname, email, tel }` | | ⟲ (`shipto`) | PII |
@@ -489,7 +493,10 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `quotes[].sentAt`, `sentBy` | Timestamp, Actor | |
 | `cimhQuote` | object? | Present when ≥ 1 line has `cimhAvailable` |
 | `cimhQuote.version` | int | Tracks the supplier quote version |
-| `cimhQuote.lines` | `{ lineId, unitCostBBD: Money, adminFee: Money, unitPrice: Money, total: Money }[]` | |
+| `cimhQuote.lines` | `{ lineId, unitCostBBD: Money, unitPrice: Money, total: Money }[]` | `unitCostBBD` staff only; USD price = BBD cost ÷ rate, rounded half-up to cents |
+| `quoteVersion`, `quoteExpiresAt` | int, Timestamp | Latest sent version and its expiry (`sentAt` + 30 days); the expiry job and agreement/accept read these |
+| `adminFee` | Money | Admin fee (catalogue `fees` `admin`, BBD, converted for USD) charged **once per request** (legacy rule), added to `agreement.total`; set when the quote is sent |
+| `quoteDraft` | object? | Staff draft while quoting: `supplierQuotes[]{supplier, lines{lineId, unitPrice}, fileIds}`, `cimh{lineIds, exchangeRate}`, `savedBy`, `savedAt`. A line may be priced by one supplier only |
 | `cimhQuote.exchangeRate` | Decimal128? | **Required when `currency = USD`**; entered by staff; BBD per USD |
 | `cimhQuote.total` | Money | In the request currency |
 | `cimhQuote.fileId` | Id? | Generated PDF |
@@ -526,12 +533,12 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | Index | Purpose |
 |---|---|
 | `{ id: 1 }` unique | Lookups by id |
-| `{ customer: 1, status: 1 }` partial `{ status: "CART" }`, unique | One cart per user |
+| `{ cartOf: 1 }` sparse, unique | One cart per user (only carts carry `cartOf`) |
 | `{ customer: 1, submittedAt: -1 }` | My requests |
 | `{ organisationId: 1, submittedAt: -1 }` | Organisation requests |
 | `{ status: 1, updatedAt: 1 }` | Staff queue, waiting time |
 | `{ type: 1, status: 1, submittedAt: -1 }` | Staff filters |
-| `{ "quotes.expiresAt": 1 }` partial `{ status: "QUOTED" }` | Expiry and reminder jobs |
+| `{ quoteExpiresAt: 1 }` partial `{ status: "QUOTED" }` | Expiry and reminder jobs |
 | `{ "shipTo.organization": 1 }` collation strength 2 | Staff search (prefix) |
 | `{ "lines.productId": 1 }` | Replaces legacy `cart.id` |
 | `{ "outbox.0": 1 }` sparse | Relay sweep |

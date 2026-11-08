@@ -338,6 +338,7 @@ export interface paths {
                     };
                 };
                 403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
             };
@@ -400,6 +401,7 @@ export interface paths {
                     };
                 };
                 403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
             };
@@ -454,6 +456,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -504,6 +507,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -554,6 +558,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -600,6 +605,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 503: components["responses"]["Unavailable"];
             };
@@ -661,6 +667,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
             };
@@ -709,6 +716,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 /** @description Draft incomplete (every line needs a supplier price or a CIMH option) */
                 422: {
@@ -777,6 +785,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -823,6 +832,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -873,6 +883,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -895,7 +906,7 @@ export interface paths {
         put?: never;
         /**
          * Pick a scanned unit against a line (staff); PROBONO APPROVED → PICKING on first pick
-         * @description Delegates to inventory-svc /pick with orderId; the unit must be reserved for this request. Only CIMH-stock (choice CIMH) and Pro Bono lines can be picked; supplier lines ship direct (409 LINE_NOT_PICKABLE).
+         * @description Delegates to inventory-svc /internal/picks; the unit must be reserved for this request. Only CIMH-stock (choice CIMH) and Pro Bono lines can be picked; supplier lines ship direct (409 LINE_NOT_PICKABLE). Also 409 LINE_FULLY_PICKED, UNIT_WRONG_PRODUCT and the inventory unit codes. Allowed while PURCHASING (paid) or APPROVED/PICKING (Pro Bono).
          */
         post: {
             parameters: {
@@ -928,6 +939,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -948,7 +960,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record shipment, PURCHASING/PICKING → SHIPPED (staff) */
+        /** Record shipment, PURCHASING/PICKING → SHIPPED (staff); every CIMH/Pro Bono unit must be picked first (409 PICKING_INCOMPLETE) */
         post: {
             parameters: {
                 query?: never;
@@ -978,6 +990,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
             };
@@ -1033,6 +1046,7 @@ export interface paths {
                         "application/json": components["schemas"]["Request"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -1076,6 +1090,7 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -1120,6 +1135,7 @@ export interface paths {
                     };
                     content?: never;
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -1149,7 +1165,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -1182,14 +1200,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
                 /** @description Not ready */
                 503: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -1287,8 +1309,8 @@ export interface components {
             exchangeRate?: string | null;
             lines: {
                 lineId: string;
+                /** @description staff/admin only */
                 unitCostBBD?: components["schemas"]["Money"];
-                adminFee?: components["schemas"]["Money"];
                 unitPrice: components["schemas"]["Money"];
                 total: components["schemas"]["Money"];
             }[];
@@ -1341,6 +1363,20 @@ export interface components {
             shipTo?: components["schemas"]["ShippingAddress"];
             billTo?: components["schemas"]["ShippingAddress"];
             notes?: string | null;
+            /** @description Sibling request when a mixed cart was split */
+            splitFrom?: string | null;
+            /** @description Admin fee in the request currency, charged once per request (legacy rule) and included in `agreement.total`; set when the quote is sent */
+            adminFee?: components["schemas"]["Money"] | null;
+            /** @description staff/admin only: the unsent draft (supplier prices, CIMH lines, exchange rate) */
+            quoteDraft?: Record<string, never>;
+            /** @description Pro Bono approval (by */
+            approval?: Record<string, never> | null;
+            /** @description Pro Bono rejection (by */
+            rejection?: Record<string, never> | null;
+            invoice?: {
+                number?: string;
+                date?: string;
+            } | null;
             /** @description All versions; latest last */
             quotes?: components["schemas"]["SupplierQuote"][];
             cimhQuote?: components["schemas"]["CimhQuote"] | null;
@@ -1462,6 +1498,13 @@ export interface components {
             by: components["schemas"]["Actor"];
             at: components["schemas"]["Timestamp"];
             reason?: string | null;
+        };
+        Health: {
+            /** @enum {string} */
+            status: "ok" | "degraded";
+            checks?: {
+                [key: string]: "ok" | "fail";
+            };
         };
     };
     responses: {

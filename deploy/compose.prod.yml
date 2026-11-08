@@ -323,7 +323,7 @@ services:
     mem_limit: 64m
     cpus: 0.1
 
-  # catalog.product.events -> stock copies (name, threshold, active). Order events are added in P5.
+  # catalog.product.events -> stock copies; order.events -> reserve on acceptance/approval, release on cancel.
   inventory-consumer:
     <<: *service
     image: ${REGISTRY:-ghcr.io/tajay59}/inventory-svc@${INVENTORY_SVC_DIGEST:?set by deploy.sh}
@@ -340,6 +340,78 @@ services:
     depends_on: { kafka-setup: { condition: service_completed_successfully } }
     networks: [data]
     mem_limit: 128m
+    cpus: 0.1
+
+  # Requests, quotes, agreements (P5). Calls catalog (products, fee), inventory (availability, picks), identity.
+  order-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/order-svc@${ORDER_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/prod.env]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_order
+      REDIS_URL_FILE: /run/secrets/redis_url_order
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      INVENTORY_URL: http://inventory-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_order
+    secrets: [ca.pem, mongo_url_order, redis_url_order, service_secret_order]
+    depends_on: { redis: { condition: service_healthy }, mongo1: { condition: service_healthy } }
+    mem_limit: 256m
+    cpus: 0.5
+    deploy: { replicas: 2 }
+
+  outbox-relay-order:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/order-svc@${ORDER_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      RELAY_NAME: order
+      RELAY_COLLECTIONS: orders
+      RELAY_TOPICS: "order.=order.events"
+      MONGO_URL_FILE: /run/secrets/mongo_url_order
+      REDIS_URL_FILE: /run/secrets/redis_url_relay
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: relay
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_relay
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_order, redis_url_relay, app_kafka_relay]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+  # inventory.stock.events (reservation results) + document.events (files) -> orders.
+  order-consumer:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/order-svc@${ORDER_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "order_svc.consumer"]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_order
+      REDIS_URL_FILE: /run/secrets/redis_url_order
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: order
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_order
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+    secrets: [ca.pem, mongo_url_order, redis_url_order, app_kafka_order]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 128m
+    cpus: 0.1
+
+  # Quote expiry (30 days) and 180-day cart clean-up; one leader via a Redis lock.
+  order-jobs:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/order-svc@${ORDER_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "order_svc.jobs"]
+    environment:
+      MONGO_URL_FILE: /run/secrets/mongo_url_order
+      REDIS_URL_FILE: /run/secrets/redis_url_order
+    secrets: [ca.pem, mongo_url_order, redis_url_order]
+    healthcheck: { disable: true }
+    networks: [data]
+    mem_limit: 96m
     cpus: 0.1
 
   # media.jobs -> WebP files -> media.results. This CPU image resizes, re-encodes and strips metadata; the GPU
@@ -422,6 +494,10 @@ secrets:
   redis_url_inventory: { file: "${SECRETS:-./secrets}/redis_url_inventory" }
   service_secret_inventory: { file: "${SECRETS:-./secrets}/service_secret_inventory" }
   app_kafka_inventory: { file: "${SECRETS:-./secrets}/app_kafka_inventory" }
+  mongo_url_order: { file: "${SECRETS:-./secrets}/mongo_url_order" }
+  redis_url_order: { file: "${SECRETS:-./secrets}/redis_url_order" }
+  service_secret_order: { file: "${SECRETS:-./secrets}/service_secret_order" }
+  app_kafka_order: { file: "${SECRETS:-./secrets}/app_kafka_order" }
   redis_url_media: { file: "${SECRETS:-./secrets}/redis_url_media" }
   jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }
   data_key: { file: "${SECRETS:-./secrets}/data_key" }

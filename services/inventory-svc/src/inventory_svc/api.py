@@ -109,6 +109,12 @@ class ReserveIn(LinesIn):
     orderId: str = Field(min_length=1, max_length=64)
 
 
+class OrderPickIn(Strict):
+    unit: Code
+    orderId: str = Field(min_length=1, max_length=64)
+    pickedBy: str = Field(min_length=1, max_length=64)
+
+
 router = APIRouter()
 
 
@@ -303,3 +309,19 @@ async def reserve(body: ReserveIn, request: Request, me: Principal = Depends(req
 async def release(orderId: str, request: Request, me: Principal = Depends(require_order_svc)) -> Response:
     await svc(request).release(me, orderId, cid(request))
     return Response(status_code=204)
+
+
+@router.post("/internal/picks", tags=["internal"])
+async def order_pick(
+    body: OrderPickIn, request: Request, key: ScanKey, me: Principal = Depends(require_order_svc)
+) -> Any:
+    """order-svc's /requests/{id}/picks: the unit must be reserved for the order; `pickedBy` is the staff member."""
+    picker = Principal(sub=body.pickedBy, role="staff")
+    return await scan(
+        request,
+        me,
+        "orderpick",
+        key,
+        body,
+        lambda: svc(request).pick(picker, body.unit, None, body.orderId, cid(request)),
+    )

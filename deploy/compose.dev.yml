@@ -86,7 +86,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       COOKIE_SECURE: "false"          # dev runs over http
       HIBP_ENABLED: "false"           # no internet calls from dev
-      SERVICE_SECRETS: "notification=dev-notification-secret,order=dev-order-secret,catalog=dev-catalog-secret,inventory=dev-inventory-secret"
+      SERVICE_SECRETS: "notification=dev-notification-secret,order=dev-order-secret,catalog=dev-catalog-secret,inventory=dev-inventory-secret,document=dev-document-secret"
       LOG_LEVEL: DEBUG
     ports: ["127.0.0.1:18001:8000"]
     depends_on:
@@ -273,6 +273,79 @@ services:
       kafka-init: { condition: service_completed_successfully }
       inventory-svc: { condition: service_healthy }
     mem_limit: 128m
+    healthcheck: { disable: true }
+
+  order-svc:
+    build:
+      context: ..
+      dockerfile: services/order-svc/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/order-svc:dev
+    <<: *hardening
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      INVENTORY_URL: http://inventory-svc:8000
+      SERVICE_SECRET: dev-order-secret
+      LOG_LEVEL: DEBUG
+    ports: ["127.0.0.1:18005:8000"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      identity-svc: { condition: service_healthy }
+      catalog-svc: { condition: service_healthy }
+      inventory-svc: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 0.5
+
+  outbox-relay-order:
+    profiles: [kafka]
+    image: cimh/order-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "cimh_common.relay_main"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      RELAY_NAME: order
+      RELAY_COLLECTIONS: orders
+      RELAY_TOPICS: "order.=order.events"
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mongo: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    mem_limit: 64m
+    healthcheck: { disable: true }
+
+  order-consumer:
+    profiles: [kafka]
+    image: cimh/order-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "order_svc.consumer"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      order-svc: { condition: service_healthy }
+    mem_limit: 128m
+    healthcheck: { disable: true }
+
+  order-jobs:
+    image: cimh/order-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "order_svc.jobs"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JOBS_INTERVAL_SECONDS: "300"
+    depends_on:
+      order-svc: { condition: service_healthy }
+    mem_limit: 96m
     healthcheck: { disable: true }
 
   media-worker:

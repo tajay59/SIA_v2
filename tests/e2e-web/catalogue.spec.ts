@@ -30,7 +30,7 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await page.getByLabel('Email').fill(staff)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await page.getByRole('link', { name: 'Products' }).click()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Products' }).click()
     await page.getByRole('link', { name: 'New product' }).click()
 
     await page.getByLabel('Name', { exact: true }).fill(name)

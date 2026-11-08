@@ -3,13 +3,15 @@
  * SHOP shell, same structure as the legacy SHOP (App.vue, TopAppBar, BottomNavBar, Footer):
  * desktop = top bar (brand left, main navigation centred, account + theme right); phones = no top bar,
  * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page. The sign-in pages
- * (login, sign-up, verify, password) have no top bar, as in legacy. The cart joins both bars with P5.
+ * (login, sign-up, verify, password) have no top bar, as in legacy. Customers get the cart (with a count)
+ * in both bars, as in legacy.
  */
-import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
+import { AppNotifier, useCart, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
 import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
 import {
   mdiAccountCircleOutline,
+  mdiCartOutline,
   mdiClipboardTextOutline,
   mdiGiftOutline,
   mdiHomeOutline,
@@ -20,7 +22,7 @@ import {
   mdiWeatherNight,
   mdiWhiteBalanceSunny,
 } from '@mdi/js'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import ShopFooter from './components/ShopFooter.vue'
@@ -35,6 +37,12 @@ const SIGN_IN_PAGES = ['/login', '/signup', '/verify', '/pending-approval', '/fo
 const signInPage = computed(() => SIGN_IN_PAGES.includes(route.path))
 const loginQuery = computed(() => (route.path === '/' || signInPage.value ? {} : { returnTo: route.fullPath }))
 const menu = ref(false)
+const cart = useCart()
+watch(
+  () => session.isCustomer,
+  (yes) => (yes ? void cart.load().catch(() => undefined) : cart.reset()),
+  { immediate: true },
+)
 
 const nav = computed(() => [
   { to: '/catalogue', title: 'Catalogue', icon: mdiViewGridOutline, show: true },
@@ -62,6 +70,11 @@ async function logout() {
           <router-link v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link">{{ n.title }}</router-link>
         </nav>
         <div class="right">
+          <v-btn v-if="session.isCustomer" to="/cart" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
+            <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary">
+              <v-icon :icon="mdiCartOutline" />
+            </v-badge>
+          </v-btn>
           <v-btn
             variant="text"
             :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
@@ -111,6 +124,10 @@ async function logout() {
         </v-card>
       </v-menu>
       <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" stacked>{{ n.short ?? n.title }}</v-btn>
+      <v-btn v-if="session.isCustomer" to="/cart" stacked>
+        <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary"><v-icon :icon="mdiCartOutline" /></v-badge>
+        Cart
+      </v-btn>
     </v-bottom-navigation>
   </v-app>
 </template>

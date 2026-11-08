@@ -232,3 +232,58 @@ def test_catalog_events_keep_the_stock_copy(ctx: Ctx) -> None:
         asyncio.run(handle(new_event("product.created", {"productId": P1}, correlation_id="c").envelope()))
     with pytest.raises(ValueError, match="lacks productId"):
         asyncio.run(handle(new_event("product.deleted", {}, correlation_id="c").envelope()))
+
+
+@pytest.mark.req("O6")
+def test_order_events_reserve_and_release(ctx: Ctx) -> None:
+    """order.accepted reserves CIMH-chosen lines only; Pro Bono approval reserves all; cancellation releases."""
+    ctx.product(P1)
+    ctx.product(P2)
+    shelf = ctx.shelves(1)[0]
+    _stock(ctx, P1, 3, shelf)
+    _stock(ctx, P2, 1, shelf)
+    handle = make_handler(ctx.client.app.state.inventory)  # type: ignore[attr-defined]
+
+    def send(etype: str, payload: dict[str, Any]) -> None:
+        asyncio.run(handle(new_event(etype, payload, correlation_id="c", actor_id="USRUSER").envelope()))
+
+    lines = [{"lineId": "L1", "productId": P1, "qty": 2, "choice": "CIMH"},
+             {"lineId": "L2", "productId": P2, "qty": 5, "choice": "SUPPLIER"}]  # fmt: skip
+    send("order.accepted", {"orderId": "ORDA", "customer": "USRUSER", "quoteVersion": 1, "lines": lines})
+    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDA"})) == 2  # supplier line untouched
+    send("order.agreement_rejected", {"orderId": "ORDA", "from": "ACCEPTED", "to": "AWAITING_AGREEMENT"})
+    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDA"})) == 0
+    # A shortfall is reported, not raised (the consumer must not DLQ a business outcome).
+    send("order.probono_approved", {"orderId": "ORDB", "lines": [{"lineId": "L1", "productId": P2, "qty": 2}]})
+    assert ctx.events(P2, "stock.reservation_failed")[0]["payload"]["orderId"] == "ORDB"
+    send("order.probono_approved", {"orderId": "ORDC", "lines": [{"lineId": "L1", "productId": P2, "qty": 1}]})
+    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDC"})) == 1
+    send("order.cancelled", {"orderId": "ORDC", "customer": "USRUSER", "reason": "x", "auto": False})
+    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDC"})) == 0
+    send("order.accepted", {"orderId": "ORDD", "customer": "U", "quoteVersion": 1, "lines": [lines[1]]})  # no-op
+    with pytest.raises(ValueError, match="lacks orderId"):
+        send("order.cancelled", {"customer": "U"})
+
+
+def test_internal_pick_for_order_svc(ctx: Ctx) -> None:
+    ctx.product(P1)
+    shelf = ctx.shelves(1)[0]
+    _stock(ctx, P1, 2, shelf)
+    held = ctx.client.post(
+        ctx.url("/internal/reservations"), headers=ORDER,
+        json={"orderId": "ORDP", "lines": [{"lineId": "L1", "productId": P1, "qty": 1}]},
+    ).json()["lines"][0]["units"]  # fmt: skip
+    free = next(d["barcode"] for d in ctx.run(ctx.db["storage"].find({}).to_list()) if d["barcode"] not in held)
+
+    def pick(unit: str, key: str, who: dict[str, str] = ORDER) -> Any:
+        return ctx.client.post(ctx.url("/internal/picks"), headers={**who, "Idempotency-Key": key},
+                               json={"unit": unit, "orderId": "ORDP", "pickedBy": "USRSTAFF"})  # fmt: skip
+
+    assert pick(free, "k1").json()["code"] == "UNIT_NOT_RESERVED_FOR_ORDER"
+    r = pick(held[0], "k2")
+    assert r.status_code == 200
+    assert r.json()["pickedBy"] == "USRSTAFF"
+    assert r.json()["orderId"] == "ORDP"
+    assert pick(held[0], "k2").status_code == 200  # replay
+    assert ctx.history(held[0])[-1]["user"] == "USRSTAFF"
+    assert pick(held[0], "k3", STAFF).status_code == 403

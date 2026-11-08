@@ -29,7 +29,7 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc -e services/order-svc
           pip install -r requirements-dev.txt
       - name: Ruff
         run: ruff check . && ruff format --check .
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "${{ env.PYTHON_VERSION }}", cache: pip }
       - run: |
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc -r requirements-dev.txt
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc -e services/order-svc -r requirements-dev.txt
           # Real Mongo replica set, Redis and Kafka in containers (tests/integration).
           pytest -m integration --no-cov
 
@@ -103,13 +103,16 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
-      - name: Dev stack (Mongo RS, Redis, identity, catalog, inventory, media files)
-        run: docker compose -f deploy/compose.dev.yml up -d --build --wait mongo redis identity-svc catalog-svc inventory-svc media-files
+      - name: Dev stack (Mongo RS, Redis, identity, catalog, inventory, orders, media files)
+        run: docker compose -f deploy/compose.dev.yml up -d --build --wait mongo redis identity-svc catalog-svc inventory-svc order-svc media-files
       # Event pipelines: J-10 images (catalog relay -> Kafka -> media-worker -> catalog consumer) and J-09 stock
       # (inventory relay -> catalog consumer; catalog events -> inventory consumer). Started without --wait:
       # kafka-init is a one-shot container.
       - name: Event pipelines (Kafka, relays, media-worker, consumers)
-        run: docker compose -f deploy/compose.dev.yml --profile kafka up -d --build outbox-relay-catalog catalog-consumer media-worker outbox-relay-inventory inventory-consumer
+        run: docker compose -f deploy/compose.dev.yml --profile kafka up -d --build outbox-relay-catalog catalog-consumer media-worker outbox-relay-inventory inventory-consumer outbox-relay-order order-consumer
+      # P5: a paid request from cart to delivery through the real services (reservation round trip over Kafka).
+      - name: Order smoke (paid flow over Kafka)
+        run: docker run --rm --network sia-dev_default -v "$PWD/tools:/w/tools:ro" cimh/order-svc:dev python /w/tools/e2e/order_smoke.py
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: Browser journeys
@@ -123,7 +126,7 @@ jobs:
             playwright-report
             test-results
       - if: failure()
-        run: docker compose -f deploy/compose.dev.yml --profile kafka logs --tail 100 identity-svc catalog-svc inventory-svc outbox-relay-catalog media-worker catalog-consumer outbox-relay-inventory inventory-consumer
+        run: docker compose -f deploy/compose.dev.yml --profile kafka logs --tail 100 identity-svc catalog-svc inventory-svc order-svc outbox-relay-catalog media-worker catalog-consumer outbox-relay-inventory inventory-consumer outbox-relay-order order-consumer
 
   security:
     name: security (SAST, deps, secrets)
@@ -142,7 +145,7 @@ jobs:
           pip install bandit pip-audit
           bandit -q -r packages services -x '*/tests/*'
           pip-audit -r requirements-dev.txt
-          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc && pip-audit --skip-editable
+          pip install -e packages/py-common -e services/hello-svc -e services/identity-svc -e services/catalog-svc -e services/media-worker -e services/inventory-svc -e services/order-svc && pip-audit --skip-editable
       - name: Semgrep
         run: pipx run semgrep scan --config p/python --config p/owasp-top-ten --error packages services
 
@@ -154,7 +157,7 @@ jobs:
     permissions: { contents: read, packages: write, id-token: write }
     strategy:
       matrix:
-        service: [hello-svc, identity-svc, catalog-svc, media-worker, inventory-svc]
+        service: [hello-svc, identity-svc, catalog-svc, media-worker, inventory-svc, order-svc]
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
@@ -191,7 +194,7 @@ jobs:
       - name: actionlint (workflow files)
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
       - name: compose files render
-        env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", CATALOG_SVC_DIGEST: "sha256:x", MEDIA_WORKER_DIGEST: "sha256:x", INVENTORY_SVC_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
+        env: { KAFKA_CLUSTER_ID: x, VLAN_IP: 127.0.0.1, HELLO_SVC_DIGEST: "sha256:x", IDENTITY_SVC_DIGEST: "sha256:x", CATALOG_SVC_DIGEST: "sha256:x", MEDIA_WORKER_DIGEST: "sha256:x", INVENTORY_SVC_DIGEST: "sha256:x", ORDER_SVC_DIGEST: "sha256:x", MONGO_SELF: x, RESTIC_REPOSITORY: x }
         run: |
           for f in deploy/compose.prod.yml deploy/compose.pi.yml deploy/compose.dev.yml; do docker compose -f "$f" config -q; done
           docker volume create sia-rehearsal-secrets && docker compose -f tools/infra/rehearsal/compose.yml config -q

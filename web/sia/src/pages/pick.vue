@@ -5,9 +5,23 @@
  *   Pick       reason once, then scan units (reserved units can only be picked for their request)
  *   Relocate   scan the target shelf, then the units to move there
  *   Issue      choose the person, then scan units (Return: scan units coming back)
- *   Pick Order picking for a request arrives with the request desk (orders, P5)
+ *   Pick Order open a request (scan or type its id; A-03 "Pick" opens it prefilled), then scan units: each
+ *              goes to the first line of that product still short (order-svc → inventory, reserved units only)
  */
-import { type AccountSummary, ApiError, call, inventory, newScanKey, scan, scanError, type Shelf, unitWhere } from '@cimh/web-app'
+import {
+  type AccountSummary,
+  ApiError,
+  call,
+  getRequest,
+  inventory,
+  newScanKey,
+  type OrderRequest,
+  pickForRequest,
+  scan,
+  scanError,
+  type Shelf,
+  unitWhere,
+} from '@cimh/web-app'
 import { mdiAccountArrowRightOutline, mdiArrowDecisionOutline, mdiClipboardListOutline, mdiHandBackRightOutline } from '@mdi/js'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -63,6 +77,47 @@ async function chooseTarget(code: string) {
 // Issue / Return
 const person = ref<AccountSummary | null>(null)
 const issueMode = ref<'issue' | 'return'>('issue')
+// Pick Order
+const order = ref<OrderRequest | null>(null)
+const orderError = ref('')
+const pickable = computed(() =>
+  (order.value?.lines ?? []).filter((l) => order.value!.type === 'PROBONO' || l.choice === 'CIMH'),
+)
+async function openOrder(code: string) {
+  orderError.value = ''
+  try {
+    const r = await getRequest(code.trim())
+    if (!r.allowedActions?.includes('pick')) {
+      orderError.value = `Request ${r.id} has nothing to pick now (status ${r.status.toLowerCase().replace(/_/g, ' ')}).`
+      return
+    }
+    order.value = r
+  } catch (e) {
+    orderError.value = e instanceof ApiError && e.status === 404 ? 'No request with this id.' : scanError(e)
+  }
+}
+watch(
+  () => [op.value, route.query.request] as const,
+  ([o, id]) => o === 'order' && typeof id === 'string' && id && order.value?.id !== id && void openOrder(id),
+  { immediate: true },
+)
+function pickUnit(code: string, key = newScanKey(), id = ++seq) {
+  const r = order.value
+  if (!r) return
+  const line = pickable.value.find(
+    (l) => (code.includes('_') ? code.startsWith(`${l.productId}_`) : true) && (l.picked?.length ?? 0) < l.qty,
+  )
+  entries.value = [{ id, code, ok: null, text: 'Saving…' }, ...entries.value.filter((e) => e.id !== id)]
+  if (!line) return set(id, { ok: false, text: 'No line of this request still needs this product' })
+  pickForRequest(r.id, line.lineId, code, key)
+    .then((u) => {
+      order.value = u
+      const l = u.lines.find((x) => x.lineId === line.lineId)!
+      set(id, { ok: true, text: `${l.product.name} · ${l.picked?.length ?? 0} of ${l.qty} picked` })
+    })
+    .catch((e) => set(id, { ok: false, text: scanError(e), retry: () => pickUnit(code, key, id) }))
+}
+const allPicked = computed(() => pickable.value.every((l) => (l.picked?.length ?? 0) >= l.qty))
 </script>
 
 <template>
@@ -138,7 +193,31 @@ const issueMode = ref<'issue' | 'return'>('issue')
       <div class="instructions">
         <h2 class="t-h3">Pick a request</h2>
       </div>
-      <p class="t-body muted">Picking the reserved units of a request starts from the request desk, which arrives with the orders service. Until then, reserved units can't be picked here.</p>
+      <div class="stack">
+        <ScanField v-if="!order" label="Request id" autofocus @scan="openOrder" />
+        <v-alert v-if="orderError" type="error" variant="tonal" density="compact">{{ orderError }}</v-alert>
+        <template v-if="order">
+          <div class="row">
+            <span class="t-body">Request <router-link :to="`/requests/${order.id}`" class="t-mono">{{ order.id }}</router-link> · {{ order.customerName }}</span>
+            <v-btn size="small" variant="outlined" @click="(order = null), (entries = [])">Other request</v-btn>
+          </div>
+          <v-table density="compact">
+            <thead><tr><th>Item</th><th>Reserved units</th><th class="text-right">Picked</th></tr></thead>
+            <tbody>
+              <tr v-for="l in pickable" :key="l.lineId">
+                <td>{{ l.product.name }}</td>
+                <td class="t-mono t-caption">{{ (l.reservation?.units ?? []).join(', ') || (l.reservation?.status === 'FAILED' ? 'Not enough stock: requote' : 'Reserving…') }}</td>
+                <td class="text-right tnum">{{ l.picked?.length ?? 0 }} / {{ l.qty }}</td>
+              </tr>
+            </tbody>
+          </v-table>
+          <v-alert v-if="allPicked" type="success" variant="tonal" density="compact">
+            Everything is picked. <router-link :to="`/requests/${order.id}`">Record the shipment</router-link> on the request.
+          </v-alert>
+          <ScanField v-else label="Unit" autofocus @scan="(c) => pickUnit(c)" />
+          <ScanLog :entries="entries" />
+        </template>
+      </div>
     </section>
 
     <p v-else class="t-body muted">Choose an operation.</p>

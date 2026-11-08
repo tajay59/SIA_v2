@@ -13,7 +13,7 @@ ignore = ["S101"]  # assert is fine in tests
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header", "fastapi.Path"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc"]
+known-first-party = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc", "order_svc"]
 
 [tool.ruff.lint.per-file-ignores]
 "**/tests/**" = ["S105", "S106", "S311"]
@@ -22,8 +22,8 @@ known-first-party = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", 
 [tool.mypy]
 strict = true
 python_version = "3.13"
-packages = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc"]
-mypy_path = ["packages/py-common/src", "services/hello-svc/src", "services/identity-svc/src", "services/catalog-svc/src", "services/media-worker/src", "services/inventory-svc/src"]
+packages = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc", "order_svc"]
+mypy_path = ["packages/py-common/src", "services/hello-svc/src", "services/identity-svc/src", "services/catalog-svc/src", "services/media-worker/src", "services/inventory-svc/src", "services/order-svc/src"]
 
 [[tool.mypy.overrides]]
 module = ["aiokafka.*", "fakeredis.*", "mongomock.*"]
@@ -39,7 +39,7 @@ markers = [
 testpaths = ["packages/py-common/tests", "services", "tools/tests", "tests/integration"]
 
 [tool.coverage.run]
-source = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc"]
+source = ["cimh_common", "hello_svc", "identity_svc", "catalog_svc", "media_worker", "inventory_svc", "order_svc"]
 branch = true
 
 [tool.coverage.report]

@@ -154,3 +154,72 @@ export async function apiProduct(staffEmail: string, name: string, threshold = 0
   if (r.status !== 201) throw new Error(`product: ${r.status} ${await r.text()}`)
   return ((await r.json()) as { id: string }).id
 }
+
+// ---------------------------------------------------------------- orders (P5 journeys)
+
+export const INVENTORY = process.env.INVENTORY_URL ?? 'http://localhost:18004'
+export const ORDERS = process.env.ORDERS_URL ?? 'http://localhost:18005'
+
+/** An ACTIVE customer in organisation `org` (registered + verified through the API; approval set in the dev DB). */
+let customerSeq = 0
+export async function customerAccount(prefix = 'customer', org = `ORGE2E${run}`): Promise<string> {
+  const email = `${prefix}${++customerSeq}.${run}@example.org`
+  const r = await post('/auth/register', { firstname: 'Cass', lastname: `Tomer${customerSeq}`, email, password: PASSWORD, country: 'BB', organisationText: 'E2E Met Office' })
+  if (r.status !== 202) throw new Error(`register ${email}: ${r.status} ${await r.text()}`)
+  const v = await post('/auth/verify', { email, code: await claimCode(email) })
+  if (!v.ok) throw new Error(`verify ${email}: ${v.status}`)
+  mongo(`db.accounts.updateOne({ email: ${JSON.stringify(email)} }, { $set: { status: 'ACTIVE', organisationId: ${JSON.stringify(org)} }, $inc: { version: 1 } }); return true`)
+  return email
+}
+
+/** A requestable product: paid (sellable, with a BBD cost) or Pro Bono (with a per-request cap). */
+export async function orderableProduct(staffEmail: string, name: string, opts: { probono?: boolean; cost?: string; cap?: number } = {}): Promise<string> {
+  const body = { name, type: 'MET', department: 'Meteorology', sellable: true, probono: !!opts.probono, threshold: 0,
+    cost: opts.cost ?? null, ...(opts.cap ? { probonoMaxPerRequest: opts.cap } : {}) }  // prettier-ignore
+  const r = await req(`${CATALOG}/api/catalog/v1/products`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${await bearer(staffEmail)}` },
+    body: JSON.stringify(body),
+  })
+  if (r.status !== 201) throw new Error(`product: ${r.status} ${await r.text()}`)
+  return ((await r.json()) as { id: string }).id
+}
+
+/** `n` units of a product stowed on a new shelf (through inventory-svc, as staff would scan them). */
+export async function stowUnits(staffEmail: string, productId: string, n: number): Promise<string[]> {
+  const auth = { 'content-type': 'application/json', authorization: `Bearer ${await bearer(staffEmail)}` }
+  const inv = `${INVENTORY}/api/inventory/v1`
+  const j = async (path: string, body: unknown, extra: Record<string, string> = {}) => {
+    const r = await req(`${inv}${path}`, { method: 'POST', headers: { ...auth, ...extra }, body: JSON.stringify(body) })
+    if (!r.ok) throw new Error(`${path}: ${r.status} ${await r.text()}`)
+    return r.json() as Promise<Record<string, any>>
+  }
+  const site = await j('/sites', { name: `Order site ${run}`, country: 'BB' })
+  const loc = await j(`/sites/${site.barcode}/locations`, { name: `Order bay ${run}` })
+  const shelf = (await j(`/locations/${loc.barcode}/shelves`, { count: 1 })).items[0].barcode as string
+  // A new product's stock copy arrives over Kafka; labels fall back to catalog-svc if it hasn't yet.
+  const units = (await j('/labels', { productId, quantity: n, format: 'csv' })).barcodes as string[]
+  for (const u of units) await j('/stow', { unit: u, shelf }, { 'Idempotency-Key': `${u}-stow` })
+  return units
+}
+
+/**
+ * Stand-in for document-svc (P6): answers the browser's upload to /api/documents/v1/files by attaching the
+ * file's metadata to the request through order-svc's internal endpoint, as document.uploaded will.
+ */
+export async function attachAsDocumentSvc(requestId: string, kind: string, name: string): Promise<string> {
+  const t = await req(`${API}/internal/service-token`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ service: 'document', secret: process.env.E2E_DOCUMENT_SECRET ?? 'dev-document-secret' }),
+  })
+  if (!t.ok) throw new Error(`document token: ${t.status}`)
+  const id = `FIL${randomBytes(16).toString('hex')}`
+  const r = await req(`${ORDERS}/api/orders/v1/internal/requests/${requestId}/files`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${((await t.json()) as { token: string }).token}` },
+    body: JSON.stringify({ id, kind, name, mime: 'application/pdf', size: 1024 }),
+  })
+  if (r.status !== 204) throw new Error(`attach: ${r.status} ${await r.text()}`)
+  return id
+}

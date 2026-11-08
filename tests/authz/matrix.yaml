@@ -40,6 +40,11 @@ endpoints:
     - service
     ownership: service
     note: service token; inventory-svc only
+  GET /api/catalog/v1/internal/fees:
+    roles:
+    - service
+    ownership: service
+    note: order-svc; admin fee
   POST /api/catalog/v1/internal/products/summaries:
     roles:
     - service
@@ -465,6 +470,11 @@ endpoints:
     - service
     ownership: service
     note: order-svc; service token
+  POST /api/inventory/v1/internal/picks:
+    roles:
+    - service
+    ownership: service
+    note: order-svc; pickedBy = staff member
   POST /api/inventory/v1/internal/reservations:
     roles:
     - service
