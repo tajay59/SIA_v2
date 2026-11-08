@@ -199,7 +199,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | POST | `/requests/{id}/picks` | staff | Pick a unit for a **CIMH-stock or Pro Bono line** (Pro Bono `APPROVED → PICKING`); supplier lines are never picked |
 | POST | `/requests/{id}/ship` | staff | `→ SHIPPED` (carrier; tracking unless HAND) |
 | POST | `/requests/{id}/deliver` | staff | `SHIPPED → DELIVERED` (+ invoice) |
-| GET / POST | `/internal/requests/{id}/access` · `/internal/requests/{id}/files` | service | Internal |
+| GET / POST | `/internal/requests/{id}/access` · `/internal/requests/{id}/files` · `/internal/requests/{id}` | service | Internal (document-svc: access + state, attach, staff view for PDFs) |
 
 ### document-svc: `/api/documents/v1`
 | Method | Path | Role | Purpose |
@@ -207,6 +207,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | POST | `/files` | staff; user (`signed_agreement` on own request) | Upload (≤ 20 MB; PDF/JPEG/PNG/WebP) |
 | GET | `/files/{id}` | allowed viewers | Download (streamed by nginx via X-Accel-Redirect) |
 | DELETE | `/files/{id}` | staff | Soft delete with a reason (generated documents cannot be deleted) |
+| POST | `/internal/labels` | service (inventory) | Render a unit-label PDF (QR + text) for barcodes just allocated |
+
+Upload errors: 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE` (type read from the bytes, not the name), 422 `FILE_INFECTED` (ClamAV found malware; the file is quarantined, never stored), 409 `INVALID_STATE` (customer upload outside AWAITING_AGREEMENT), 503 when the scanner is down (fail closed).
 
 ## 6. Events (Kafka)
 

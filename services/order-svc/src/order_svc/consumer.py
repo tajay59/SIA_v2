@@ -6,6 +6,7 @@
                           stock.reservation_failed  -> short lines FAILED (staff requote them)
                           stock.released            -> RESERVED lines -> RELEASED
   document.events         document.uploaded / document.generated -> files[] (agreement / CIMH quote ids)
+                          document.deleted -> files[].deleted
 Other stock events (counts, unit scans) are ignored. Handlers are idempotent; delivery is at-least-once.
 """
 
@@ -56,6 +57,10 @@ def make_handler(service: OrderService) -> Any:
                     "uploadedAt": event.occurredAt,
                 },
             )
+        elif t == "document.deleted":
+            if not isinstance(p.get("orderId"), str) or not isinstance(p.get("fileId"), str):
+                raise ValueError(f"{t} {event.eventId} lacks orderId/fileId")
+            await service.file_deleted(p["orderId"], p["fileId"], p.get("reason"))
 
     return handle
 

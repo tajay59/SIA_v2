@@ -49,19 +49,34 @@ export interface paths {
                     };
                 };
                 403: components["responses"]["Forbidden"];
-                /** @description Too large */
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                /** @description Too large (FILE_TOO_LARGE) */
                 413: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
                 };
-                /** @description Unsupported type */
+                /** @description Unsupported type (UNSUPPORTED_FILE_TYPE) */
                 415: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Validation failed, or FILE_INFECTED (quarantined) */
+                422: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
                 };
             };
         };
@@ -148,9 +163,56 @@ export interface paths {
                     };
                     content?: never;
                 };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Render a unit-label PDF (inventory-svc; service token) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        productId: string;
+                        productName?: string | null;
+                        barcodes: string[];
+                    };
+                };
+            };
+            responses: {
+                /** @description Stored (staff download it with GET /files/{id}) */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["File"];
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -177,7 +239,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -210,14 +274,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
                 /** @description Not ready */
                 503: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -235,7 +303,8 @@ export interface components {
     schemas: {
         File: {
             id: string;
-            requestId: string;
+            /** @description null for label batches */
+            requestId: string | null;
             /** @enum {string} */
             kind: "supplier_quote" | "cimh_quote" | "agreement" | "signed_agreement" | "invoice" | "commercial_invoice" | "probono_invoice" | "upload" | "labels";
             name: string;
@@ -280,6 +349,13 @@ export interface components {
                 field: string;
                 message: string;
             }[];
+        };
+        Health: {
+            /** @enum {string} */
+            status: "ok" | "degraded";
+            checks?: {
+                [key: string]: "ok" | "fail";
+            };
         };
     };
     responses: {

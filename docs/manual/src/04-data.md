@@ -18,7 +18,8 @@ Source: [BSD](../BSD.md) (field-level definitions, the source of truth), [TAD §
 
 ```
 /srv/sia-data/
-  protected/   orders/<orderId>/<uuid>.<ext>   labels/<uuid>.pdf        (document-svc + X-Accel-Redirect only)
+  protected/   orders/<orderId>/<fileId>.<ext>   labels/<fileId>.pdf   meta/<fileId>.json   (document-svc + X-Accel-Redirect only)
+  quarantine/  infected uploads (never served)
   public/      products/<productId>/<uuid>.webp (+@800, @320)   shelves/<barcode>.png   (served by nginx)
 ```
 

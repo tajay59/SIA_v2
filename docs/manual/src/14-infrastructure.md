@@ -165,7 +165,7 @@ rs.initiate({
 - Caching: hashed SPA assets `immutable` 1 y; `index.html` no-cache; `/media/products/` 30 d.
 
 ### 5.5 ClamAV
-`clamd` container on `data`; document-svc streams uploads via `INSTREAM`; `freshclam` daily; alert if signatures older than 48 h.
+`clamd` container on `data`; document-svc streams uploads via `INSTREAM`; `freshclam` daily; alert if signatures older than 48 h. Uploads fail closed (503) while clamd is down. Staging-lite runs without ClamAV (`SCAN_ENABLED=false`, not enough memory on the shared box).
 
 ## 14.6 Secrets and configuration
 

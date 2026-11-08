@@ -414,6 +414,66 @@ services:
     mem_limit: 96m
     cpus: 0.1
 
+  # Uploads, downloads (X-Accel-Redirect), generated PDFs (P6). Owns no collection, so no Mongo user; publishes
+  # document.events itself (no outbox). ClamAV is required here (TR-SEC-6): uploads fail closed without it.
+  document-svc:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/document-svc@${DOCUMENT_SVC_DIGEST:?set by deploy.sh}
+    env_file: [env/prod.env]
+    environment:
+      REDIS_URL_FILE: /run/secrets/redis_url_document
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_document
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: document
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_document
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+      DATA_DIR: /srv/sia-data
+      SCAN_ENABLED: "true"
+      CLAMD_HOST: clamav
+    volumes: ["/srv/sia-data:/srv/sia-data"]
+    secrets: [ca.pem, redis_url_document, service_secret_document, app_kafka_document]
+    depends_on: { kafka-setup: { condition: service_completed_successfully }, clamav: { condition: service_healthy } }
+    networks: [data]
+    mem_limit: 320m
+    cpus: 0.5
+    deploy: { replicas: 2 }
+
+  # order.events -> CIMH quote, agreement, invoice, Pro Bono note, commercial invoice PDFs.
+  document-consumer:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/document-svc@${DOCUMENT_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "document_svc.consumer"]
+    environment:
+      REDIS_URL_FILE: /run/secrets/redis_url_document
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_document
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: document
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_document
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+      DATA_DIR: /srv/sia-data
+    volumes: ["/srv/sia-data:/srv/sia-data"]
+    secrets: [ca.pem, redis_url_document, service_secret_document, app_kafka_document]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data]
+    mem_limit: 192m
+    cpus: 0.25
+
+  # clamd for document-svc uploads (TR-SEC-6); signatures refreshed by freshclam inside the container.
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    environment: { CLAMAV_NO_MILTERD: "true" }
+    volumes: ["/srv/clamav:/var/lib/clamav"]
+    healthcheck: { test: ["CMD", "clamdcheck.sh"], interval: 60s, timeout: 10s, retries: 10, start_period: 300s }
+    networks: [data]
+    mem_limit: 1536m
+    cpus: 1.0
+
   # media.jobs -> WebP files -> media.results. This CPU image resizes, re-encodes and strips metadata; the GPU
   # variant (rembg, REMBG_ENABLED=true, `deploy.resources.reservations.devices`) is built on sia-host (TAD §4.7).
   media-worker:
@@ -499,6 +559,9 @@ secrets:
   service_secret_order: { file: "${SECRETS:-./secrets}/service_secret_order" }
   app_kafka_order: { file: "${SECRETS:-./secrets}/app_kafka_order" }
   redis_url_media: { file: "${SECRETS:-./secrets}/redis_url_media" }
+  redis_url_document: { file: "${SECRETS:-./secrets}/redis_url_document" }
+  service_secret_document: { file: "${SECRETS:-./secrets}/service_secret_document" }
+  app_kafka_document: { file: "${SECRETS:-./secrets}/app_kafka_document" }
   jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }
   data_key: { file: "${SECRETS:-./secrets}/data_key" }
   code_pepper: { file: "${SECRETS:-./secrets}/code_pepper" }

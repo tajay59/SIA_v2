@@ -215,10 +215,11 @@ auth/         shared token-checking library (from packages/)
 |---|---|
 | **Responsibilities** | Generate PDFs (supplier quote summary, CIMH quote, invoice, commercial invoice, Pro Bono versions), store uploads, check permission and serve downloads, QR/label PDFs |
 | **Owns** | **No collection.** File metadata is held by order-svc in `orders.files[]`, and by catalog-svc for product images. The files themselves live on the volume |
-| **Public API** | `/api/documents/v1/*`: upload, download (`X-Accel-Redirect`), label batches |
-| **Publishes** | `document.events`: `document.generated`, `document.uploaded`, `document.deleted` |
-| **Consumes** | `order.events`: `order.quoted` (generate CIMH quote PDF), `order.delivered` (generate invoice), `order.shipped` (generate commercial invoice if needed) |
-| **Access check** | Before serving a file: (staff/admin role) **or** (order-svc confirms the user or their organisation may see the request) |
+| **Public API** | `/api/documents/v1/*`: upload, download (`X-Accel-Redirect`), delete; internal `POST /internal/labels` (inventory-svc: unit-label PDF) |
+| **Publishes** | `document.events`: `document.generated`, `document.uploaded`, `document.deleted` (+ `audit.recorded` for deletes and quarantines). **No outbox** (it owns no collection): events go straight to Kafka (acks=all). An upload is refused, and its file removed, if `document.uploaded` can't be published; it is then also attached to the request synchronously (`POST /internal/requests/{id}/files`) so the customer can accept at once |
+| **Consumes** | `order.events` (`document-consumer`): `order.quoted` with CIMH lines → CIMH quote; `order.agreement_requested` → agreement; `order.shipped` to a ship-to outside Barbados → commercial invoice; `order.delivered` → invoice (paid) or Pro Bono delivery note. The file id is derived from the event id, so a redelivery rewrites the same file. PDFs are rendered (reportlab) from `GET /internal/requests/{id}` on order-svc |
+| **Access check** | Before serving a file: (staff/admin role) **or** (order-svc confirms the user or their organisation may see the request); otherwise 404. Label batches: staff only. Uploads: staff any kind; customers only `signed_agreement`, as requester (or admin), while AWAITING_AGREEMENT (order-svc answers `allowed`, `canAct`, `status`) |
+| **Files** | Type from magic bytes (PDF/JPEG/PNG/WebP), ≤ 20 MB, images re-encoded (metadata dropped), ClamAV `INSTREAM` before storing; a hit goes to `quarantine/` (422 `FILE_INFECTED`); scanner down → 503 (fail closed). Metadata sidecar `protected/meta/<fileId>.json`. Staging-lite runs with `SCAN_ENABLED=false` (no memory for clamd) |
 
 ### 4.6 notification-svc
 | Aspect | Detail |
@@ -274,7 +275,8 @@ Used **only** where the caller needs an answer immediately:
 | order-svc → catalog-svc | Bulk product summaries, admin fee, Pro Bono limits | Needed to check the cart and save product details on the request at submission |
 | order-svc → inventory-svc | Availability check; picks | Staff need the CIMH stock option when they start quoting; a pick must be checked against the request's line first |
 | order-svc → identity-svc | Account summary | Names and organisation copied at submission; file-access answers for document-svc |
-| document-svc → order-svc | Access check | Has to be answered before a file is served |
+| document-svc → order-svc | Access check; request data for PDFs; immediate attach of uploads | Has to be answered before a file is served or a PDF rendered |
+| inventory-svc → document-svc | Unit-label PDF | The label screen offers the PDF at once (if document-svc is down, `fileId` is null and the screen draws the labels) |
 | notification-svc → catalog-svc | Email lists (cached) | Needed to address an email |
 | notification-svc → identity-svc | `GET /internal/codes/{codeRef}`: claim a verification/reset code once | Codes must never be in Kafka (retained/compacted); identity stores them hashed plus one sealed copy |
 

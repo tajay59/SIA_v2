@@ -40,7 +40,9 @@ Defines **where client data lives, how it is structured, who can access it, and 
 /srv/sia-data/
   protected/            # only via document-svc + X-Accel-Redirect
     orders/<orderId>/<uuid>.<ext>      quotes, supplier invoices, uploads, generated PDFs
-    labels/<uuid>.pdf                  QR/label batches
+    labels/<fileId>.pdf                QR/label batches
+    meta/<fileId>.json                 metadata sidecar (request id, kind, name, mime, size, sha256, uploader, deleted)
+  quarantine/            # infected uploads (ClamAV hit) + JSON note; never served
   public/               # served directly by nginx
     products/<productId>/<uuid>.webp   (+ <uuid>@800.webp, <uuid>@320.webp)
     shelves/<barcode>.png              shelf QR codes

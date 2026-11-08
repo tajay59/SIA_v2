@@ -429,7 +429,14 @@ async def access(
     user: Annotated[str, Query(min_length=1, max_length=64)],
     me: Principal = Depends(require_document_svc),
 ) -> dict[str, Any]:
-    return {"allowed": await svc(request).access(requestId, user)}
+    return await svc(request).access(requestId, user)
+
+
+@router.get("/internal/requests/{requestId}", tags=["internal"])
+async def internal_get(
+    requestId: str, request: Request, me: Principal = Depends(require_document_svc)
+) -> dict[str, Any]:
+    return await svc(request).internal_get(requestId)
 
 
 @router.post("/internal/requests/{requestId}/files", status_code=204, tags=["internal"])

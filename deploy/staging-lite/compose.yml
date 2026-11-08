@@ -24,6 +24,7 @@ secrets:
   service_secret_catalog: { file: ./secrets/service_secret_catalog }
   service_secret_inventory: { file: ./secrets/service_secret_inventory }
   service_secret_order: { file: ./secrets/service_secret_order }
+  service_secret_document: { file: ./secrets/service_secret_document }
 
 services:
   gateway:
@@ -38,7 +39,7 @@ services:
     networks:
       internal: {}
       kong-net: { aliases: [sia-gateway] }
-    depends_on: [identity-svc, catalog-svc]
+    depends_on: [identity-svc, catalog-svc, document-svc]
     mem_limit: 48m
     cpus: 0.25
     logging: { driver: local, options: { max-size: "10m", max-file: "3" } }
@@ -190,6 +191,7 @@ services:
       JWT_AUDIENCE: cimh-stores
       IDENTITY_URL: http://identity-svc:8000
       CATALOG_URL: http://catalog-svc:8000
+      DOCUMENT_URL: http://document-svc:8000
       SERVICE_SECRET_FILE: /run/secrets/service_secret_inventory
       LOG_LEVEL: INFO
     secrets: [service_secret_inventory]
@@ -310,6 +312,54 @@ services:
     networks: [internal]
     mem_limit: 80m
     cpus: 0.1
+
+  # P6. No ClamAV here: the shared box has ~1.5 GB free and clamd needs 1-1.5 GB (owner decision 2026-11-08:
+  # skip virus scanning on staging-lite; production scans every upload).
+  document-svc:
+    image: cimh/document-svc:staging
+    <<: *hardening
+    command: ["gunicorn", "document_svc.main:build_app()", "-k", "uvicorn.workers.UvicornWorker",
+              "-b", "0.0.0.0:8000", "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      JWT_ISSUER: https://sia.hashiz.store
+      JWT_AUDIENCE: cimh-stores
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_document
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATA_DIR: /srv/sia-data
+      SCAN_ENABLED: "false"
+      LOG_LEVEL: INFO
+    volumes: [media:/srv/sia-data]
+    secrets: [service_secret_document]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      order-svc: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 160m
+    cpus: 0.5
+
+  document-consumer:
+    image: cimh/document-svc:staging
+    <<: *hardening
+    command: ["python", "-m", "document_svc.consumer"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_document
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATA_DIR: /srv/sia-data
+    volumes: [media:/srv/sia-data]
+    secrets: [service_secret_document]
+    healthcheck: { disable: true }
+    depends_on:
+      document-svc: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 128m
+    cpus: 0.25
 
   media-worker:
     image: cimh/media-worker:staging

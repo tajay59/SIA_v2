@@ -6,13 +6,13 @@
  *   J-06 staff verify the signature, pick the reserved units, ship, deliver   A-03, A-10
  *   J-04 customer follows it to delivery                                        S-11
  *   J-07 Pro Bono: approve, pick, ship, deliver
- * document-svc is P6: the agreement PDF and the signed upload are attached through order-svc's internal
- * endpoint exactly as document-svc will (support.attachAsDocumentSvc). Reservations travel over Kafka.
+ * Real infrastructure end to end: the agreement PDF comes from document-consumer, the signed copy is uploaded to
+ * document-svc, reservations and file attachments travel over Kafka.
  * @req O1 O2 O3 O4 O5 O5a O6 O6a O7 O8 O9 O10 O11 O12 O14
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { attachAsDocumentSvc, customerAccount, mongo, orderableProduct, PASSWORD, run, staffAccount, stowUnits } from './support'
+import { customerAccount, mongo, orderableProduct, PASSWORD, run, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -134,15 +134,18 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByText(/Total for your choices/)).toBeVisible()
     await page.getByRole('button', { name: 'Confirm choices' }).click()
     await expect(page.getByText('Preparing the agreement…')).toBeVisible()
-    await attachAsDocumentSvc(paidRequest, 'agreement', 'agreement.pdf') // document-svc renders it (P6)
-    await expect(page.getByRole('link', { name: 'Download agreement' })).toBeVisible({ timeout: 15_000 })
+    // order.agreement_requested → document-consumer renders the PDF → document.generated → order-consumer.
+    // The page polls every 3 s until the file is attached.
+    const download = page.getByRole('link', { name: 'Download agreement' })
+    await expect(download).toBeVisible({ timeout: 45_000 })
+    // The customer may download it (document-svc asks order-svc), and it is a real PDF.
+    const pdf = await page.request.get(new URL((await download.getAttribute('href')) as string, page.url()).toString())
+    expect(pdf.status()).toBe(200)
+    expect((await pdf.body()).subarray(0, 5).toString()).toBe('%PDF-')
 
-    await page.route('**/api/documents/v1/files', async (route) => {
-      const id = await attachAsDocumentSvc(paidRequest, 'signed_agreement', 'signed.pdf')
-      await route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id, name: 'signed.pdf' }) })
-    })
+    // The real upload: type sniffed, scanned, stored, attached at once so the quote can be accepted.
     await page.getByRole('button', { name: 'I have signed it' }).click()
-    await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 signed') })
+    await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 signed\n%%EOF\n') })
     await page.getByRole('button', { name: 'Accept quote' }).click()
     await expect(page.getByText(/Quote accepted/)).toBeVisible()
     await expect(page.getByText('Accepted', { exact: true }).first()).toBeVisible()

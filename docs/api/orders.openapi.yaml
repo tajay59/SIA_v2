@@ -409,7 +409,27 @@ paths:
       parameters:
         - { name: user, in: query, required: true, schema: { type: string } }
       responses:
-        '200': { description: Answer, content: { application/json: { schema: { type: object, required: [allowed], properties: { allowed: { type: boolean } } } } } }
+        '200':
+          description: 'Answer. allowed = may see the files; canAct = the requester or an admin (may upload the signed agreement)'
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [allowed, canAct, status]
+                properties:
+                  allowed: { type: boolean }
+                  canAct: { type: boolean }
+                  status: { type: string }
+                  type: { type: [string, 'null'], enum: [PAID, PROBONO, null] }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /internal/requests/{requestId}:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    get:
+      tags: [internal]
+      summary: The request as staff see it (document-svc renders quote, agreement and invoice PDFs from it; service token)
+      responses:
+        '200': { description: Request, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /internal/requests/{requestId}/files:

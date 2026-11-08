@@ -11,6 +11,7 @@ const proxy = {
   '/api/identity': { target: process.env.IDENTITY_URL ?? 'http://localhost:18001', changeOrigin: false },
   '/api/catalog': { target: process.env.CATALOG_URL ?? 'http://localhost:18002', changeOrigin: false },
   '/api/orders': { target: process.env.ORDERS_URL ?? 'http://localhost:18005', changeOrigin: false },
+  '/api/documents': { target: process.env.DOCUMENTS_URL ?? 'http://localhost:18006', changeOrigin: false },
   '/api/inventory': { target: process.env.INVENTORY_URL ?? 'http://localhost:18004', changeOrigin: false },
   '/media': { target: process.env.MEDIA_URL ?? 'http://localhost:18003', changeOrigin: false },
 }

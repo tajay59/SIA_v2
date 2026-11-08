@@ -22,7 +22,7 @@ bash redis/render-acl.sh "$SEC"
 chown 999 "$SEC/mongo_keyfile" "$SEC/redis_users.acl" "$SEC/redis_exporter" "$SEC/pki/sia-host.cimh.local.pem"
 chown 1000 "$SEC/pki/kafka-broker.pem" "$SEC"/kafka_*
 # kafka-setup (uid 1000) reads every Kafka password; services (uid 10001) read their own from a copy.
-for k in relay identity catalog inventory order media; do install -m 400 -o 10001 "$SEC/kafka_$k" "$SEC/app_kafka_$k"; done
+for k in relay identity catalog inventory order document media; do install -m 400 -o 10001 "$SEC/kafka_$k" "$SEC/app_kafka_$k"; done
 chown 10001 "$SEC"/mongo_url_* "$SEC"/redis_url_* "$SEC/jwt_private_key" "$SEC/data_key" "$SEC/code_pepper" \
   "$SEC/service_secrets" "$SEC"/service_secret_*
 chmod 444 "$SEC/pki/ca.pem"
@@ -34,15 +34,16 @@ KAFKA_CLUSTER_ID=$(cat "$SEC/kafka_cluster_id")
 export KAFKA_CLUSTER_ID VLAN_IP
 export HELLO_SVC_DIGEST=${HELLO_SVC_DIGEST:-unset} IDENTITY_SVC_DIGEST=${IDENTITY_SVC_DIGEST:-unset} \
   CATALOG_SVC_DIGEST=${CATALOG_SVC_DIGEST:-unset} MEDIA_WORKER_DIGEST=${MEDIA_WORKER_DIGEST:-unset} \
-  INVENTORY_SVC_DIGEST=${INVENTORY_SVC_DIGEST:-unset}
-  ORDER_SVC_DIGEST=${ORDER_SVC_DIGEST:-unset}
+  INVENTORY_SVC_DIGEST=${INVENTORY_SVC_DIGEST:-unset} \
+  ORDER_SVC_DIGEST=${ORDER_SVC_DIGEST:-unset} \
+  DOCUMENT_SVC_DIGEST=${DOCUMENT_SVC_DIGEST:-unset}
 mkdir -p /srv/mongo /srv/redis /srv/kafka/1 /srv/kafka/2 /srv/kafka/3 /srv/prometheus /srv/sia-data
 chown 999 /srv/mongo /srv/redis
 chown 1000 /srv/kafka/1 /srv/kafka/2 /srv/kafka/3
 chown 65534 /srv/prometheus
 # Files volume (INFRASTRUCTURE §5): services write as 10001; nginx serves products/ read-only.
-mkdir -p /srv/sia-data/incoming /srv/sia-data/public/products /srv/sia-data/protected
-chown 10001 /srv/sia-data /srv/sia-data/incoming /srv/sia-data/public /srv/sia-data/public/products /srv/sia-data/protected
+mkdir -p /srv/sia-data/incoming /srv/sia-data/public/products /srv/sia-data/protected /srv/sia-data/quarantine
+chown 10001 /srv/sia-data /srv/sia-data/incoming /srv/sia-data/public /srv/sia-data/public/products /srv/sia-data/protected /srv/sia-data/quarantine
 C="docker compose -f compose.prod.yml"
 
 echo "== step 5: replica set (the Pis must already run compose.pi.yml)"

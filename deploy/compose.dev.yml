@@ -230,6 +230,7 @@ services:
       JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
       IDENTITY_URL: http://identity-svc:8000
       CATALOG_URL: http://catalog-svc:8000
+      DOCUMENT_URL: http://document-svc:8000
       SERVICE_SECRET: dev-inventory-secret
       LOG_LEVEL: DEBUG
     ports: ["127.0.0.1:18004:8000"]
@@ -347,6 +348,62 @@ services:
       order-svc: { condition: service_healthy }
     mem_limit: 96m
     healthcheck: { disable: true }
+
+  # Uploads, permission-checked downloads, generated PDFs (P6). Dev: no nginx, so SERVE_DIRECT streams the bytes;
+  # virus scanning is off unless the clamav profile runs (SCAN_ENABLED=true, ~1.2 GB RAM).
+  document-svc:
+    profiles: [kafka]
+    build:
+      context: ..
+      dockerfile: services/document-svc/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/document-svc:dev
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET: dev-document-secret
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATA_DIR: /srv/sia-data
+      SERVE_DIRECT: "true"
+      SCAN_ENABLED: ${SCAN_ENABLED:-false}
+      CLAMD_HOST: clamav
+      LOG_LEVEL: DEBUG
+    volumes: [media:/srv/sia-data]
+    ports: ["127.0.0.1:18006:8000"]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      order-svc: { condition: service_healthy }
+    mem_limit: 256m
+    cpus: 0.5
+
+  document-consumer:
+    profiles: [kafka]
+    image: cimh/document-svc:dev
+    <<: *hardening
+    command: ["python", "-m", "document_svc.consumer"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      IDENTITY_URL: http://identity-svc:8000
+      ORDER_URL: http://order-svc:8000
+      SERVICE_SECRET: dev-document-secret
+      KAFKA_BOOTSTRAP: kafka:9092
+      DATA_DIR: /srv/sia-data
+    volumes: [media:/srv/sia-data]
+    depends_on:
+      document-svc: { condition: service_healthy }
+    mem_limit: 192m
+    healthcheck: { disable: true }
+
+  # TR-SEC-6 virus scanning: docker compose --profile kafka --profile clamav up -d, with SCAN_ENABLED=true.
+  clamav:
+    profiles: [clamav]
+    image: clamav/clamav:1.4
+    environment: { CLAMAV_NO_FRESHCLAMD: "false", CLAMAV_NO_MILTERD: "true" }
+    mem_limit: 1536m
+    healthcheck: { test: ["CMD", "clamdcheck.sh"], interval: 30s, timeout: 10s, retries: 20, start_period: 180s }
 
   media-worker:
     profiles: [kafka]

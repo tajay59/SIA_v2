@@ -782,7 +782,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td><strong>document-svc</strong></td>
-<td>PDF generation (quotes, invoices, commercial invoices), uploads, permission-checked downloads</td>
+<td>PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events, virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes <code>document.*</code> itself</td>
 </tr>
 <tr>
 <td><strong>notification-svc</strong></td>
@@ -1046,7 +1046,8 @@ Get-ChildItem *.drawio | ForEach-Object {
 </table>
 <p><strong>File layout:</strong></p>
 <pre><code>/srv/sia-data/
-  protected/   orders/&lt;orderId&gt;/&lt;uuid&gt;.&lt;ext&gt;   labels/&lt;uuid&gt;.pdf        (document-svc + X-Accel-Redirect only)
+  protected/   orders/&lt;orderId&gt;/&lt;fileId&gt;.&lt;ext&gt;   labels/&lt;fileId&gt;.pdf   meta/&lt;fileId&gt;.json   (document-svc + X-Accel-Redirect only)
+  quarantine/  infected uploads (never served)
   public/      products/&lt;productId&gt;/&lt;uuid&gt;.webp (+@800, @320)   shelves/&lt;barcode&gt;.png   (served by nginx)
 </code></pre>
 <h2 id="42-collection-ownership-and-access">4.2 Collection ownership and access</h2>
@@ -2430,7 +2431,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>E</td>
 <td>Malware in uploads reaching staff machines</td>
 <td>M</td>
-<td>ClamAV scan in document-svc before files become downloadable (quarantine on hit)</td>
+<td>ClamAV scan in document-svc before files become downloadable (quarantine on hit, fail closed if clamd is down); type from magic bytes; images re-encoded. Built in P6, EICAR test passes. <strong>Staging-lite does not scan</strong> (no memory; owner decision 2026-11-08)</td>
 <td>✅ (TR-SEC-6)</td>
 </tr>
 </tbody>
@@ -6996,7 +6997,7 @@ rs.initiate({
 <li>Caching: hashed SPA assets <code>immutable</code> 1 y; <code>index.html</code> no-cache; <code>/media/products/</code> 30 d.</li>
 </ul>
 <h3 id="55-clamav">5.5 ClamAV</h3>
-<p><code>clamd</code> container on <code>data</code>; document-svc streams uploads via <code>INSTREAM</code>; <code>freshclam</code> daily; alert if signatures older than 48 h.</p>
+<p><code>clamd</code> container on <code>data</code>; document-svc streams uploads via <code>INSTREAM</code>; <code>freshclam</code> daily; alert if signatures older than 48 h. Uploads fail closed (503) while clamd is down. Staging-lite runs without ClamAV (<code>SCAN_ENABLED=false</code>, not enough memory on the shared box).</p>
 <h2 id="146-secrets-and-configuration">14.6 Secrets and configuration</h2>
 <table>
 <thead>

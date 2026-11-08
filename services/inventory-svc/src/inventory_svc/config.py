@@ -20,6 +20,7 @@ class Settings:
     # with a service token from identity-svc (TAD §4.3 design note), cached in Redis.
     identity_url: str | None = None
     catalog_url: str | None = None
+    document_url: str | None = None  # optional: label PDFs
     service_secret: str | None = None
     place_cache_seconds: int = 600
 
@@ -35,6 +36,7 @@ class Settings:
             audience=env("JWT_AUDIENCE", cls.audience),
             identity_url=env("IDENTITY_URL"),
             catalog_url=env("CATALOG_URL"),
+            document_url=env("DOCUMENT_URL"),
             service_secret=read_secret("SERVICE_SECRET"),
             place_cache_seconds=int(env("PLACE_CACHE_SECONDS", str(cls.place_cache_seconds))),
         )

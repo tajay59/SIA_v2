@@ -202,24 +202,3 @@ export async function stowUnits(staffEmail: string, productId: string, n: number
   for (const u of units) await j('/stow', { unit: u, shelf }, { 'Idempotency-Key': `${u}-stow` })
   return units
 }
-
-/**
- * Stand-in for document-svc (P6): answers the browser's upload to /api/documents/v1/files by attaching the
- * file's metadata to the request through order-svc's internal endpoint, as document.uploaded will.
- */
-export async function attachAsDocumentSvc(requestId: string, kind: string, name: string): Promise<string> {
-  const t = await req(`${API}/internal/service-token`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ service: 'document', secret: process.env.E2E_DOCUMENT_SECRET ?? 'dev-document-secret' }),
-  })
-  if (!t.ok) throw new Error(`document token: ${t.status}`)
-  const id = `FIL${randomBytes(16).toString('hex')}`
-  const r = await req(`${ORDERS}/api/orders/v1/internal/requests/${requestId}/files`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${((await t.json()) as { token: string }).token}` },
-    body: JSON.stringify({ id, kind, name, mime: 'application/pdf', size: 1024 }),
-  })
-  if (r.status !== 204) throw new Error(`attach: ${r.status} ${await r.text()}`)
-  return id
-}
