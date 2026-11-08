@@ -148,7 +148,8 @@ class OrderService:
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
-        assert doc is not None
+        if doc is None:  # upsert with ReturnDocument.AFTER always returns the cart
+            raise RuntimeError("cart upsert returned nothing")
         return doc
 
     async def cart(self, p: Principal) -> dict[str, Any]:
