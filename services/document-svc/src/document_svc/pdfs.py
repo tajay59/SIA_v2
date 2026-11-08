@@ -10,8 +10,8 @@ from __future__ import annotations
 import io
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from html import escape
 from typing import Any
-from xml.sax.saxutils import escape
 
 from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
@@ -40,7 +40,7 @@ H2 = ParagraphStyle("h2", parent=BODY, fontName="Helvetica-Bold", fontSize=10.5,
 
 
 def _p(text: Any, style: ParagraphStyle = BODY) -> Paragraph:
-    return Paragraph(escape(str(text if text is not None else "")), style)
+    return Paragraph(escape(str(text if text is not None else ""), quote=False), style)
 
 
 def _today() -> str:
