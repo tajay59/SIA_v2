@@ -137,6 +137,7 @@ export interface paths {
                         "application/json": components["schemas"]["Location"];
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -188,6 +189,7 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -273,6 +275,7 @@ export interface paths {
                         };
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         put?: never;
@@ -371,11 +374,12 @@ export interface paths {
                     content: {
                         "application/json": {
                             barcodes: string[];
-                            /** @description Download via documents API */
-                            fileId: string;
+                            /** @description Download via documents API. null until document-svc (P6) builds the label file; SIA renders the codes itself meanwhile */
+                            fileId: string | null;
                         };
                     };
                 };
+                404: components["responses"]["NotFound"];
             };
         };
         delete?: never;
@@ -393,7 +397,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Stow a unit on a shelf */
+        /**
+         * Stow a unit on a shelf
+         * @description A legacy label (`<productId>_<code>`) without a unit record creates it on first stow. Stowing a unit already on this shelf returns it unchanged; on another shelf -> 409 UNIT_ALREADY_STOWED (use /relocate). An issued unit -> 409 UNIT_ASSIGNED.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -478,6 +485,7 @@ export interface paths {
                         "application/json": components["schemas"]["Unit"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -527,6 +535,7 @@ export interface paths {
                         "application/json": components["schemas"]["Unit"];
                     };
                 };
+                404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
             };
         };
@@ -576,6 +585,8 @@ export interface paths {
                         "application/json": components["schemas"]["Unit"];
                     };
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         delete?: never;
@@ -623,6 +634,8 @@ export interface paths {
                         "application/json": components["schemas"]["Unit"];
                     };
                 };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
             };
         };
         delete?: never;
@@ -899,13 +912,7 @@ export interface paths {
                         };
                     };
                 };
-                /** @description Insufficient stock; nothing reserved (code RESERVATION_FAILED) */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
+                409: components["responses"]["Conflict"];
             };
         };
         delete?: never;
@@ -973,7 +980,9 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -1006,14 +1015,18 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
                 /** @description Not ready */
                 503: {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["Health"];
+                    };
                 };
             };
         };
@@ -1096,8 +1109,11 @@ export interface components {
             threshold: number;
             byLocation: {
                 site: string;
+                siteName?: string;
                 location: string;
+                locationName?: string;
                 shelf: string;
+                shelfNumber?: number;
                 count: number;
             }[];
         };
@@ -1108,8 +1124,16 @@ export interface components {
             site?: string | null;
             location?: string | null;
             shelf?: string | null;
-            from?: Record<string, never> | null;
+            /** @description Where the unit was before a relocate or assign */
+            from?: {
+                site?: string | null;
+                location?: string | null;
+                shelf?: string | null;
+            } | null;
+            /** @description Account id of the staff member who scanned */
             user: string;
+            /** @description assign / unassign: the person the unit was issued to */
+            accountId?: string | null;
             orderId?: string | null;
             date: components["schemas"]["Timestamp"];
         };
@@ -1147,6 +1171,13 @@ export interface components {
          * @description UTC, ISO-8601.
          */
         Timestamp: string;
+        Health: {
+            /** @enum {string} */
+            status: "ok" | "degraded";
+            checks?: {
+                [key: string]: "ok" | "fail";
+            };
+        };
     };
     responses: {
         /** @description Resource does not exist or is not visible to the caller. */

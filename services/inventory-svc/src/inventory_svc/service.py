@@ -276,8 +276,25 @@ class InventoryService:
         )
         return await self.views(docs), nxt
 
+    async def _known_product(self, product_id: str) -> bool:
+        """True if the product exists. The `stock` copy normally comes from catalog events; if it isn't there
+        yet (event still in flight, or a product older than the consumer) ask catalog-svc once and create it."""
+        if await self.store.stock.find_one({"id": product_id}, {"_id": 1}):
+            return True
+        found = [d for d in await self.places.products([product_id]) if d.get("id") == product_id]
+        if not found:
+            return False
+        d = found[0]
+        counts = await self._counts(product_id, None)
+        threshold, active = int(d.get("threshold") or 0), bool(d.get("active", True))
+        fields = {"productName": d.get("name"), "type": d.get("type"), "threshold": threshold, "active": active}
+        fields |= {**counts, "low": is_low(counts["available"], threshold, active), "updatedAt": now()}
+        # $setOnInsert: if the consumer got there first, its copy wins.
+        await self.store.stock.update_one({"id": product_id}, {"$setOnInsert": fields}, upsert=True)
+        return True
+
     async def labels(self, p: Principal, product_id: str, quantity: int, serials: list[str] | None) -> dict[str, Any]:
-        if not await self.store.stock.find_one({"id": product_id}, {"_id": 1}):
+        if not await self._known_product(product_id):
             raise not_found("Product not found")
         if serials is not None and len(serials) != quantity:
             raise ProblemError(
@@ -401,6 +418,9 @@ class InventoryService:
 
     async def stow(self, p: Principal, barcode: str, shelf_code: str, cid: str) -> dict[str, Any]:
         shelf = await self.shelf(shelf_code)
+        product_id, sep, _ = barcode.rpartition(UNIT_SEP)
+        if sep and product_id and not await self.store.storage.find_one({"barcode": barcode}, {"_id": 1}):
+            await self._known_product(product_id)  # a legacy label: make sure the product's copy exists
 
         async def tx(s: Any) -> dict[str, Any]:
             doc = await self._unit_for_scan(barcode, s)

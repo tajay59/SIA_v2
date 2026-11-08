@@ -58,6 +58,7 @@ class MemoryPlaces:
 
     items: dict[str, dict[str, Any]] = field(default_factory=dict)
     calls: int = 0
+    catalog: dict[str, dict[str, Any]] = field(default_factory=dict)  # products only catalog-svc knows
 
     async def list(
         self,
@@ -78,6 +79,9 @@ class MemoryPlaces:
     async def put(self, place: dict[str, Any]) -> dict[str, Any]:
         self.items[place["barcode"]] = {"site": None, "location": None, "number": None, **place}
         return dict(self.items[place["barcode"]])
+
+    async def products(self, ids: list[str]) -> list[dict[str, Any]]:
+        return [self.catalog[i] for i in ids if i in self.catalog]
 
 
 def event_schema(etype: str) -> Draft202012Validator:

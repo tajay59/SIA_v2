@@ -824,6 +824,8 @@ export interface paths {
                     kind?: "site" | "location" | "shelf";
                     site?: string;
                     location?: string;
+                    /** @description One place by its barcode (a scan) */
+                    barcode?: string;
                 };
                 header?: never;
                 path?: never;

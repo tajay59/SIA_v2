@@ -42,6 +42,9 @@ class FixedPlaces:
     async def put(self, place: dict[str, Any]) -> dict[str, Any]:
         return place
 
+    async def products(self, ids: list[str]) -> list[dict[str, Any]]:
+        return []
+
 
 async def seed(db: Any, units: int, seed: int = 11) -> None:
     rng = random.Random(seed)  # noqa: S311 - synthetic data

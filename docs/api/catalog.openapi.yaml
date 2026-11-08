@@ -296,7 +296,7 @@ paths:
   /internal/products/summaries:
     post:
       tags: [internal]
-      summary: Bulk product snapshots for order-svc (service token)
+      summary: Bulk product snapshots for order-svc and inventory-svc (service token)
       requestBody:
         required: true
         content:

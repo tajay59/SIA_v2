@@ -26,6 +26,9 @@ class _Places:
     async def put(self, place: dict[str, Any]) -> dict[str, Any]:
         return place
 
+    async def products(self, ids: list[str]) -> list[dict[str, Any]]:
+        return []
+
 
 def _service(db: Any) -> Any:
     from inventory_svc.service import InventoryService

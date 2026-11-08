@@ -51,3 +51,15 @@ def test_catalog_failure_is_a_503() -> None:
         asyncio.run(places.list(kind="site"))
     assert err.value.status == 503
     assert err.value.code == "DEPENDENCY_UNAVAILABLE"
+
+
+def test_product_summaries() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/internal/service-token"):
+            return httpx.Response(200, json={"token": "T"})
+        assert request.url.path == "/api/catalog/v1/internal/products/summaries"
+        assert json.loads(request.read()) == {"ids": ["P1"]}
+        return httpx.Response(200, json={"items": [{"id": "P1", "name": "Gauge"}]})
+
+    client = CatalogPlaces("http://catalog:8000", "http://identity:8000", "s3", transport=httpx.MockTransport(handler))
+    assert asyncio.run(client.products(["P1"])) == [{"id": "P1", "name": "Gauge"}]

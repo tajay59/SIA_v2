@@ -228,3 +228,18 @@ def test_shelf_lookup_is_paged(stocked: tuple[Ctx, list[str], list[str]]) -> Non
     assert seen == sorted(units)
     assert ctx.client.get(ctx.url(f"/shelves/{shelves[1]}/units"), headers=STAFF).json()["items"] == []
     assert ctx.client.get(ctx.url("/shelves/SHELnope/units"), headers=STAFF).status_code == 404
+
+
+def test_products_only_catalog_knows_get_their_stock_copy(ctx: Ctx) -> None:
+    """The catalog event may still be in flight (or predate the consumer): labels ask catalog-svc once."""
+    ctx.places.catalog[PID] = {"id": PID, "name": "New vane", "type": "MET", "threshold": 3, "active": True}
+    shelf = ctx.shelves(1)[0]
+    r = ctx.client.post(ctx.url("/labels"), headers=STAFF, json={"productId": PID, "quantity": 1})
+    assert r.status_code == 201, r.text
+    doc = ctx.stock_doc(PID)
+    assert (doc["productName"], doc["threshold"], doc["low"]) == ("New vane", 3, True)
+    other = "RAD99999999999999999999999999999999"
+    ctx.places.catalog[other] = {"id": other, "name": "Old radar part", "type": "RAD", "threshold": 0, "active": True}
+    r = ctx.scan("stow", {"unit": f"{other}_0a0b0c0d", "shelf": shelf})  # legacy label, product never seen
+    assert r.status_code == 200, r.text
+    assert r.json()["productName"] == "Old radar part"
