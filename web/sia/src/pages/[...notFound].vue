@@ -1,5 +1,5 @@
 <script setup lang="ts">
-definePage({ meta: { guard: 'staff', title: 'Not found' } })
+definePage({ meta: { guard: 'staff', title: 'Not found', ownHeading: true } })
 </script>
 
 <template>

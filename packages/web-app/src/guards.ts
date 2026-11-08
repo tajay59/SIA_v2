@@ -17,6 +17,8 @@ declare module 'vue-router' {
     title?: string
     /** `bare` = centred card without app navigation (login, sign-up…). */
     layout?: 'default' | 'bare'
+    /** The page renders its own <h1> (detail pages); the SIA shell then doesn't show the title heading. */
+    ownHeading?: boolean
   }
 }
 

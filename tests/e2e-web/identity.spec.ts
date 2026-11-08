@@ -78,8 +78,9 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await siaLogin(page, adminEmail)
     await expect(page.getByText('Enter the code from your authenticator app')).toBeVisible()
     await typeCode(page, totp(mfaKey))
-    await expect(page.getByRole('heading', { name: /Good to see you/ })).toBeVisible()
+    await expect(page.getByText(/Good to see you/)).toBeVisible()
 
+    await page.getByRole('button', { name: 'Admin' }).click() // SIA header: account pages sit in the Admin menu
     await page.getByRole('link', { name: 'Pending accounts' }).click()
     const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\\.')) })
     await expect(row).toBeVisible()

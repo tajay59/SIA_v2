@@ -12,7 +12,9 @@ import {
   ifMatch,
   type ProductPatch,
   type ProductStaff,
+  primaryImage,
   ProductBadges,
+  ProductImage,
   typeLabel,
   useNotify,
   useReference,
@@ -24,7 +26,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ProductForm from '../../components/ProductForm.vue'
 import ProductImagesPanel from '../../components/ProductImagesPanel.vue'
 
-definePage({ meta: { guard: 'staff', title: 'Product' } })
+definePage({ meta: { guard: 'staff', title: 'Product', ownHeading: true } })
 const route = useRoute('/products/[id]')
 const router = useRouter()
 const session = useSession()
@@ -74,6 +76,21 @@ async function save(body: Record<string, unknown>) {
   }
 }
 
+const shown = ref<string | null>(null)
+const shownImage = computed(() => {
+  const imgs = product.value?.images ?? []
+  return imgs.find((i) => i.fileId === shown.value) ?? (product.value ? (primaryImage(product.value) ?? null) : null)
+})
+
+// Serials and make/model on one line (legacy description card), skipping what is missing.
+const identLine = computed(() => {
+  const p = product.value
+  if (!p) return ''
+  const serials = [p.sn, p.sn1].filter(Boolean).join(', ')
+  const model = [p.make, p.modelname, p.modelnumber].filter(Boolean).join(' ')
+  return [serials, model].filter(Boolean).join(' · ')
+})
+
 const deactivateOpen = ref(false)
 async function deactivate() {
   const p = product.value
@@ -121,25 +138,65 @@ watch(
     <v-skeleton-loader v-else-if="!product" type="article, table" />
     <div v-else class="stack">
       <v-breadcrumbs :items="[{ title: 'Products', to: '/products' }, { title: product.name, disabled: true }]" class="pa-0" />
-      <div class="page-header">
-        <div class="stack-sm">
-          <h1 class="t-h2">{{ product.name }}</h1>
-          <div class="row t-body muted">
-            <span class="t-mono">{{ product.id }}</span>
-            <span>{{ typeLabel(reference, product.type) }}</span>
-            <ProductBadges :product="product" show-limit />
-            <v-chip v-if="!product.active" size="small" label color="error" variant="tonal">Inactive</v-chip>
-            <v-chip v-else-if="!product.sellable" size="small" label>Hidden from customers</v-chip>
+      <!-- Same structure as the legacy SIA product page: photos and description left, info card right. -->
+      <div class="overview">
+        <section class="ov-left">
+          <div class="stack-sm">
+            <h1 class="t-h2">{{ product.name }}</h1>
+            <div class="row t-body muted">
+              <span>{{ typeLabel(reference, product.type) }}</span>
+              <ProductBadges :product="product" show-limit />
+              <v-chip v-if="!product.active" size="small" label color="error" variant="tonal">Inactive</v-chip>
+              <v-chip v-else-if="!product.sellable" size="small" label>Hidden from customers</v-chip>
+            </div>
           </div>
-        </div>
-        <span class="spacer" />
-        <v-btn v-if="product.active" variant="outlined" color="error" @click="deactivateOpen = true">Deactivate</v-btn>
+          <div class="ov-photos">
+            <ProductImage :image="shownImage" :alt="product.name" sizes="(max-width: 960px) 100vw, 640px" />
+            <div v-if="product.images.length > 1" class="ov-thumbs" role="group" aria-label="Photos">
+              <button
+                v-for="(img, i) in product.images"
+                :key="img.fileId"
+                type="button"
+                class="ov-thumb"
+                :class="{ on: shownImage?.fileId === img.fileId }"
+                :aria-label="`Photo ${i + 1} of ${product.images.length}`"
+                :aria-pressed="shownImage?.fileId === img.fileId"
+                @click="shown = img.fileId"
+              >
+                <ProductImage :image="img" alt="" small sizes="72px" />
+              </button>
+            </div>
+          </div>
+          <div class="ov-section">
+            <h2 class="cap">Description</h2>
+            <v-card class="pa-5 stack-sm">
+              <p v-if="identLine" class="t-caption muted t-mono">{{ identLine }}</p>
+              <p class="t-body">{{ product.description || 'No description yet.' }}</p>
+              <p v-if="product.details" class="t-body muted details">{{ product.details }}</p>
+            </v-card>
+          </div>
+        </section>
+        <aside class="ov-right">
+          <h2 class="cap">Info</h2>
+          <v-card class="pa-5">
+            <dl class="facts">
+              <dt>In stock</dt><dd class="tnum"><strong>{{ product.stockCount ?? 'not counted yet' }}</strong></dd>
+              <dt>Low-stock alert at</dt><dd class="tnum">{{ product.threshold }}</dd>
+              <dt>Cost</dt><dd class="tnum">{{ product.cost ? `${product.cost} BBD` : '—' }}</dd>
+              <dt>Units per pack</dt><dd class="tnum">{{ product.unitquantity ?? 1 }}</dd>
+              <dt>Department</dt><dd>{{ product.department }}</dd>
+              <dt>Shown to customers</dt><dd>{{ product.active && product.sellable ? 'Yes' : 'No' }}</dd>
+              <dt>Id</dt><dd class="t-mono">{{ product.id }}</dd>
+            </dl>
+            <p class="t-caption muted mt-3">Stock by site, location and shelf, and label printing, come with the inventory service.</p>
+            <v-btn v-if="product.active" class="mt-4" block variant="outlined" color="error" @click="deactivateOpen = true">Deactivate</v-btn>
+          </v-card>
+        </aside>
       </div>
 
       <v-tabs v-model="tab" color="primary">
         <v-tab value="details">Details</v-tab>
         <v-tab value="images">Images ({{ product.images.length }})</v-tab>
-        <v-tab value="stock">Stock</v-tab>
         <v-tab v-if="session.isAdmin" value="history">History</v-tab>
       </v-tabs>
 
@@ -149,15 +206,6 @@ watch(
         </v-window-item>
         <v-window-item value="images">
           <div class="pt-4"><ProductImagesPanel :product="product" @updated="(p) => (product = p)" /></div>
-        </v-window-item>
-        <v-window-item value="stock">
-          <div class="pt-4 stack-sm">
-            <p class="t-body">
-              Available units: <strong class="tnum">{{ product.stockCount ?? 'not counted yet' }}</strong>
-              · low-stock alert at <span class="tnum">{{ product.threshold }}</span>
-            </p>
-            <p class="t-body muted">Stock by site, location and shelf, and label printing, come with the inventory service.</p>
-          </div>
         </v-window-item>
         <v-window-item v-if="session.isAdmin" value="history">
           <div class="pt-4">
@@ -190,3 +238,73 @@ watch(
     </v-dialog>
   </div>
 </template>
+
+<style scoped>
+.overview {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);
+  gap: var(--sp-6);
+  align-items: start;
+}
+@media (max-width: 959px) {
+  .overview {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.ov-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+.ov-photos {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 640px;
+}
+.ov-thumbs {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.ov-thumb {
+  width: 72px;
+  padding: 2px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.ov-thumb.on {
+  border-color: rgb(var(--v-theme-primary));
+}
+.cap {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.72;
+  margin: 0 0 var(--sp-2);
+}
+.ov-right {
+  position: sticky;
+  top: 80px;
+}
+.details {
+  white-space: pre-line;
+}
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0;
+  font-size: 14px;
+}
+.facts dt {
+  opacity: 0.72;
+}
+.facts dd {
+  margin: 0;
+  word-break: break-word;
+}
+</style>

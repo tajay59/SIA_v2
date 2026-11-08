@@ -8,7 +8,7 @@ definePage({ meta: { guard: 'public', title: 'Pro Bono items' } })
 <template>
   <CatalogueBrowser
     probono
-    title="Pro Bono items"
+    title="Pro Bono Spares"
     intro="Items CIMH supplies free of charge through its projects. Request them like any other item; some have a limit per request."
   />
 </template>

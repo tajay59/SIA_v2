@@ -24,7 +24,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import DecisionDialog from '../../../components/DecisionDialog.vue'
 
-definePage({ meta: { guard: 'staff', title: 'Account' } })
+definePage({ meta: { guard: 'staff', title: 'Account', ownHeading: true } })
 
 const route = useRoute('/admin/accounts/[id]')
 const router = useRouter()

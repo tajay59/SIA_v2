@@ -2,7 +2,7 @@
 /** A-21 profile. */
 import { ProfileView } from '@cimh/web-app'
 
-definePage({ meta: { guard: 'staff', title: 'Profile' } })
+definePage({ meta: { guard: 'staff', title: 'Profile', ownHeading: true } })
 </script>
 
 <template>
