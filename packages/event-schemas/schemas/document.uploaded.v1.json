@@ -59,6 +59,10 @@
             "orderId": {
               "type": "string"
             },
+            "customer": {
+              "type": "string",
+              "description": "Requester account id (generated documents; notification-svc mails the agreement)"
+            },
             "fileId": {
               "type": "string"
             },

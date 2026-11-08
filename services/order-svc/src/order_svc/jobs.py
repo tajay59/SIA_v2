@@ -6,6 +6,8 @@
 Jobs:
   expire_quotes   QUOTED / AWAITING_AGREEMENT past the quote's 30-day validity -> CANCELLED (auto);
                   `order.expired` is published (inventory releases nothing: no stock is held before acceptance).
+  remind_quotes   live quotes expiring within QUOTE_REMINDER_DAYS (3) -> `order.quote_expiring` once per expiry date
+                  (notification-svc emails the customer).
   purge_carts     carts untouched for 180 days are emptied (business rule).
 Both are idempotent and bounded per run.
 """
@@ -26,7 +28,12 @@ log = logging.getLogger("order.jobs")
 
 
 async def run_all(service: OrderService) -> dict[str, int]:
-    return {"expired": await service.expire_quotes(), "cartsEmptied": await service.purge_carts()}
+    days = int(os.environ.get("QUOTE_REMINDER_DAYS", "3"))
+    return {
+        "expired": await service.expire_quotes(),
+        "reminded": await service.remind_quotes(days),
+        "cartsEmptied": await service.purge_carts(),
+    }
 
 
 async def main(once: bool = False) -> None:

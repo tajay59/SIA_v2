@@ -207,7 +207,7 @@ auth/         shared token-checking library (from packages/)
 | **Internal API** | `GET /internal/requests/{id}/access?user=` (document-svc asks whether a user may see a request's files); `POST /internal/requests/{id}/files` (document-svc attaches file metadata; normally via `document.events`) |
 | **Publishes** | `order.events`: `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised`, `order.agreement_requested`, `order.agreement_rejected`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired` (a failed reservation is reported by inventory as `stock.reservation_failed`) |
 | **Consumes** | `document.events` (attach generated or uploaded files to `files[]`; the agreement and CIMH-quote PDF ids are linked); `inventory.stock.events` (`stock.reserved` → line `RESERVED` + units, `stock.reservation_failed` → line `FAILED` for staff to requote, `stock.released` → `RELEASED`); `identity.user.events` (`user.suspended` → block that user's open carts; **not built yet**) |
-| **Scheduled jobs** | `order-jobs`: quote expiry after 30 days (`QUOTED`/`AWAITING_AGREEMENT` → `CANCELLED`, `order.expired`); carts untouched for 180 days are emptied. The reminder 3 days before expiry comes with notification-svc (P6) |
+| **Scheduled jobs** | `order-jobs`: quote expiry after 30 days (`QUOTED`/`AWAITING_AGREEMENT` → `CANCELLED`, `order.expired`); `order.quote_expiring` once per expiry date when a live quote expires within `QUOTE_REMINDER_DAYS` (3); carts untouched for 180 days are emptied |
 | **Calls (HTTP)** | catalog-svc (`/internal/products/summaries`: snapshots, cost, Pro Bono limits; `/internal/fees`: admin fee); inventory-svc (`/internal/availability` when quoting starts, `/internal/picks`); identity-svc (`/internal/accounts/{id}`: names and organisation at submission, file-access checks) |
 
 ### 4.5 document-svc
@@ -228,7 +228,8 @@ auth/         shared token-checking library (from packages/)
 | **Owns** | No collection (email lists are read from catalog-svc and cached in Redis for 5 min) |
 | **Consumes** | `identity.user.events`, `order.events`, `inventory.stock.events` (`stock.low`), `document.events` |
 | **Sends to** | CIMH mail server (SMTP over TLS) |
-| **Rules** | Each event triggers at most one email (deduplicated by `eventId`); templates escape all values; failed sends are retried, then go to the DLQ |
+| **Rules** | Each event triggers at most one email per recipient (consumer dedupe by `eventId` + Redis mark `ntf:sent:<eventId>:<recipient hash>` after each send, so a retry after a partial failure only sends the missing ones); templates escape all values; failed sends are retried, then go to the DLQ. A new consumer group starts at the **latest** offset and events older than 48 h (`MAX_EVENT_AGE_HOURS`) are not emailed, so a first deploy or a late replay never mails old news. Codes are claimed once from identity and parked in Redis (`ntf:code:*`, 15 min) until sent |
+| **Runs as** | `notification-consumer` (worker, no HTTP API). Dev and staging-lite send to **Mailpit** (staging-lite holds real customer data: nothing may reach a real inbox); production uses the CIMH relay (STARTTLS) on the `smtp` network |
 
 ### 4.7 media-worker
 | Aspect | Detail |

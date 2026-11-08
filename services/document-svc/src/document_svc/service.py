@@ -195,7 +195,8 @@ class DocumentService:
         fid = "FIL" + hashlib.sha256(f"{event.eventId}:{kind}".encode()).hexdigest()[:32]
         meta = self._generated_meta(fid, rid, kind, f"{NAMES[kind]}-{rid}.pdf", data, "system")
         self.files.save(meta, data)
-        await self._emit("document.generated", meta, event.correlationId, event.actorId)
+        extra = {"customer": req["customer"]} if isinstance(req.get("customer"), str) else {}
+        await self._emit("document.generated", meta, event.correlationId, event.actorId, **extra)
         return public(meta)
 
     @staticmethod
@@ -219,8 +220,8 @@ class DocumentService:
     def _event(etype: str, payload: dict[str, Any], cid: str, actor_id: str | None) -> EventEnvelope:
         return EventEnvelope(type=etype, payload=payload, correlationId=cid, actorId=actor_id)
 
-    async def _emit(self, etype: str, meta: dict[str, Any], cid: str, actor_id: str | None) -> None:
-        payload = {"orderId": meta["requestId"], "fileId": meta["id"]}
+    async def _emit(self, etype: str, meta: dict[str, Any], cid: str, actor_id: str | None, **extra: Any) -> None:
+        payload = {"orderId": meta["requestId"], "fileId": meta["id"], **extra}
         payload |= {k: meta[k] for k in ("kind", "name", "mime", "size", "sha256")}
         await self.publisher.publish(TOPIC, meta["requestId"], self._event(etype, payload, cid, actor_id))
 

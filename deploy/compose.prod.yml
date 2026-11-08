@@ -463,6 +463,36 @@ services:
     mem_limit: 192m
     cpus: 0.25
 
+  # Every email (P6) through the CIMH mail relay (network `smtp`: egress to the relay only).
+  notification-consumer:
+    <<: *service
+    image: ${REGISTRY:-ghcr.io/tajay59}/notification-svc@${NOTIFICATION_SVC_DIGEST:?set by deploy.sh}
+    command: ["python", "-m", "notification_svc.consumer"]
+    env_file: [env/prod.env]
+    environment:
+      REDIS_URL_FILE: /run/secrets/redis_url_notification
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_notification
+      KAFKA_BOOTSTRAP: kafka1:9092,kafka2:9092,kafka3:9092
+      KAFKA_SASL_USER: notification
+      KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_notification
+      KAFKA_CA_FILE: /run/secrets/ca.pem
+      SMTP_HOST: ${SMTP_HOST:-mail.cimh.edu.bb}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_STARTTLS: "true"
+      SMTP_USER: ${SMTP_USER:-stores@cimh.edu.bb}
+      SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      MAIL_FROM: "CIMH Stores <stores@cimh.edu.bb>"
+      SHOP_URL: https://stores.cimh.edu.bb
+      SIA_URL: https://sia.cimh.edu.bb
+    secrets: [ca.pem, redis_url_notification, service_secret_notification, app_kafka_notification, smtp_password]
+    healthcheck: { disable: true }
+    depends_on: { kafka-setup: { condition: service_completed_successfully } }
+    networks: [data, smtp]
+    mem_limit: 128m
+    cpus: 0.25
+
   # clamd for document-svc uploads (TR-SEC-6); signatures refreshed by freshclam inside the container.
   clamav:
     image: clamav/clamav:1.4
@@ -560,6 +590,9 @@ secrets:
   app_kafka_order: { file: "${SECRETS:-./secrets}/app_kafka_order" }
   redis_url_media: { file: "${SECRETS:-./secrets}/redis_url_media" }
   redis_url_document: { file: "${SECRETS:-./secrets}/redis_url_document" }
+  redis_url_notification: { file: "${SECRETS:-./secrets}/redis_url_notification" }
+  service_secret_notification: { file: "${SECRETS:-./secrets}/service_secret_notification" }
+  app_kafka_notification: { file: "${SECRETS:-./secrets}/app_kafka_notification" }
   service_secret_document: { file: "${SECRETS:-./secrets}/service_secret_document" }
   app_kafka_document: { file: "${SECRETS:-./secrets}/app_kafka_document" }
   jwt_private_key: { file: "${SECRETS:-./secrets}/jwt_private_key" }

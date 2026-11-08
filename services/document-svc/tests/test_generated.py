@@ -43,6 +43,7 @@ def test_each_event_renders_one_pdf(ctx: Ctx, event: EventEnvelope, kind: str) -
     [gen] = _generated(ctx)
     check_event(gen)
     assert gen.payload["kind"] == kind
+    assert gen.payload["customer"] == "USRUSER"  # notification-svc mails the customer
     assert gen.payload["orderId"] == "ORD1"
     assert gen.correlationId == "c1"
     fid = gen.payload["fileId"]
@@ -106,3 +107,8 @@ def test_text_is_not_interpreted_as_markup(ctx: Ctx) -> None:
     _run(ctx, _event("order.agreement_requested", customer="USRUSER", quoteVersion=1, lines=[], total="505.00",
                      currency="BBD"))  # fmt: skip
     assert len(_generated(ctx)) == 1
+
+
+def test_revised_quote_renders_a_new_cimh_quote(ctx: Ctx) -> None:
+    _run(ctx, _event("order.quote_revised", customer="USRUSER", **{"from": "QUOTED", "to": "QUOTED"}))
+    assert [e.payload["kind"] for e in _generated(ctx)] == ["cimh_quote"]

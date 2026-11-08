@@ -61,6 +61,7 @@ channels:
       orderStatusChanged: { $ref: '#/components/messages/orderStatusChanged' }
       orderQuoted: { $ref: '#/components/messages/orderQuoted' }
       orderAgreementRequested: { $ref: '#/components/messages/orderAgreementRequested' }
+      orderQuoteExpiring: { $ref: '#/components/messages/orderQuoteExpiring' }
       orderAccepted: { $ref: '#/components/messages/orderAccepted' }
       orderProbonoApproved: { $ref: '#/components/messages/orderProbonoApproved' }
       orderShipped: { $ref: '#/components/messages/orderShipped' }
@@ -478,6 +479,21 @@ components:
                   expiresAt: { type: string, format: date-time }
                   currency: { type: string, enum: [BBD, USD] }
                   cimhLineIds: { type: array, items: { type: string }, description: Lines offered from CIMH stock (document-svc renders the CIMH quote PDF) }
+    orderQuoteExpiring:
+      name: order.quote_expiring
+      description: The live quote expires within the reminder window (3 days); order-jobs sends it once per quote expiry. notification-svc reminds the customer.
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload:
+                type: object
+                required: [orderId, customer, quoteVersion, expiresAt]
+                properties:
+                  orderId: { type: string }
+                  customer: { type: string }
+                  quoteVersion: { type: integer }
+                  expiresAt: { type: string, format: date-time }
     orderAgreementRequested:
       name: order.agreement_requested
       description: Customer chose options; document-svc generates the agreement PDF (kind agreement).
@@ -557,6 +573,7 @@ components:
                 required: [orderId, fileId, kind, name, mime, size, sha256]
                 properties:
                   orderId: { type: string }
+                  customer: { type: string, description: 'Requester account id (generated documents; notification-svc mails the agreement)' }
                   fileId: { type: string }
                   kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
                   name: { type: string }

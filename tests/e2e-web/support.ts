@@ -49,9 +49,30 @@ async function token(): Promise<string> {
   return serviceToken
 }
 
-/** The code notification-svc would email: newest code of `kind` for the account with `email`. */
+const MAILPIT = process.env.MAILPIT_URL ?? 'http://localhost:18025'
+const SUBJECTS = { verify_email: 'verification code', reset_password: 'Reset your' } as const
+
+/** The newest emailed code (notification-svc -> Mailpit), if a message arrived after `since`. */
+async function codeFromMailpit(email: string, kind: keyof typeof SUBJECTS, since: number): Promise<string | null> {
+  const q = encodeURIComponent(`to:"${email}" subject:"${SUBJECTS[kind]}"`)
+  const r = await req(`${MAILPIT}/api/v1/search?query=${q}&limit=1`).catch(() => null)
+  if (!r?.ok) return null
+  const msg = ((await r.json()) as { messages?: { ID: string; Created: string }[] }).messages?.[0]
+  if (!msg || Date.parse(msg.Created) < since - 2000) return null
+  const full = await req(`${MAILPIT}/api/v1/message/${msg.ID}`)
+  const m = /\b(\d{6})\b/.exec(((await full.json()) as { Text: string }).Text)
+  return m ? m[1] : null
+}
+
+/**
+ * The code a person would receive: read from the email in Mailpit when notification-svc runs (it claims the code
+ * from identity first), otherwise claimed directly from identity as notification-svc would.
+ */
 export async function claimCode(email: string, kind: 'verify_email' | 'reset_password' = 'verify_email'): Promise<string> {
-  for (let i = 0; i < 20; i++) {
+  const since = Date.now()
+  for (let i = 0; i < 60; i++) {
+    const mailed = await codeFromMailpit(email, kind, since)
+    if (mailed) return mailed
     const ref = mongo<string | null>(`
       const a = db.accounts.findOne({ email: ${JSON.stringify(email.toLowerCase())} });
       if (!a) return null;
