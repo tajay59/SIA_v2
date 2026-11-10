@@ -63,6 +63,25 @@ export function boot(opts: BootOptions) {
     routes: opts.routes as RouteRecordRaw[],
     scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
   })
+  // A page chunk that fails to load (navigation aborted it, or a deploy replaced it) rejects the route
+  // ("Couldn't resolve component"). Load the target page fresh, once; then let the error page show.
+  router.onError((err: unknown, to) => {
+    const msg = err instanceof Error ? err.message : String(err)
+    if (!/resolve component|dynamically imported module|Importing a module script failed|error loading dynamically/i.test(msg)) return
+    let last = 0
+    try {
+      last = Number(sessionStorage.getItem(RELOAD_KEY) ?? 0)
+    } catch {
+      /* ignore */
+    }
+    if (Date.now() - last < 10_000) return
+    try {
+      sessionStorage.setItem(RELOAD_KEY, String(Date.now()))
+    } catch {
+      /* ignore */
+    }
+    window.location.assign(to.fullPath)
+  })
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
   void router.isReady().then(() => app.mount(opts.mount ?? '#app'))

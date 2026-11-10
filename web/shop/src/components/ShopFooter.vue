@@ -136,6 +136,10 @@ const year = new Date().getFullYear()
 .links a,
 .plain a {
   text-decoration: none;
+  /* Stacked links are tap targets: at least 24 px tall (WCAG 2.5.8); 13 px x 1.8 was 23.4 px. */
+  display: inline-block;
+  min-height: 24px;
+  line-height: 24px;
 }
 .links a:hover,
 .plain a:hover {
