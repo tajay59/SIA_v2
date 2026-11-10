@@ -54,7 +54,7 @@ Rebuild of CIMH's stores system to production grade (target: 1M registered users
 - **Monitoring:** Prometheus + Alertmanager only (**no Grafana, Loki or Sentry**).
 - **Frontends:** Vue 3 + TypeScript + **Vuetify 4** + file-based routing + **Zod 4** + Pinia; API clients generated from OpenAPI. **Android min 11.**
 - **Auth:** EdDSA JWT (access 15 min, refresh 7 d, a new refresh issued on every use), JWKS, Argon2id, cookies + CSRF (web), Bearer (mobile).
-- **Hardware:** host with 16 cores / **32 GB** / 2 × 6 GB GPU (budget **29.5–31.5 GB incl. ClamAV**, very tight; 64 GB upgrade strongly recommended; every container has `mem_limit`). Staging runs on the host, on demand. Backups use restic to another CIMH site. Mail goes through the CIMH mail server. CI is GitHub Actions + GHCR (deploys by a self-hosted runner on the host).
+- **Hardware:** host with 16 cores / **32 GB** / 2 × 6 GB GPU (budget **29.5–31.5 GB incl. ClamAV**, very tight; 64 GB upgrade strongly recommended; every container has `mem_limit`). Staging runs on the host, on demand. Backups use restic to another CIMH site. Mail goes through **Gmail SMTP** (`smtp.gmail.com:587` STARTTLS, `printit.inc.7@gmail.com`, From name "PrintIT"; owner decision 2026-11-10); the app password goes only in the prod `secrets/smtp_password` (never in git). Login verified 2026-11-10. CI is GitHub Actions + GHCR (deploys by a self-hosted runner on the host).
 
 ## Business rules (decided)
 - Roles: `admin`, `staff`, `user` only.
@@ -149,6 +149,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-10: #18 merged; staging edge upload limit 21 MB applied (cert existed, so only nginx -t + reload, no certbot). Production email set to Gmail SMTP (login verified; password only for the prod secret). Found: Alertmanager's `${SMTP_*}` placeholders need a `render-config.sh` that doesn't exist.
 - 2026-11-08: P6 notification-svc + quote reminder + erasure email; staging mail to Mailpit. Found: a new consumer group would replay retained history (re-mailing old news) → start at latest + 48 h age guard; identity relay missing from dev/CI e2e; Schemathesis found `year=9999` 500 in order list and 500-label PDFs > 10 s (capped at 200, rendered in a thread).
 - 2026-11-08: P6 document-svc (uploads + ClamAV, downloads, PDFs, labels) wired into order/inventory, compose, CI; J-03 on real infrastructure; EICAR quarantined by real clamd. Found: ClamAV matches EICAR only at offset 0, and sniffing before scanning let infected non-PDFs skip quarantine (now scan first). Local J-10 fails only with >24 leftover Pro Bono products in the dev DB (page size), fine on a fresh DB.
 - 2026-11-08: P5 merged (#15) and deployed to staging-lite; main-only rehearsal needed the new ORDER_SVC_DIGEST (fixed).

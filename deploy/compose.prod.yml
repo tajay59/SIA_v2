@@ -478,12 +478,14 @@ services:
       KAFKA_SASL_USER: notification
       KAFKA_SASL_PASSWORD_FILE: /run/secrets/app_kafka_notification
       KAFKA_CA_FILE: /run/secrets/ca.pem
-      SMTP_HOST: ${SMTP_HOST:-mail.cimh.edu.bb}
+      # Owner decision 2026-11-10: Gmail SMTP (STARTTLS 587) with an app password in secrets/smtp_password.
+      # Gmail sends only as the signed-in account, so MAIL_FROM must use that address.
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_STARTTLS: "true"
-      SMTP_USER: ${SMTP_USER:-stores@cimh.edu.bb}
+      SMTP_USER: ${SMTP_USER:-printit.inc.7@gmail.com}
       SMTP_PASSWORD_FILE: /run/secrets/smtp_password
-      MAIL_FROM: "CIMH Stores <stores@cimh.edu.bb>"
+      MAIL_FROM: "PrintIT <printit.inc.7@gmail.com>"
       SHOP_URL: https://stores.cimh.edu.bb
       SIA_URL: https://sia.cimh.edu.bb
     secrets: [ca.pem, redis_url_notification, service_secret_notification, app_kafka_notification, smtp_password]

@@ -60,7 +60,7 @@ Internal TLS (MongoDB replication, Kafka, Redis): a small **private CA** (`deplo
 | sia-host ↔ sia-pi-a ↔ sia-pi-b | each other | 27017 | MongoDB replication (TLS + keyfile) |
 | sia-host | sia-pi-a, sia-pi-b | 9100 | Prometheus node-exporter scrape |
 | sia-pi-b | Backup target | 22 / 8000 | restic (SFTP or REST) |
-| sia-host | CIMH mail server | 587 | SMTP submission (TLS) |
+| sia-host | smtp.gmail.com (owner decision 2026-11-10; was the CIMH mail server) | 587 | SMTP submission (STARTTLS), account `printit.inc.7@gmail.com`, app password in the `smtp_password` secret |
 | sia-host | Internet | 443 | Image pulls (GHCR), OS updates, Let's Encrypt, HIBP range API |
 | GitHub (outbound only) | — | — | The **self-hosted GitHub Actions runner** on sia-host connects **out** to GitHub over 443; no inbound port is opened for CI |
 | *everything else* | — | — | **deny** |
