@@ -313,14 +313,23 @@ const money = (v?: string | null) => (v && r.value ? formatMoney(v, r.value.curr
   gap: var(--sp-6);
   align-items: start;
 }
-@media (max-width: 1100px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-}
 .side {
   position: sticky;
   top: 88px;
+}
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* One column: a sticky Actions card would sit under the scrolling request and stop taps reaching it. */
+  .side {
+    position: static;
+  }
+}
+@media (max-width: 599.98px) {
+  .sections {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 .paper {
   padding: var(--sp-4);

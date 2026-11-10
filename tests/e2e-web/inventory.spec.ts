@@ -6,7 +6,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SIA } from './playwright.config'
-import { apiProduct, mongo, PASSWORD, run, staffAccount } from './support'
+import { apiProduct, mongo, PASSWORD, run, siaCompact, siaGo, staffAccount } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -28,7 +28,7 @@ async function login(page: Page, email: string) {
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await page.getByRole('button', { name: 'Log in' }).click()
   await expect(page).toHaveURL(`${SIA}/`) // the post-login redirect has happened
-  await expect(page.getByRole('link', { name: 'Inventory' })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'SIA home' })).toBeVisible()
 }
 async function scanInto(page: Page, label: string, code: string) {
   const field = page.getByLabel(label, { exact: true })
@@ -49,7 +49,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('register a site, a location and two shelves with QR codes (A-08)', async ({ page }) => {
     await login(page, staff)
-    await page.getByRole('link', { name: 'Inventory' }).click()
+    await siaGo(page, 'Inventory')
     await page.getByRole('button', { name: /Location/ }).click()
 
     await page.getByRole('button', { name: 'Previous form' }).click() // Location → Site (legacy arrows)
@@ -94,7 +94,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('stow: scan a shelf, then units; wrong codes are explained (A-09)', async ({ page }) => {
     await login(page, staff)
-    await page.getByRole('link', { name: 'Stow' }).click()
+    await siaGo(page, 'Stow')
     await scanInto(page, 'Shelf', 'SHELnotashelf')
     await expect(page.getByText('No shelf with this code')).toBeVisible()
     await scanInto(page, 'Shelf', shelves[0]!)
@@ -110,7 +110,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('pick with a reason; a second pick is refused (A-10)', async ({ page }) => {
     await login(page, staff)
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Pick' }).click()
+    await siaGo(page, 'Pick')
     await page.getByRole('button', { name: /^Pick Take units/ }).click()
     await page.getByLabel('Reason').fill('Station repair')
     await scanInto(page, 'Unit', units[0]!)
@@ -121,6 +121,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('header scan box → lookup; move a unit to shelf 2 (A-11)', async ({ page }) => {
     await login(page, staff)
+    if (siaCompact(page)) await page.getByRole('button', { name: 'Open navigation' }).click() // the scan box sits in the drawer
     const box = page.getByRole('textbox', { name: 'Scan or type a unit, shelf or product code' })
     await box.fill(shelves[0]!)
     await box.press('Enter')
@@ -128,6 +129,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     await expect(page.getByRole('heading', { name: `${bayName} · shelf 1` })).toBeVisible()
     await expect(page.getByText(productName, { exact: true })).toHaveCount(2) // units 2 and 3; unit 1 was picked
 
+    if (siaCompact(page)) await page.getByRole('button', { name: 'Open navigation' }).click()
     await box.fill(units[1]!)
     await box.press('Enter')
     // Only the unit card has a Move button; once it shows, the shelf list (with its own chips) is gone.

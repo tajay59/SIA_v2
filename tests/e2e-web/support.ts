@@ -6,6 +6,7 @@
  */
 import { execFileSync } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
+import type { Page } from '@playwright/test'
 
 export const IDENTITY = process.env.IDENTITY_URL ?? 'http://localhost:18001'
 const API = `${IDENTITY}/api/identity/v1`
@@ -222,4 +223,27 @@ export async function stowUnits(staffEmail: string, productId: string, n: number
   const units = (await j('/labels', { productId, quantity: n, format: 'csv' })).barcodes as string[]
   for (const u of units) await j('/stow', { unit: u, shelf }, { 'Idempotency-Key': `${u}-stow` })
   return units
+}
+
+/** True when SIA shows its phone/tablet layout (the header nav becomes a drawer below Vuetify `lg`, 1280 px). */
+export const siaCompact = (page: Page) => (page.viewportSize()?.width ?? 1280) < 1280
+/** True when SHOP shows its phone layout (bottom navigation below Vuetify `md`, 960 px). */
+export const shopCompact = (page: Page) => (page.viewportSize()?.width ?? 1280) < 960
+
+/**
+ * Go to a SIA screen through the main navigation in either layout: header links and the Reports/Admin
+ * menus on desktop, the "Open navigation" drawer on smaller screens.
+ */
+export async function siaGo(page: Page, name: string, group?: 'Reports' | 'Admin'): Promise<void> {
+  if (siaCompact(page)) {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click()
+    return
+  }
+  if (group) {
+    await page.getByRole('button', { name: group }).click()
+    await page.getByRole('link', { name, exact: true }).click()
+    return
+  }
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click()
 }

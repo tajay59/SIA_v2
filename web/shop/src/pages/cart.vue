@@ -113,14 +113,15 @@ async function submit() {
 
 <template>
   <v-container class="page" max-width="1200">
+    <!-- aria-label on each step: in mobile mode Vuetify hides the titles, which left the step buttons nameless. -->
     <v-stepper v-model="step" alt-label flat class="stepper" :mobile="!mdAndUp">
       <v-stepper-header>
-        <v-stepper-item :value="1" title="Cart" :complete="step > 1" :icon="mdiCartOutline" />
+        <v-stepper-item :value="1" title="Cart" aria-label="Cart" :complete="step > 1" :icon="mdiCartOutline" />
         <v-divider />
-        <v-stepper-item :value="2" title="Billing" :complete="step > 2" :icon="mdiAccountCreditCardOutline" />
-        <v-stepper-item :value="3" title="Shipping" :complete="step > 3" :icon="mdiTruckOutline" />
+        <v-stepper-item :value="2" title="Billing" aria-label="Billing" :complete="step > 2" :icon="mdiAccountCreditCardOutline" />
+        <v-stepper-item :value="3" title="Shipping" aria-label="Shipping" :complete="step > 3" :icon="mdiTruckOutline" />
         <v-divider />
-        <v-stepper-item :value="4" title="Confirmation" :complete="step === 4" :icon="mdiSendCheckOutline" />
+        <v-stepper-item :value="4" title="Confirmation" aria-label="Confirmation" :complete="step === 4" :icon="mdiSendCheckOutline" />
       </v-stepper-header>
 
       <v-stepper-window>

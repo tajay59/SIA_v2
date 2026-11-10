@@ -12,7 +12,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { customerAccount, mongo, orderableProduct, PASSWORD, run, staffAccount, stowUnits } from './support'
+import { customerAccount, mongo, orderableProduct, PASSWORD, run, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -101,7 +101,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
 
   test('J-05 staff start quoting and send a quote with a CIMH-stock option', async ({ page }) => {
     await siaLogin(page, staff)
-    await page.getByRole('link', { name: 'Requests', exact: true }).click()
+    await siaGo(page, 'Requests')
     await page.getByRole('textbox', { name: 'Request id, customer or organisation' }).fill(paidRequest)
     await page.getByRole('link', { name: new RegExp(paidRequest.slice(0, 15)) }).click()
     await expect(page.getByText('Needed for the hurricane season')).toBeVisible()

@@ -331,6 +331,11 @@ watch(
   position: sticky;
   top: 80px;
 }
+@media (max-width: 959px) {
+  .ov-right {
+    position: static; /* one column: no sticky card under scrolling content */
+  }
+}
 .details {
   white-space: pre-line;
 }

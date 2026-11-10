@@ -13,7 +13,7 @@ import {
   useSession,
 } from '@cimh/web-app'
 import { mdiMagnify, mdiPlus } from '@mdi/js'
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import OrganisationPicker from '../../components/OrganisationPicker.vue'
 
 definePage({ meta: { guard: 'staff', title: 'Organisations' } })
@@ -26,6 +26,8 @@ const list = useCursorList<Organisation>((cursor) =>
 )
 onMounted(list.reload)
 let timer: ReturnType<typeof setTimeout> | undefined
+// A pending debounce must not fire after the page is left (router.replace would navigate back here).
+onBeforeUnmount(() => clearTimeout(timer))
 watch(q, () => {
   clearTimeout(timer)
   timer = setTimeout(() => void list.reload(), 250)

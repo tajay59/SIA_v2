@@ -8,7 +8,7 @@
  */
 import { boolParam, call, catalog, type Product, PRODUCT_TYPES, type ProductType, typeLabel, useCursorList, useReference } from '@cimh/web-app'
 import { mdiClose, mdiFilterVariant, mdiMagnify } from '@mdi/js'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ProductGrid from './ProductGrid.vue'
 
@@ -34,6 +34,8 @@ function setQuery(patch: Record<string, string | null>) {
 // Search box: debounced into ?q (legacy searched as you typed).
 const text = ref(q.value)
 let timer: ReturnType<typeof setTimeout> | undefined
+// A pending debounce must not fire after the page is left (router.replace would navigate back here).
+onBeforeUnmount(() => clearTimeout(timer))
 watch(text, (v) => {
   clearTimeout(timer)
   timer = setTimeout(() => setQuery({ q: v.trim().length >= 2 ? v.trim() : null }), 300)
