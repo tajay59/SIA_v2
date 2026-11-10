@@ -12,7 +12,7 @@ receivers:
   - name: ops-email
     email_configs:
       - to: ${ALERT_EMAIL_TO}          # filled by deploy/scripts/render-config.sh
-        from: sia-alerts@cimh.edu.bb
+        from: printit.inc.7@gmail.com   # Gmail sends only as the signed-in account (SMTP_USER)
         smarthost: ${SMTP_HOST}:587
         auth_username: ${SMTP_USER}
         auth_password_file: /run/secrets/smtp_password

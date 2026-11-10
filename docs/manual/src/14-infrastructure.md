@@ -59,7 +59,7 @@ Internal TLS (MongoDB replication, Kafka, Redis): a small **private CA** (`deplo
 | sia-host ↔ sia-pi-a ↔ sia-pi-b | each other | 27017 | MongoDB replication (TLS + keyfile) |
 | sia-host | sia-pi-a, sia-pi-b | 9100 | Prometheus node-exporter scrape |
 | sia-pi-b | Backup target | 22 / 8000 | restic (SFTP or REST) |
-| sia-host | CIMH mail server | 587 | SMTP submission (TLS) |
+| sia-host | Gmail SMTP (smtp.gmail.com:587) | 587 | SMTP submission (TLS) |
 | sia-host | Internet | 443 | Image pulls (GHCR), OS updates, Let's Encrypt, HIBP range API |
 | GitHub (outbound only) | — | — | The **self-hosted GitHub Actions runner** on sia-host connects **out** to GitHub over 443; no inbound port is opened for CI |
 | *everything else* | — | — | **deny** |
@@ -200,7 +200,7 @@ Prometheus scrapes: services `/metrics`, node-exporters (host, Pis), mongodb-exp
 | Kafka | 1 broker, no SASL | container | 1 broker, SASL | 3 brokers, SASL+ACL |
 | Data | seed script (fake) | fixtures | anonymised prod copy | live |
 | TLS | self-signed | — | Let's Encrypt (LAN only) | Let's Encrypt |
-| Email | Mailpit (captures) | mock | Mailpit | CIMH mail server |
+| Email | Mailpit (captures) | mock | Mailpit | Gmail SMTP (smtp.gmail.com:587) |
 | GPU | optional | none | none (CPU) | 2 GPUs |
 | Deploy | manual | — | auto on merge to `main` (self-hosted runner) | manual approval (GitHub environment), run by the **self-hosted runner** |
 

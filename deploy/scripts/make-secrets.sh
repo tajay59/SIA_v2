@@ -63,5 +63,5 @@ done
 # restic repository password (also stored in the password manager; without it backups are unreadable).
 make restic_password rand
 
-[[ -s "$DIR/smtp_password" ]] || echo "NOTE: put the CIMH mail relay password in $DIR/smtp_password"
+[[ -s "$DIR/smtp_password" ]] || echo "NOTE: put the SMTP (Gmail app) password in $DIR/smtp_password"
 echo "secrets ready in $DIR"

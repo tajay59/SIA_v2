@@ -6694,7 +6694,7 @@ export const cimhDark = {
 | sia-host ↔ sia-pi-a ↔ sia-pi-b | each other | 27017 | MongoDB replication (TLS + keyfile) |
 | sia-host | sia-pi-a, sia-pi-b | 9100 | Prometheus node-exporter scrape |
 | sia-pi-b | Backup target | 22 / 8000 | restic (SFTP or REST) |
-| sia-host | CIMH mail server | 587 | SMTP submission (TLS) |
+| sia-host | Gmail SMTP (smtp.gmail.com:587) | 587 | SMTP submission (TLS) |
 | sia-host | Internet | 443 | Image pulls (GHCR), OS updates, Let's Encrypt, HIBP range API |
 | GitHub (outbound only) | — | — | The <strong>self-hosted GitHub Actions runner</strong> on sia-host connects <strong>out</strong> to GitHub over 443; no inbound port is opened for CI |
 | <em>everything else</em> | — | — | <strong>deny</strong> |</p>
@@ -7124,7 +7124,7 @@ rs.initiate({
 <td>Mailpit (captures)</td>
 <td>mock</td>
 <td>Mailpit</td>
-<td>CIMH mail server</td>
+<td>Gmail SMTP (smtp.gmail.com:587)</td>
 </tr>
 <tr>
 <td>GPU</td>

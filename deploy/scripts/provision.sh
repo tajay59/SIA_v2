@@ -15,7 +15,7 @@ echo "== step 4: private CA, secrets, Redis ACL"
 bash pki/make-certs.sh "$SEC/pki"
 bash scripts/make-secrets.sh "$SEC"
 bash redis/render-acl.sh "$SEC"
-[[ -s "$SEC/smtp_password" ]] || { echo "put the CIMH mail relay password in $SEC/smtp_password first" >&2; exit 1; }
+[[ -s "$SEC/smtp_password" ]] || { echo "put the SMTP (Gmail app) password in $SEC/smtp_password first" >&2; exit 1; }
 # Compose (non-swarm) bind-mounts secret files with their host owner and mode: give each file to the uid
 # of the container that reads it. Kafka (1000) and mongod (999) both use the host cert: one copy each.
 [[ -s "$SEC/pki/kafka-broker.pem" ]] || cp "$SEC/pki/sia-host.cimh.local.pem" "$SEC/pki/kafka-broker.pem"
