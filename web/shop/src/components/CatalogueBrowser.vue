@@ -201,7 +201,6 @@ watch(() => [q.value, type.value, department.value, project.value, inStock.value
 .banner-intro {
   margin: 0;
   max-width: 60ch;
-  opacity: 0.8;
 }
 .search :deep(.v-field) {
   box-shadow: 0 2px 10px rgba(15, 26, 36, 0.1);

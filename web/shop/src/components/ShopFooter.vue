@@ -126,7 +126,8 @@ const year = new Date().getFullYear()
   font-size: 13px;
   font-style: normal;
   line-height: 1.8;
-  opacity: 0.85;
+  /* Muted text by colour, not opacity: opacity also faded the links below AA contrast. */
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 .links.two {
   columns: 2;

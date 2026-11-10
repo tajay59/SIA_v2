@@ -101,7 +101,8 @@ function choose(key: Op) {
 .op.on .v-icon {
   color: rgb(var(--v-theme-primary));
 }
-.op.dim {
-  opacity: 0.7;
+/* Dim the other operations by their icon only: fading the text broke AA contrast. */
+.op.dim .v-icon {
+  opacity: 0.6;
 }
 </style>

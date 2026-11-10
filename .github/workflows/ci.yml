@@ -114,9 +114,10 @@ jobs:
       - name: Order smoke (paid flow over Kafka)
         run: docker run --rm --network sia-dev_default -v "$PWD/tools:/w/tools:ro" cimh/order-svc:dev python /w/tools/e2e/order_smoke.py
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - name: Browser journeys
-        run: npx playwright test -c tests/e2e-web
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - name: Browser journeys + axe (Chromium, Firefox, WebKit)
+        # The `mobile` project (360 px) joins once the journeys open the phone navigation (P7).
+        run: npx playwright test -c tests/e2e-web --project=chromium --project=firefox --project=webkit
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

@@ -17,7 +17,41 @@ export interface BootOptions extends GuardOptions {
   mount?: string
 }
 
+const RELOAD_KEY = 'cimh:chunk-reload'
+
+/**
+ * Lazy page chunks (Vite `vite:preloadError`). A CSS preload that fails because the user navigated away
+ * mid-load is harmless, so it is ignored (Firefox reports it as an uncaught error). A JS chunk that fails
+ * usually means a new deploy replaced the file names: reload once to fetch the new build. The
+ * sessionStorage stamp stops a reload loop when the server itself is down (the error page then shows).
+ */
+export function handleChunkErrors(win: Window = window) {
+  win.addEventListener('vite:preloadError', (event) => {
+    const e = event as Event & { payload?: unknown }
+    const message = e.payload instanceof Error ? e.payload.message : String(e.payload ?? '')
+    if (/preload CSS/i.test(message)) {
+      event.preventDefault()
+      return
+    }
+    let last = 0
+    try {
+      last = Number(win.sessionStorage.getItem(RELOAD_KEY) ?? 0)
+    } catch {
+      /* storage blocked: still reload once per page */
+    }
+    if (Date.now() - last < 10_000) return // just reloaded: let the error surface
+    event.preventDefault()
+    try {
+      win.sessionStorage.setItem(RELOAD_KEY, String(Date.now()))
+    } catch {
+      /* ignore */
+    }
+    win.location.reload()
+  })
+}
+
 export function boot(opts: BootOptions) {
+  handleChunkErrors()
   const app = createApp(opts.root)
   const pinia = createPinia()
   const vuetify = createVuetify({
