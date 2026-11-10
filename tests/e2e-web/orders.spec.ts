@@ -12,12 +12,12 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { customerAccount, mongo, orderableProduct, PASSWORD, run, siaGo, staffAccount, stowUnits } from './support'
+import { customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
   problems.length = 0
-  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && problems.push(`page error: ${e.message}`))
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`CSP: ${m.text().slice(0, 160)}`)
   })

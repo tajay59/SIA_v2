@@ -4,7 +4,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { activeCimhAccount, adminAccount, claimCode, IDENTITY, nextTotpWindow, PASSWORD, req, run, shopCompact, siaGo, totp } from './support'
+import { activeCimhAccount, adminAccount, claimCode, IDENTITY, isRealPageError, nextTotpWindow, PASSWORD, req, run, shopCompact, siaGo, totp } from './support'
 
 /** Any Content-Security-Policy violation or uncaught page error fails the test (preview sends staging's CSP). */
 let pageProblems: string[] = []
@@ -13,7 +13,7 @@ test.beforeEach(({ page }) => {
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) pageProblems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
-  page.on('pageerror', (e) => pageProblems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && pageProblems.push(`page error: ${e.message}`))
 })
 test.afterEach(() => {
   expect(pageProblems).toEqual([])

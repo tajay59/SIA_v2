@@ -6,7 +6,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SIA } from './playwright.config'
-import { apiProduct, mongo, PASSWORD, run, siaCompact, siaGo, staffAccount } from './support'
+import { apiProduct, isRealPageError, mongo, PASSWORD, run, siaCompact, siaGo, staffAccount } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -14,7 +14,7 @@ test.beforeEach(({ page }) => {
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
-  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && problems.push(`page error: ${e.message}`))
 })
 test.afterEach(() => expect(problems).toEqual([]))
 

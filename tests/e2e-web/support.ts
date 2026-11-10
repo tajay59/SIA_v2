@@ -247,3 +247,10 @@ export async function siaGo(page: Page, name: string, group?: 'Reports' | 'Admin
   }
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click()
 }
+
+/**
+ * Page errors that count as problems. WebKit reports a fetch it cancels because the page navigated
+ * ("… due to access control checks") as a page error even when the app handled the rejection; that one
+ * message is a browser quirk, not an app bug. Everything else counts.
+ */
+export const isRealPageError = (e: Error) => !/due to access control checks\.?$/.test(e.message)
