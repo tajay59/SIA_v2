@@ -109,7 +109,7 @@ const headers = [
       <v-btn to="/products/new" color="primary" :prepend-icon="mdiPlus">New product</v-btn>
     </div>
     <div class="filters">
-      <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Name, model, keyword or serial" clearable hide-details @click:clear="q = ''" />
+      <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Name, model, keyword or serial" clearable hide-details @click:clear="q = ''" />
       <v-select v-model="type" :items="typeItems" label="Type" clearable hide-details />
       <v-select v-model="department" :items="reference?.departments ?? []" label="Department" clearable hide-details />
       <v-select v-model="sellable" :items="YESNO" label="Sellable" clearable hide-details :disabled="searching" />

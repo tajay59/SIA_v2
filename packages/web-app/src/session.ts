@@ -6,6 +6,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { type Account, ApiError, call, identity, onSessionExpired, refreshSession } from './api'
+import { clearDrafts } from './draft'
 
 export type LoginOutcome =
   | { kind: 'ok'; account: Account }
@@ -86,6 +87,7 @@ export const useSession = defineStore('session', () => {
       // Logging out must always succeed locally; the session expires on its own.
     }
     account.value = null
+    clearDrafts() // unsaved form copies must not outlive the person's session on a shared PC
   }
 
   function set(a: Account) {

@@ -11,9 +11,10 @@ import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
 import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
 import { mdiAccountCircleOutline, mdiBarcodeScan, mdiChevronDown, mdiLogout, mdiMenu, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
-import { computed, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
+import { pageSearch, shortcutHandler } from './shortcuts'
 
 const session = useSession()
 const route = useRoute()
@@ -38,6 +39,28 @@ const reports = [
   { title: 'Movement history', to: '/reports/history' },
 ]
 const reportsActive = computed(() => route.path.startsWith('/reports'))
+
+const SCAN = 'input[aria-label="Scan or type a unit, shelf or product code"]'
+async function focusScan() {
+  if (!wide.value) {
+    drawer.value = true // phones/tablets: the scan box lives in the drawer
+    await nextTick()
+  }
+  document.querySelector<HTMLInputElement>(SCAN)?.focus()
+}
+// Shortcuts (Design Brief): `/` page search (else the scan box), `s` scan box, `g r` Requests.
+const onKey = shortcutHandler({
+  focusSearch: () => {
+    const field = pageSearch()
+    if (field) field.focus()
+    else void focusScan()
+  },
+  focusScan: () => void focusScan(),
+  go: (path) => void router.push(path),
+})
+const onKeyShell = (e: KeyboardEvent) => !bare.value && onKey(e) // not on login, MFA setup or staff-only
+onMounted(() => window.addEventListener('keydown', onKeyShell))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKeyShell))
 
 const scanCode = ref('')
 function openScan() {

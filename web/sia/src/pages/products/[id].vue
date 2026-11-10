@@ -15,6 +15,7 @@ import {
   type ProductPatch,
   type ProductStaff,
   primaryImage,
+  removeDraft,
   ProductBadges,
   ProductImage,
   typeLabel,
@@ -63,12 +64,14 @@ async function save(body: Record<string, unknown>) {
   saving.value = true
   errors.value = {}
   try {
+    const before = `product:${p.id}:v${p.version}`
     product.value = (await call(() =>
       catalog.PATCH('/products/{productId}', {
         params: { path: { productId: p.id }, header: { 'If-Match': ifMatch(p.version) } },
         body: body as ProductPatch,
       }),
     )) as ProductStaff
+    removeDraft(before)
     notify.toast('Product saved', 'success')
   } catch (e) {
     if (e instanceof ApiError && e.status === 422) errors.value = e.fieldErrors()
@@ -220,7 +223,7 @@ watch(
 
       <v-window v-model="tab">
         <v-window-item value="details">
-          <ProductForm :product="product" :saving="saving" :errors="errors" class="pt-4" @save="save" />
+          <ProductForm :product="product" :saving="saving" :errors="errors" :draft-key="`product:${product.id}:v${product.version}`" class="pt-4" @save="save" />
         </v-window-item>
         <v-window-item value="images">
           <div class="pt-4"><ProductImagesPanel :product="product" @updated="(p) => (product = p)" /></div>

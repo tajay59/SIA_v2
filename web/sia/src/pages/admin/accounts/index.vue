@@ -66,7 +66,7 @@ const headers = [
 <template>
   <div class="page">
     <div class="filters">
-      <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Name or email starts with" clearable hide-details @click:clear="q = ''" />
+      <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Name or email starts with" clearable hide-details @click:clear="q = ''" />
       <v-select v-model="status" :items="STATUSES" label="Status" clearable hide-details />
       <v-select v-model="role" :items="ROLES" label="Role" clearable hide-details />
       <v-checkbox v-model="erasure" label="Asked to be deleted" hide-details density="compact" />

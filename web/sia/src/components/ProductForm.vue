@@ -3,11 +3,17 @@
  * A-06 / A-07 product form (all ProductInput fields). Pro Bono must be chosen explicitly (PRD C5); a Pro Bono
  * item is always sellable and may have a per-request limit. Cost is BBD with two decimals (staff only).
  */
-import { type ProductStaff, PRODUCT_TYPES, type ProductType, rule, typeLabel, useReference } from '@cimh/web-app'
+import { type ProductStaff, PRODUCT_TYPES, type ProductType, rule, typeLabel, useDraft, useReference } from '@cimh/web-app'
 import { computed, reactive, ref, watch } from 'vue'
 import { z } from 'zod'
 
-const props = defineProps<{ product?: ProductStaff | null; saving?: boolean; errors?: Record<string, string> }>()
+const props = defineProps<{
+  product?: ProductStaff | null
+  saving?: boolean
+  errors?: Record<string, string>
+  /** sessionStorage key for unsaved changes (APD §2); the parent removes it after a successful save. */
+  draftKey?: string | null
+}>()
 const emit = defineEmits<{ save: [body: Record<string, unknown>] }>()
 const { reference } = useReference()
 
@@ -66,6 +72,12 @@ const valid = ref(false)
 watch(
   () => props.product,
   (p) => Object.assign(d, fromProduct(p)),
+)
+useDraft(
+  () => props.draftKey ?? null,
+  () => ({ ...d, keywords: [...d.keywords] }),
+  (v) => Object.assign(d, v),
+  () => fromProduct(props.product),
 )
 watch(
   () => d.probono,

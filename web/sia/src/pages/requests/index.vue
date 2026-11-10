@@ -68,7 +68,7 @@ const expiresSoon = (r: RequestSummary) =>
 <template>
   <div class="page stack-md">
     <div class="filters">
-      <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Request id, customer or organisation" hide-details class="search" clearable />
+      <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Request id, customer or organisation" hide-details class="search" clearable />
       <v-select v-model="status" :items="ALL.map((s) => ({ title: statusLabel(s), value: s }))" label="Status" multiple chips hide-details class="status" />
       <v-select v-model="type" :items="[{ title: 'Any type', value: null }, { title: 'Paid', value: 'PAID' }, { title: 'Pro Bono', value: 'PROBONO' }]" label="Type" hide-details class="small" />
       <v-select v-model="year" :items="[{ title: 'Any year', value: null }, ...years.map((y) => ({ title: String(y), value: y }))]" label="Year" hide-details class="small" />
