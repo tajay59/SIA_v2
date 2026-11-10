@@ -17,7 +17,7 @@ import {
   useReference,
 } from '@cimh/web-app'
 import { mdiFormatListBulleted, mdiMagnify, mdiPlus, mdiViewGridOutline } from '@mdi/js'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 definePage({ meta: { guard: 'staff', title: 'Products' } })
@@ -65,6 +65,8 @@ const list = useCursorList<ProductStaff>(async (cursor) => {
 onMounted(list.reload)
 
 let timer: ReturnType<typeof setTimeout> | undefined
+// A pending debounce must not fire after the page is left (router.replace would navigate back here).
+onBeforeUnmount(() => clearTimeout(timer))
 watch([q, type, department, sellable, probono, inactive], () => {
   clearTimeout(timer)
   timer = setTimeout(() => {

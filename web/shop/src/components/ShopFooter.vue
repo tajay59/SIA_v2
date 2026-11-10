@@ -126,7 +126,8 @@ const year = new Date().getFullYear()
   font-size: 13px;
   font-style: normal;
   line-height: 1.8;
-  opacity: 0.85;
+  /* Muted text by colour, not opacity: opacity also faded the links below AA contrast. */
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 .links.two {
   columns: 2;
@@ -135,6 +136,10 @@ const year = new Date().getFullYear()
 .links a,
 .plain a {
   text-decoration: none;
+  /* Stacked links are tap targets: at least 24 px tall (WCAG 2.5.8); 13 px x 1.8 was 23.4 px. */
+  display: inline-block;
+  min-height: 24px;
+  line-height: 24px;
 }
 .links a:hover,
 .plain a:hover {

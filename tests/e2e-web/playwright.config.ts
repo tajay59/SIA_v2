@@ -18,10 +18,17 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never', outputFolder: '../../playwright-report' }]] : 'list',
   use: {
-    ...devices['Desktop Chrome'],
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
+  // P7 exit: every journey in three engines and on a phone (360 px, the narrowest width the Design Brief supports).
+  // Pick one locally with --project=chromium.
+  projects: [
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
+    { name: 'mobile', use: { ...devices['Pixel 7'], viewport: { width: 360, height: 800 } } },
+  ],
   outputDir: '../../test-results',
   webServer: [
     // Production builds (what staging serves), with /api proxied to the dev identity service.

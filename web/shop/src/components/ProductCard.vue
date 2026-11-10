@@ -87,7 +87,7 @@ defineProps<{ product: Product }>()
 }
 .stock.in {
   background: #e7f4ec;
-  color: #1a7f37;
+  color: #116329; /* 6.4:1 on the badge (#1a7f37 was 4.4:1, below AA for 12px text) */
 }
 .probono {
   left: 10px;

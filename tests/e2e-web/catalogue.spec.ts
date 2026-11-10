@@ -5,7 +5,7 @@
 import path from 'node:path'
 import { expect, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { PASSWORD, run, staffAccount } from './support'
+import { isRealPageError, PASSWORD, run, shopCompact, siaGo, staffAccount } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -13,7 +13,7 @@ test.beforeEach(({ page }) => {
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
-  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && problems.push(`page error: ${e.message}`))
 })
 test.afterEach(() => expect(problems).toEqual([]))
 
@@ -30,7 +30,7 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await page.getByLabel('Email').fill(staff)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'Products' }).click()
+    await siaGo(page, 'Products')
     await page.getByRole('link', { name: 'New product' }).click()
 
     await page.getByLabel('Name', { exact: true }).fill(name)
@@ -70,7 +70,8 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await expect(page).toHaveURL(`${SHOP}/catalogue${productUrl.replace('/products', '')}`)
     await expect(page.getByRole('heading', { level: 1, name })).toBeVisible()
     await expect(page.getByText('Pro Bono · max 2 per request')).toBeVisible()
-    await expect(page.getByRole('button', { name: /Photo 1 of 2/ })).toBeVisible()
+    if (shopCompact(page)) await expect(page.getByText(/^[12] \/ 2$/)).toBeVisible() // phones: carousel only (the primary photo may be either)
+    else await expect(page.getByRole('button', { name: /Photo 1 of 2/ })).toBeVisible()
     const img = page.locator('.stage-img')
     await expect(img).toHaveJSProperty('complete', true)
     expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)

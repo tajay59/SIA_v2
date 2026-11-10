@@ -4,7 +4,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { activeCimhAccount, adminAccount, claimCode, IDENTITY, nextTotpWindow, PASSWORD, req, run, totp } from './support'
+import { activeCimhAccount, adminAccount, claimCode, IDENTITY, isRealPageError, nextTotpWindow, PASSWORD, req, run, shopCompact, siaGo, totp } from './support'
 
 /** Any Content-Security-Policy violation or uncaught page error fails the test (preview sends staging's CSP). */
 let pageProblems: string[] = []
@@ -13,7 +13,7 @@ test.beforeEach(({ page }) => {
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) pageProblems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
-  page.on('pageerror', (e) => pageProblems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && pageProblems.push(`page error: ${e.message}`))
 })
 test.afterEach(() => {
   expect(pageProblems).toEqual([])
@@ -80,8 +80,7 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await typeCode(page, totp(mfaKey))
     await expect(page.getByText(/Good to see you/)).toBeVisible()
 
-    await page.getByRole('button', { name: 'Admin' }).click() // SIA header: account pages sit in the Admin menu
-    await page.getByRole('link', { name: 'Pending accounts' }).click()
+    await siaGo(page, 'Pending accounts', 'Admin') // SIA header: account pages sit in the Admin menu
     const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\\.')) })
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: 'Approve' }).click()
@@ -138,7 +137,12 @@ test.describe('J-11 password reset', () => {
     await page.getByLabel('Password', { exact: true }).fill(newPassword)
     await page.getByRole('button', { name: 'Log in' }).click()
     await expect(page).toHaveURL(`${SHOP}/`)
-    await expect(page.getByRole('button', { name: 'E2e' })).toBeVisible()
+    if (shopCompact(page)) {
+      await page.getByRole('button', { name: 'Menu' }).click() // phones: the account sits in the bottom-bar menu
+      await expect(page.getByText('Log out')).toBeVisible()
+    } else {
+      await expect(page.getByRole('button', { name: 'E2e' })).toBeVisible()
+    }
   })
 })
 

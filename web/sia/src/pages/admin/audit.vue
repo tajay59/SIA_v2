@@ -2,7 +2,7 @@
 /** A-20 audit log (admin), newest first. Filters: entity type/id, action, date range. */
 import { type AuditEntry, call, identity, useCursorList } from '@cimh/web-app'
 import { formatDateTime, statusLabel } from '@cimh/web-ui'
-import { onMounted, reactive, watch } from 'vue'
+import { onBeforeUnmount, onMounted, reactive, watch } from 'vue'
 
 definePage({ meta: { guard: 'admin', title: 'Audit log' } })
 
@@ -27,6 +27,8 @@ const list = useCursorList<AuditEntry>((cursor) =>
 )
 onMounted(list.reload)
 let timer: ReturnType<typeof setTimeout> | undefined
+// A pending debounce must not fire after the page is left (router.replace would navigate back here).
+onBeforeUnmount(() => clearTimeout(timer))
 watch(f, () => {
   clearTimeout(timer)
   timer = setTimeout(() => void list.reload(), 300)

@@ -139,6 +139,8 @@ async function logout() {
       </v-app-bar>
 
       <v-navigation-drawer v-if="!wide" v-model="drawer" temporary location="right" width="280">
+        <!-- Same landmark name as the desktop header nav: screen readers and tests find "Main" in both layouts. -->
+        <nav aria-label="Main">
         <v-list nav density="comfortable" color="primary">
           <form class="pa-2" role="search" @submit.prevent="openScan">
             <v-text-field v-model="scanCode" density="compact" hide-details placeholder="Scan a code" aria-label="Scan or type a unit, shelf or product code" :prepend-inner-icon="mdiBarcodeScan" />
@@ -149,6 +151,7 @@ async function logout() {
           <v-list-subheader>Admin</v-list-subheader>
           <v-list-item v-for="a in admin" :key="a.to" :to="a.to" :title="a.title" @click="drawer = false" />
         </v-list>
+        </nav>
       </v-navigation-drawer>
     </template>
 

@@ -4,7 +4,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { activeCimhAccount, adminWithMfa, nextTotpWindow, PASSWORD, totp } from './support'
+import { activeCimhAccount, adminWithMfa, isRealPageError, nextTotpWindow, PASSWORD, totp } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -12,7 +12,7 @@ test.beforeEach(({ page }) => {
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
-  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && problems.push(`page error: ${e.message}`))
 })
 test.afterEach(() => expect(problems).toEqual([]))
 

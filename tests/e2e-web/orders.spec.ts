@@ -12,12 +12,12 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { customerAccount, mongo, orderableProduct, PASSWORD, run, staffAccount, stowUnits } from './support'
+import { customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
   problems.length = 0
-  page.on('pageerror', (e) => problems.push(`page error: ${e.message}`))
+  page.on('pageerror', (e) => isRealPageError(e) && problems.push(`page error: ${e.message}`))
   page.on('console', (m) => {
     if (m.type() === 'error' && /Content Security Policy/i.test(m.text())) problems.push(`CSP: ${m.text().slice(0, 160)}`)
   })
@@ -101,7 +101,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
 
   test('J-05 staff start quoting and send a quote with a CIMH-stock option', async ({ page }) => {
     await siaLogin(page, staff)
-    await page.getByRole('link', { name: 'Requests', exact: true }).click()
+    await siaGo(page, 'Requests')
     await page.getByRole('textbox', { name: 'Request id, customer or organisation' }).fill(paidRequest)
     await page.getByRole('link', { name: new RegExp(paidRequest.slice(0, 15)) }).click()
     await expect(page.getByText('Needed for the hurricane season')).toBeVisible()

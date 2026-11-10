@@ -31,6 +31,8 @@ body {
 .t-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; line-height: 20px; }
 .tnum { font-variant-numeric: tabular-nums; }
 .muted { color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); }
+/* The current page in breadcrumbs: Vuetify fades it like a disabled control (below AA); keep it readable. */
+.v-breadcrumbs-item--disabled { opacity: 1; color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); }
 .prose { max-width: 72ch; }
 
 .stack { display: flex; flex-direction: column; gap: var(--sp-4); }

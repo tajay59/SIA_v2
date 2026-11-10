@@ -123,8 +123,9 @@ async function logout() {
           </v-list>
         </v-card>
       </v-menu>
-      <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" stacked>{{ n.short ?? n.title }}</v-btn>
-      <v-btn v-if="session.isCustomer" to="/cart" stacked>
+      <!-- Accessible names match the desktop bar (the visible short label is part of each name, WCAG 2.5.3). -->
+      <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" :aria-label="n.title" stacked>{{ n.short ?? n.title }}</v-btn>
+      <v-btn v-if="session.isCustomer" to="/cart" :aria-label="`Cart, ${cart.count} items`" stacked>
         <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary"><v-icon :icon="mdiCartOutline" /></v-badge>
         Cart
       </v-btn>

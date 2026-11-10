@@ -8,7 +8,7 @@
 import { call, orders, type RequestStatus, type RequestSummary, StatusChip, useCursorList } from '@cimh/web-app'
 import { formatDate, statusLabel } from '@cimh/web-ui'
 import { mdiMagnify } from '@mdi/js'
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 definePage({ meta: { guard: 'staff', title: 'Requests' } })
@@ -48,6 +48,8 @@ const list = useCursorList<RequestSummary>((cursor) =>
 onMounted(list.reload)
 
 let timer: ReturnType<typeof setTimeout> | undefined
+// A pending debounce must not fire after the page is left (router.replace would navigate back here).
+onBeforeUnmount(() => clearTimeout(timer))
 watch([status, type, year, q, sort], () => {
   clearTimeout(timer)
   timer = setTimeout(() => {
@@ -67,14 +69,14 @@ const expiresSoon = (r: RequestSummary) =>
   <div class="page stack-md">
     <div class="filters">
       <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Request id, customer or organisation" hide-details class="search" clearable />
-      <v-select v-model="status" :items="ALL.map((s) => ({ title: statusLabel(s), value: s }))" label="Status" multiple chips closable-chips hide-details class="status" />
+      <v-select v-model="status" :items="ALL.map((s) => ({ title: statusLabel(s), value: s }))" label="Status" multiple chips hide-details class="status" />
       <v-select v-model="type" :items="[{ title: 'Any type', value: null }, { title: 'Paid', value: 'PAID' }, { title: 'Pro Bono', value: 'PROBONO' }]" label="Type" hide-details class="small" />
       <v-select v-model="year" :items="[{ title: 'Any year', value: null }, ...years.map((y) => ({ title: String(y), value: y }))]" label="Year" hide-details class="small" />
       <v-select v-model="sort" :items="[{ title: 'Waiting longest', value: 'waiting' }, { title: 'Newest', value: 'newest' }, { title: 'Oldest', value: 'oldest' }]" label="Sort" hide-details class="small" />
     </div>
 
     <v-card border flat>
-      <v-table hover>
+      <v-table v-scroll-region="'Requests'" hover>
         <thead>
           <tr>
             <th>Request</th>
