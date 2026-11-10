@@ -390,6 +390,12 @@ async def summaries(body: IdsIn, request: Request, me: Principal = Depends(requi
     return {"items": await svc(request).summaries(body.ids)}
 
 
+@router.get("/internal/email-lists", tags=["internal"])
+async def internal_email_lists(request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+    """notification-svc: who gets staff emails (registration, order, invoice, cancellation, lowStock)."""
+    return await svc(request).email_lists()
+
+
 @router.get("/internal/fees", tags=["internal"])
 async def internal_fees(request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
     """order-svc: the admin fee added to paid quotes (PRD O15)."""

@@ -25,6 +25,7 @@ secrets:
   service_secret_inventory: { file: ./secrets/service_secret_inventory }
   service_secret_order: { file: ./secrets/service_secret_order }
   service_secret_document: { file: ./secrets/service_secret_document }
+  service_secret_notification: { file: ./secrets/service_secret_notification }
 
 services:
   gateway:
@@ -360,6 +361,42 @@ services:
     networks: [internal]
     mem_limit: 128m
     cpus: 0.25
+
+  # Every email goes to Mailpit, never to a real inbox: this server holds real customers' data (owner decision
+  # 2026-11-08). Mailpit's UI listens on the server's loopback only; read it through an SSH tunnel:
+  #   ssh -N -L 18825:127.0.0.1:18825 kw-server   then open http://localhost:18825
+  notification-consumer:
+    image: cimh/notification-svc:staging
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      SERVICE_SECRET_FILE: /run/secrets/service_secret_notification
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      MAIL_FROM: "CIMH Stores (staging) <stores-staging@hashiz.store>"
+      SHOP_URL: https://store.hashiz.store
+      SIA_URL: https://sia.hashiz.store
+    secrets: [service_secret_notification]
+    healthcheck: { disable: true }
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mailpit: { condition: service_started }
+    networks: [internal]
+    mem_limit: 96m
+    cpus: 0.1
+
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
+    environment: { MP_MAX_MESSAGES: "2000", MP_SMTP_AUTH_ACCEPT_ANY: "true", MP_SMTP_AUTH_ALLOW_INSECURE: "true" }
+    ports: ["127.0.0.1:18825:8025"]   # loopback only: never reachable from the internet
+    networks: [internal]
+    mem_limit: 64m
+    cpus: 0.1
+    logging: { driver: local, options: { max-size: "5m", max-file: "2" } }
 
   media-worker:
     image: cimh/media-worker:staging

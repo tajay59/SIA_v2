@@ -1196,6 +1196,33 @@ class OrderService:
             n += res.modified_count
         return n
 
+    async def remind_quotes(self, days: int = 3, batch: int = 200) -> int:
+        """Live quotes expiring within `days` -> order.quote_expiring, once per expiry date (a revised quote with a
+        new expiry gets its own reminder)."""
+        t = now()
+        docs = (
+            await self.store.orders.find(
+                {"status": {"$in": list(d.QUOTE_LIVE)}, "quoteExpiresAt": {"$gt": t, "$lte": t + timedelta(days=days)}}
+            )
+            .limit(batch)
+            .to_list()
+        )
+        n = 0
+        for doc in docs:
+            exp = aware(doc["quoteExpiresAt"])
+            if aware(doc.get("quoteReminderFor")) == exp:
+                continue
+            version = max((q.get("version", 0) for q in doc.get("quotes") or []), default=0)
+            payload = {"orderId": doc["id"], "customer": doc["customer"], "quoteVersion": version,
+                       "expiresAt": iso(exp)}  # fmt: skip
+            event = new_event("order.quote_expiring", payload, correlation_id=doc["id"])
+            res = await self.store.orders.update_one(
+                {"_id": doc["_id"], "status": doc["status"], "version": doc["version"]},
+                {"$set": {"quoteReminderFor": exp}, "$push": {"outbox": event.model_dump(mode="python")}},
+            )
+            n += res.modified_count
+        return n
+
     async def purge_carts(self, days: int = 180, batch: int = 500) -> int:
         """Carts untouched for `days` are emptied (business rule)."""
         cutoff = now() - timedelta(days=days)

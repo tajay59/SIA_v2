@@ -82,24 +82,30 @@ async def run_service_consumer(
     bootstrap: str,
     security: dict[str, Any],
     stop: asyncio.Event,
+    start_at: str = "earliest",
 ) -> None:
-    """Start the main and retry loops for `topics` and run them until `stop`."""
+    """Start the main and retry loops for `topics` and run them until `stop`.
+
+    `start_at` applies only when the group has no committed offset yet (first deploy): "earliest" replays the
+    retained history (state-building consumers), "latest" starts from now (notification-svc: never re-send old
+    emails)."""
     from aiokafka import AIOKafkaConsumer
 
-    def make(subscribed: list[str], group_id: str) -> Any:
+    def make(subscribed: list[str], group_id: str, reset: str = "earliest") -> Any:
         return AIOKafkaConsumer(
             *subscribed,
             bootstrap_servers=bootstrap,
             group_id=group_id,
             enable_auto_commit=False,
-            auto_offset_reset="earliest",
+            auto_offset_reset=reset,
             client_id=f"{group_id}-consumer",
             **security,
         )
 
     # Separate groups: one group with two different subscriptions keeps rebalancing (and stalls both).
     # `<group>.retry` is still covered by the service's prefixed group ACL (deploy/kafka/setup.sh).
-    main_c, retry_c = make(topics, group), make([f"{t}.retry" for t in topics], f"{group}.retry")
+    main_c = make(topics, group, start_at)
+    retry_c = make([f"{t}.retry" for t in topics], f"{group}.retry")
     await main_c.start()
     await retry_c.start()
     try:

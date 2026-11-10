@@ -313,6 +313,13 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/ProductStaff' } }
 
+  /internal/email-lists:
+    get:
+      tags: [internal]
+      summary: Staff notification lists with emails (notification-svc; service token)
+      responses:
+        '200': { description: Lists, content: { application/json: { schema: { $ref: '#/components/schemas/EmailLists' } } } }
+
   /internal/fees:
     get:
       tags: [internal]

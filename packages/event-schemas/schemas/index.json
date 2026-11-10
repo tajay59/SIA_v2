@@ -15,6 +15,7 @@
   "order.probono_approved": "order.probono_approved.v1.json",
   "order.probono_rejected": "order.probono_rejected.v1.json",
   "order.purchasing": "order.purchasing.v1.json",
+  "order.quote_expiring": "order.quote_expiring.v1.json",
   "order.quote_revised": "order.quote_revised.v1.json",
   "order.quoted": "order.quoted.v1.json",
   "order.quoting_started": "order.quoting_started.v1.json",

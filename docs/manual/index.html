@@ -786,7 +786,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td><strong>notification-svc</strong></td>
-<td>All email, triggered by events</td>
+<td>All email, triggered by events: once per event and recipient, links into the SHOP/SIA screens, retries then DLQ. Starts from "now" on first deploy and skips events older than 48 h. Dev and staging send to Mailpit only</td>
 </tr>
 <tr>
 <td><strong>media-worker</strong> ×2</td>

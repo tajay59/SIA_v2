@@ -10,7 +10,7 @@ from catalog_svc.config import Settings
 from catalog_svc.main import build_app
 from cimh_common.testing import AsyncMongoMock
 
-from .conftest import ADMIN, STAFF, USER, Ctx, check_event, verifier
+from .conftest import ADMIN, STAFF, USER, Ctx, check_event, token, verifier
 
 
 def test_reference_defaults_and_departments(ctx: Ctx) -> None:
@@ -113,6 +113,10 @@ def test_email_lists_accept_only_active_staff(ctx: Ctx) -> None:
         assert r.status_code == 422, bad
         assert r.json()["errors"][0]["field"] == "invoice[0]"
     assert ctx.client.get(ctx.url("/settings/email-lists"), headers=STAFF).status_code == 403
+    internal = ctx.client.get(ctx.url("/internal/email-lists"), headers=token("service", "svc:notification", ""))
+    assert internal.status_code == 200
+    assert internal.json()["order"][0]["email"] == "s@cimh.edu.bb"
+    assert ctx.client.get(ctx.url("/internal/email-lists"), headers=ADMIN).status_code == 403
 
 
 def test_email_lists_need_identity(tmp_path: Path) -> None:

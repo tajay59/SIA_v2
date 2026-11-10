@@ -397,6 +397,32 @@ services:
     mem_limit: 192m
     healthcheck: { disable: true }
 
+  # Every email (P6). Dev mail goes to Mailpit (http://localhost:18025); nothing leaves the machine.
+  notification-consumer:
+    profiles: [kafka]
+    build:
+      context: ..
+      dockerfile: services/notification-svc/Dockerfile
+      args: { APP_VERSION: dev }
+    image: cimh/notification-svc:dev
+    <<: *hardening
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      KAFKA_BOOTSTRAP: kafka:9092
+      IDENTITY_URL: http://identity-svc:8000
+      CATALOG_URL: http://catalog-svc:8000
+      SERVICE_SECRET: dev-notification-secret
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SHOP_URL: http://localhost:15173
+      SIA_URL: http://localhost:15174
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      identity-svc: { condition: service_healthy }
+      catalog-svc: { condition: service_healthy }
+    mem_limit: 128m
+    healthcheck: { disable: true }
+
   # TR-SEC-6 virus scanning: docker compose --profile kafka --profile clamav up -d, with SCAN_ENABLED=true.
   clamav:
     profiles: [clamav]

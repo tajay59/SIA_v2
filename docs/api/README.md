@@ -201,6 +201,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | POST | `/requests/{id}/deliver` | staff | `SHIPPED → DELIVERED` (+ invoice) |
 | GET / POST | `/internal/requests/{id}/access` · `/internal/requests/{id}/files` · `/internal/requests/{id}` | service | Internal (document-svc: access + state, attach, staff view for PDFs) |
 
+Catalog internal (service token): `GET /internal/email-lists` (notification-svc: staff lists with emails).
+
 ### document-svc: `/api/documents/v1`
 | Method | Path | Role | Purpose |
 |---|---|---|---|

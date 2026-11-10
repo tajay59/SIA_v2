@@ -30,6 +30,11 @@ endpoints:
     - staff
     - admin
     ownership: public
+  GET /api/catalog/v1/internal/email-lists:
+    roles:
+    - service
+    ownership: service
+    note: notification-svc (staff email lists)
   GET /api/catalog/v1/internal/places:
     roles:
     - service

@@ -11,7 +11,7 @@ import pytest
 
 from order_svc.store import now
 
-from .conftest import ADMIN, PEER, STAFF, USER, Ctx
+from .conftest import ADMIN, PEER, STAFF, USER, Ctx, check_event
 
 
 def quote(
@@ -242,6 +242,21 @@ def test_expired_quote_cannot_be_accepted_and_the_job_cancels_it(ctx: Ctx) -> No
     (evt,) = ctx.events(rid, "order.expired")
     assert evt["payload"]["from"] == "QUOTED"
     assert ctx.run(ctx.svc.expire_quotes()) == 0
+
+
+def test_quote_reminder_once_per_expiry(ctx: Ctx) -> None:
+    rid = to_quoted(ctx)
+    quote(ctx, rid)
+    assert ctx.run(ctx.svc.remind_quotes(3)) == 0  # 30 days left
+    ctx.force(rid, quoteExpiresAt=now() + timedelta(days=2))
+    assert ctx.run(ctx.svc.remind_quotes(3)) == 1
+    assert ctx.run(ctx.svc.remind_quotes(3)) == 0  # once
+    (evt,) = ctx.events(rid, "order.quote_expiring")
+    assert evt["payload"]["quoteVersion"] == 1
+    assert evt["payload"]["customer"] == "USRUSER"
+    check_event(evt)
+    ctx.force(rid, quoteExpiresAt=now() + timedelta(days=1))  # revised quote, new expiry: remind again
+    assert ctx.run(ctx.svc.remind_quotes(3)) == 1
 
 
 def test_staff_reject_the_signature(ctx: Ctx) -> None:

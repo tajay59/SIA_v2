@@ -3,6 +3,7 @@
     python -m document_svc.consumer
 
   order.quoted              with cimhLineIds          -> cimh_quote
+  order.quote_revised       with CIMH lines           -> cimh_quote (new version)
   order.agreement_requested                            -> agreement
   order.shipped             ship-to outside Barbados   -> commercial_invoice (customs)
   order.delivered           PAID -> invoice, PROBONO -> probono_invoice
@@ -32,7 +33,8 @@ def make_handler(service: DocumentService) -> Any:
     async def handle(event: EventEnvelope) -> None:
         p, t = event.payload, event.type
         rid = p.get("orderId")
-        if t not in ("order.quoted", "order.agreement_requested", "order.shipped", "order.delivered"):
+        if t not in ("order.quoted", "order.quote_revised", "order.agreement_requested", "order.shipped",
+                     "order.delivered"):  # fmt: skip
             return
         if not isinstance(rid, str):
             raise ValueError(f"{t} {event.eventId} lacks orderId")  # -> DLQ
@@ -40,6 +42,11 @@ def make_handler(service: DocumentService) -> Any:
             ids = p.get("cimhLineIds") or []
             if ids:
                 await service.generate("cimh_quote", rid, event, line_ids=list(ids))
+        elif t == "order.quote_revised":
+            req = await service.orders.request(rid)
+            ids = [x["lineId"] for x in ((req or {}).get("cimhQuote") or {}).get("lines") or []]
+            if ids:
+                await service.generate("cimh_quote", rid, event, line_ids=ids)
         elif t == "order.agreement_requested":
             await service.generate("agreement", rid, event)
         elif t == "order.shipped":
