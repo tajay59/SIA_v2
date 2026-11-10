@@ -128,29 +128,53 @@ class OrderService:
 
     # ================================================================== cart (O1, O12, O13)
 
+    @staticmethod
+    def _new_cart(customer: str, t: datetime) -> dict[str, Any]:
+        return {
+            "id": "CRT" + uuid.uuid4().hex,
+            "cartOf": customer,
+            "type": None,
+            "lines": [],
+            "createdAt": t,
+            "history": [],
+            "outbox": [],
+        }
+
     async def _cart(self, p: Principal) -> dict[str, Any]:
         t = now()
         doc: dict[str, Any] | None = await self.store.orders.find_one_and_update(
             {"customer": p.sub, "status": d.CART},
-            {
-                "$setOnInsert": {
-                    "id": "CRT" + uuid.uuid4().hex,
-                    "cartOf": p.sub,
-                    "type": None,
-                    "lines": [],
-                    "version": 1,
-                    "createdAt": t,
-                    "updatedAt": t,
-                    "history": [],
-                    "outbox": [],
-                }
-            },
+            {"$setOnInsert": self._new_cart(p.sub, t) | {"version": 1, "updatedAt": t}},
             upsert=True,
             return_document=ReturnDocument.AFTER,
         )
         if doc is None:  # upsert with ReturnDocument.AFTER always returns the cart
             raise RuntimeError("cart upsert returned nothing")
+        if doc.get("blocked"):
+            # Defence in depth: suspension already revokes every session (identity), so this only
+            # matters if a token somehow outlives it. Set/cleared by the consumer (user.suspended/reactivated).
+            raise forbidden("This account is suspended", code="ACCOUNT_SUSPENDED")
         return doc
+
+    async def set_cart_blocked(self, customer: str, blocked: bool) -> None:
+        """user.suspended -> block the cart (created if missing, so the block holds); user.reactivated -> unblock.
+        The version bump makes any cart save that read the cart before the block fail with VERSION_CONFLICT."""
+        t = now()
+        if blocked:
+            await self.store.orders.update_one(
+                {"customer": customer, "status": d.CART},
+                {
+                    "$set": {"blocked": True, "updatedAt": t},
+                    "$inc": {"version": 1},
+                    "$setOnInsert": self._new_cart(customer, t),
+                },
+                upsert=True,
+            )
+        else:
+            await self.store.orders.update_one(
+                {"customer": customer, "status": d.CART, "blocked": True},
+                {"$unset": {"blocked": ""}, "$set": {"updatedAt": t}, "$inc": {"version": 1}},
+            )
 
     async def cart(self, p: Principal) -> dict[str, Any]:
         doc = await self._cart(p)

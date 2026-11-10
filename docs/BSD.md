@@ -453,6 +453,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `organisationId` | Id? | | ✚ | Copied from the account at submission (drives organisation visibility) |
 | `customerName`, `organisationName` | string? | | ✚ | Copied at submission for the staff queue search (prefix) |
 | `cartOf` | Id? | | ✚ | Carts only: = `customer`. Sparse unique index → one cart per user |
+| `blocked` | bool? | | ✚ | Carts only: `true` while the customer is suspended (set/cleared from `user.suspended`/`user.reactivated`); cart endpoints answer 403 `ACCOUNT_SUSPENDED` |
 | `splitFrom` | Id? | | ✚ | The sibling request when a mixed cart was split |
 | `statusAt` | Timestamp | | ✚ | When the current status began (staff queue "waiting" sort) |
 | `lines` | Line[] | R | ⟲ (`cart`, `ncicart`) | See below |

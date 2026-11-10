@@ -1,4 +1,4 @@
-# Dev: alerts go to Mailpit (http://localhost:18025). Production uses alertmanager.yml with the CIMH mail server.
+# Dev: alerts go to Mailpit (http://localhost:18025). Production uses alertmanager.yml.tmpl, rendered by deploy/scripts/render-config.sh (Gmail SMTP).
 route:
   receiver: ops-email
   group_by: [alertname, service]

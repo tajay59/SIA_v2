@@ -383,3 +383,14 @@ def test_old_events_are_not_emailed(env: tuple[Notifier, FakeMailer, FakeDirecto
     e = ev("order.delivered", MOVE).model_copy(update={"occurredAt": datetime.now(UTC) - timedelta(days=3)})
     assert run(n, e) == 0
     assert mailer.sent == []
+
+
+def test_empty_staff_list_is_logged_not_silent(
+    env: tuple[Notifier, FakeMailer, FakeDirectory], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    n, mailer, _ = env
+    monkeypatch.setitem(LISTS, "lowStock", [])
+    with caplog.at_level("WARNING", logger="notification"):
+        run(n, ev("stock.low", {"productId": "MET1", "available": 1, "threshold": 2}))
+    assert mailer.sent == []
+    assert "'lowStock' is empty" in caplog.text

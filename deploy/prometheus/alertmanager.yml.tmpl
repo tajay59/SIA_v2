@@ -1,4 +1,4 @@
-# Production/staging. SMTP password comes from a Docker secret file (never in git).
+# Template: deploy/scripts/render-config.sh <env> writes alertmanager.rendered.yml (git-ignored). SMTP password: Docker secret file, never in git.
 route:
   receiver: ops-email
   group_by: [alertname, service]
@@ -11,7 +11,7 @@ route:
 receivers:
   - name: ops-email
     email_configs:
-      - to: ${ALERT_EMAIL_TO}          # filled by deploy/scripts/render-config.sh
+      - to: ${ALERT_EMAIL_TO}          # rendered by deploy/scripts/render-config.sh
         from: printit.inc.7@gmail.com   # Gmail sends only as the signed-in account (SMTP_USER)
         smarthost: ${SMTP_HOST}:587
         auth_username: ${SMTP_USER}

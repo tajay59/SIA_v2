@@ -546,7 +546,7 @@ services:
     image: prom/alertmanager:v0.28.0
     user: "65534"
     command: ["--config.file=/etc/alertmanager/alertmanager.yml", "--storage.path=/alertmanager"]
-    volumes: ["./prometheus/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro"]
+    volumes: ["./prometheus/alertmanager.rendered.yml:/etc/alertmanager/alertmanager.yml:ro"]
     tmpfs: [/tmp, /alertmanager]
     secrets: [smtp_password]
     networks: [data, smtp]

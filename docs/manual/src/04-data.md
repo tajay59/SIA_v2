@@ -150,7 +150,7 @@ Updated **in the same transaction** as every scan, with counts recomputed from `
 | Fulfilment | `purchaseOrders[]`, `approval` / `rejection` (PROBONO), `shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}`, `invoice{…}`, `files[]`, `cancellation{by, at, reason, auto}` |
 
 Key rules:
-- One cart per user (only carts carry `cartOf`; a sparse unique index).
+- One cart per user (only carts carry `cartOf`; a sparse unique index). While the customer is suspended the cart carries `blocked: true` and answers 403 `ACCOUNT_SUSPENDED`.
 - Accounts with `isCimh` can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.

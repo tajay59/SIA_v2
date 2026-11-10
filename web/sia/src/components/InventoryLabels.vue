@@ -2,10 +2,11 @@
 /**
  * A-12 labels (legacy Inventory → "Product" panel; products themselves are created under Products).
  * Product, quantity, optional serials → unit records + QR labels to print, or the legacy CSV
- * (`barcode,CODE`). The server-made PDF arrives with document-svc (P6).
+ * (`barcode,CODE`), or the PDF document-svc makes (`fileId`; null when that failed: labels still work,
+ * print them from this page instead).
  */
-import { ApiError, call, catalog, downloadText, inventory, labelsCsv, type ProductStaff, useNotify } from '@cimh/web-app'
-import { mdiDownload } from '@mdi/js'
+import { ApiError, call, catalog, downloadText, fileUrl, inventory, labelsCsv, type ProductStaff, useNotify } from '@cimh/web-app'
+import { mdiDownload, mdiFilePdfBox } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
 import LabelSheet from './LabelSheet.vue'
 import ProductPicker from './ProductPicker.vue'
@@ -17,7 +18,7 @@ const quantity = ref(1)
 const serialsText = ref('')
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
-const made = ref<{ product: ProductStaff; barcodes: string[] } | null>(null)
+const made = ref<{ product: ProductStaff; barcodes: string[]; fileId: string | null } | null>(null)
 
 const serials = computed(() =>
   serialsText.value
@@ -50,7 +51,7 @@ async function create() {
   try {
     const body = { productId: p.id, quantity: quantity.value, ...(serials.value.length ? { serials: serials.value } : {}) }
     const res = await call(() => inventory.POST('/labels', { body }))
-    made.value = { product: p, barcodes: res.barcodes }
+    made.value = { product: p, barcodes: res.barcodes, fileId: res.fileId ?? null }
     notify.toast(`${res.barcodes.length} unit${res.barcodes.length === 1 ? '' : 's'} created. Print the labels, then stow the units.`, 'success')
   } catch (e) {
     if (e instanceof ApiError && e.status === 422) errors.value = e.fieldErrors()
@@ -101,12 +102,24 @@ function csv() {
       <div class="instructions">
         <h2 class="t-h3">2. Print</h2>
         <p class="t-body muted">{{ made.barcodes.length }} labels for {{ made.product.name }}. Stick one on each unit, then stow them.</p>
+        <p v-if="!made.fileId" class="t-caption muted">The PDF could not be made this time. Print from this page or use the CSV.</p>
       </div>
       <LabelSheet
         :heading="`Labels for ${made.product.name}`"
         :items="made.barcodes.map((b) => ({ value: b, title: (b.split('_').pop() ?? b).toUpperCase(), subtitle: made!.product.name }))"
       >
         <template #actions>
+          <v-btn
+            v-if="made.fileId"
+            :href="fileUrl(made.fileId)"
+            target="_blank"
+            rel="noopener"
+            :prepend-icon="mdiFilePdfBox"
+            color="primary"
+            variant="flat"
+          >
+            Download PDF
+          </v-btn>
           <v-btn :prepend-icon="mdiDownload" variant="outlined" @click="csv">Download CSV</v-btn>
           <v-btn variant="text" to="/stow">Go to Stow</v-btn>
         </template>

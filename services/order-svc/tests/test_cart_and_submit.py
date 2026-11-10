@@ -192,3 +192,44 @@ def test_listing_pages(ctx: Ctx) -> None:
 def test_status_filter_rejects_empty_items(ctx: Ctx) -> None:
     for value in (",", "SUBMITTED,", ""):
         assert ctx.client.get(ctx.url("/requests"), headers=STAFF, params={"status": value}).status_code == 422
+
+
+@pytest.mark.req("A10")
+def test_suspended_users_cart_is_blocked_until_reactivated(ctx: Ctx) -> None:
+    """Defence in depth behind identity's session revocation (TAD order-svc consumes user.suspended)."""
+    from cimh_common.outbox import EventEnvelope
+    from order_svc.consumer import make_handler
+
+    handle = make_handler(ctx.svc)
+
+    def event(t: str) -> None:
+        ctx.run(handle(EventEnvelope(type=t, correlationId="c", payload={"userId": "USRUSER", "status": "x"})))
+
+    assert ctx.cart_add("MET1").status_code == 200
+    event("user.suspended")
+    event("user.suspended")  # redelivery is harmless
+    for r in (
+        ctx.client.get(ctx.url("/cart"), headers=USER),
+        ctx.cart_add("MET1", 2),
+        ctx.client.post(ctx.url("/requests"), headers=USER, json={"shipTo": ADDRESS}),
+    ):
+        assert r.status_code == 403
+        assert r.json()["code"] == "ACCOUNT_SUSPENDED"
+    assert ctx.client.get(ctx.url("/cart"), headers=PEER).status_code == 200  # nobody else is affected
+    event("user.reactivated")
+    r = ctx.client.get(ctx.url("/cart"), headers=USER)
+    assert r.status_code == 200
+    assert r.json()["lines"][0]["qty"] == 1  # the cart survived the suspension
+    assert ctx.run(ctx.db["orders"].count_documents({"customer": "USRUSER", "status": "CART"})) == 1
+
+
+def test_suspension_without_a_cart_still_blocks(ctx: Ctx) -> None:
+    from cimh_common.outbox import EventEnvelope
+    from order_svc.consumer import make_handler
+
+    ctx.run(
+        make_handler(ctx.svc)(EventEnvelope(type="user.suspended", correlationId="c", payload={"userId": "USRUSER"}))
+    )
+    assert ctx.client.get(ctx.url("/cart"), headers=USER).json()["code"] == "ACCOUNT_SUSPENDED"
+    with pytest.raises(ValueError, match="lacks userId"):
+        ctx.run(make_handler(ctx.svc)(EventEnvelope(type="user.suspended", correlationId="c", payload={"userId": ""})))

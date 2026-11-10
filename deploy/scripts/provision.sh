@@ -70,5 +70,6 @@ $C up -d --wait kafka1 kafka2 kafka3 redis
 $C up kafka-setup --exit-code-from kafka-setup
 
 echo "== steps 7-8: monitoring (services and nginx arrive with their first deploy.sh run)"
+scripts/render-config.sh prod
 $C up -d --wait prometheus alertmanager node-exporter
 echo "provisioned. Next: deploy.sh per service; then step 9: backups on Pi B and a restore into staging."

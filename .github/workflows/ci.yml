@@ -198,6 +198,11 @@ jobs:
         run: |
           for f in deploy/compose.prod.yml deploy/compose.pi.yml deploy/compose.dev.yml; do docker compose -f "$f" config -q; done
           docker volume create sia-rehearsal-secrets && docker compose -f tools/infra/rehearsal/compose.yml config -q
+      - name: alertmanager config renders and validates
+        run: |
+          deploy/scripts/render-config.sh prod
+          docker run --rm -v "$PWD/deploy/prometheus:/c:ro" --tmpfs /run/secrets --entrypoint sh prom/alertmanager:v0.28.0 \
+            -c 'echo x > /run/secrets/smtp_password && amtool check-config /c/alertmanager.rendered.yml'
 
   rehearsal:
     name: platform rehearsal (replica set, Kafka TLS/ACL, Redis ACL, backup/restore)
