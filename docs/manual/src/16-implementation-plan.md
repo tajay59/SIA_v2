@@ -126,7 +126,7 @@ Outlines **what gets built and in what order**: the project broken into phases, 
 |---|---|
 | Move the Android app to the v2 API (generated client), new token flow in Keystore, app lock, certificate pinning | M1, M9, TR-SEC-11 |
 | Scanning flows: lookup, stow, pick, pick order, ship; offline queue with idempotency keys; sync screen | M2–M8 |
-| Material 3 theme from the Design Brief; tested on the Galaxy Note 10+ and an Android 11 emulator | — |
+| Material 3 theme from the Design Brief; tested on the Galaxy Note 10+ and an Android 12 emulator | — |
 
 **Exit:** J-09 passes on the physical device including offline sync; internal release build signed and distributable.
 

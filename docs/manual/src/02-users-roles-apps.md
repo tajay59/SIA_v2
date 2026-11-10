@@ -71,4 +71,4 @@ When approving, the admin links the account to an **organisation** (picking an e
 | Create | Products (with photos), locations |
 | Offline | Scans are queued (Room + WorkManager) and synced later. A per-scan idempotency key prevents duplicates |
 
-Minimum **Android 11 (API 30)**. Scanning uses CameraX + ML Kit.
+Minimum **Android 12 (API 31)**. Scanning uses CameraX + ML Kit.

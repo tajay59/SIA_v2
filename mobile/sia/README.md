@@ -1,7 +1,7 @@
 # SIA Mobile (v2)
 
-Android app for CIMH staff (APD §5, M-01 to M-11) on the v2 API. Kotlin, Jetpack Compose, Material 3, Android 11+
-(minSdk 30). Application id `bb.edu.cimh.sia` (debug: `bb.edu.cimh.sia.debug`), so it installs next to the
+Android app for CIMH staff (APD §5, M-01 to M-11) on the v2 API. Kotlin, Jetpack Compose, Material 3, Android 12+
+(minSdk 31). Application id `bb.edu.cimh.sia` (debug: `bb.edu.cimh.sia.debug`), so it installs next to the
 legacy app (`com.google.stockinventoryapp`, kept in `AndroidStudioProjects/StockInventoryApp` until cut-over).
 
 ## What is built

@@ -40,7 +40,7 @@ Agrees **how "done" and "ready to launch" are proved**: which kinds of test exis
 | **Authorisation / IDOR** | For every endpoint × role × ownership case: allowed → 2xx, forbidden → 403, not visible → 404 | Generated pytest suite from the API role table (§5) | Every PR | **100 % of endpoints** |
 | **Component (web)** | `packages/web-ui` components (status chip, quote comparison, agreement stepper, money input) | Vitest + Vue Test Utils; Playwright component tests + screenshot comparison | Every PR | Every shared component, light + dark |
 | **End-to-end** | User journeys J-01–J-11 through real UIs and services | **Playwright** (Chromium, Firefox, WebKit; mobile viewport) | Every merge to `main` on staging; nightly full | All journeys + main alternatives |
-| **Mobile** | Scan flows, offline queue, Keystore auth | Compose UI tests, Robolectric, instrumented tests on an **Android 11 emulator** (minimum version) + the warehouse device, a **Samsung Galaxy Note 10+ (SM-N975U1)** | Every PR (unit/UI), nightly (instrumented) | M-01–M-11 |
+| **Mobile** | Scan flows, offline queue, Keystore auth | Compose UI tests, Robolectric, instrumented tests on an **Android 12 emulator** (minimum version) + the warehouse device, a **Samsung Galaxy Note 10+ (SM-N975U1)** | Every PR (unit/UI), nightly (instrumented) | M-01–M-11 |
 | **Performance** | Load, stress, soak | **k6** | Before each release on staging (sized as prod) | TRD TR-PERF-1…3 |
 | **Resilience** | Kill a Pi / broker / service replica; primary step-down; Redis restart; disk full | Scripted chaos (`deploy/tests/chaos/*.sh`) | Before go-live, then quarterly | TR-AVAIL-2 |
 | **Security** | SAST, dependency, image, secrets, DAST, penetration test (Claude) | Semgrep, Bandit, pip-audit, npm audit, Trivy, gitleaks, OWASP ZAP, internal ASVS review | PR / nightly / release / yearly | SECURITY §11 |
@@ -185,5 +185,5 @@ The **Requirements Traceability Matrix** (Documentation Index #17, `RTM.md`) is 
 | # | Question | Outcome |
 |---|---|---|
 | 1 | Which member-state organisations join UAT? | **Resolved:** none. CIMH staff test the customer journeys with test accounts. Risk: real-customer usability issues may only appear after launch, so collect feedback in the first month (a SHOP feedback link). |
-| 2 | Which warehouse Android device? | **Resolved:** **Samsung Galaxy Note 10+ (SM-N975U1)**. It's the physical test device, alongside the Android 11 emulator (minimum supported). |
+| 2 | Which warehouse Android device? | **Resolved:** **Samsung Galaxy Note 10+ (SM-N975U1)**. It's the physical test device, alongside the Android 12 emulator (minimum supported). |
 | 3 | External penetration test? | **Resolved:** no budget. **Claude performs the penetration test** on staging (scope and authorisation in writing) plus ASVS L2 + authenticated ZAP. Residual risk (not independent) in SECURITY R7. |

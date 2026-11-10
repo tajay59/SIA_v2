@@ -11,7 +11,7 @@ android {
     defaultConfig {
         // New id: the legacy app (com.google.stockinventoryapp) stays installed until cut-over (IR6).
         applicationId = "bb.edu.cimh.sia"
-        minSdk = 30 // Android 11 (TRD)
+        minSdk = 31 // Android 12 (TRD; owner 2026-11-10: the Galaxy Note 10+ test phone tops out at Android 12)
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"

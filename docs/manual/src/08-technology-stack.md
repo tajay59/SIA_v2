@@ -2,7 +2,7 @@
 
 [← Deployment and operations](07-deployment-operations.md) · [Manual home](README.md) · [Next: Documentation map and glossary →](09-documentation-glossary.md)
 
-Source: [TRD §3](../TRD.md). **Every component uses its latest stable release at project start**, pinned exactly (never `latest`) and reviewed quarterly. The exception is Android, where the minimum stays at **Android 11**.
+Source: [TRD §3](../TRD.md). **Every component uses its latest stable release at project start**, pinned exactly (never `latest`) and reviewed quarterly. The exception is Android, where the minimum stays at **Android 12**.
 
 ## 8.1 Backend
 
@@ -48,7 +48,7 @@ Source: [TRD §3](../TRD.md). **Every component uses its latest stable release a
 | Offline | Room + WorkManager |
 | Scanning | CameraX + ML Kit |
 | Token storage | Android Keystore |
-| Minimum OS | **Android 11 (API 30)** |
+| Minimum OS | **Android 12 (API 31)** |
 
 ## 8.4 Platform
 
