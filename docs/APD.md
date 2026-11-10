@@ -97,7 +97,7 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | A-20 | `/admin/audit` | Audit log | admin | Filters entity, actor, action, dates | Entity link → its screen |
 | A-21 | `/login` · `/profile` | Login / Profile | public / staff | As S-16 / S-19; non-staff → "staff only" message | — |
 
-## 5. SIA Mobile: screens (Android 11+)
+## 5. SIA Mobile: screens (Android 12+)
 
 ![SIA Mobile navigation map](manual/images/21-mobile-sitemap.svg)
 

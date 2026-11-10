@@ -80,7 +80,7 @@ Source: [App Flow Document (APD)](../APD.md). It shows what happens on each clic
 | A-20 | `/admin/audit` | Audit log | admin | Filters entity, actor, action, dates | Entity link → its screen |
 | A-21 | `/login` · `/profile` | Login / Profile | public / staff | As S-16 / S-19; non-staff → "staff only" message | — |
 
-## 11.4 SIA Mobile: screens (Android 11+)
+## 11.4 SIA Mobile: screens (Android 12+)
 
 ![SIA Mobile navigation map](images/21-mobile-sitemap.svg)
 

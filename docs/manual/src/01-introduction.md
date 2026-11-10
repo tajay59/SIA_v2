@@ -10,7 +10,7 @@ The CIMH Stores Platform lets **member-state meteorological and hydrological org
 |---|---|---|---|
 | **SHOP** | `store.cimh.edu.bb` (web) | Customers (member-state staff) | Browse the catalogue (no prices), request items, review and accept quotes, track requests |
 | **SIA** | `sia.cimh.edu.bb` (web) | CIMH staff and admins | Products, inventory, request desk (quotes, purchasing, shipping), account approvals, settings |
-| **SIA Mobile** | Android 11+ app | Warehouse staff | Scan shelves and units: lookup, stow, pick, pick for requests, shipping |
+| **SIA Mobile** | Android 12+ app | Warehouse staff | Scan shelves and units: lookup, stow, pick, pick for requests, shipping |
 
 ## 1.2 How ordering works (no online payment)
 

@@ -34,7 +34,7 @@ These figures are used to size the system and set the targets in section 5. Re-c
 
 ## 3. Technology stack
 
-**Every component uses its latest stable release at project start**, except Android (minimum **Android 11**, see 3.3). Exact versions are then pinned in lockfiles and image tags (never the floating `latest` tag) and reviewed every quarter.
+**Every component uses its latest stable release at project start**, except Android (minimum **Android 12**, see 3.3). Exact versions are then pinned in lockfiles and image tags (never the floating `latest` tag) and reviewed every quarter.
 
 ### 3.1 Backend services
 | Component | Choice | Notes |
@@ -79,7 +79,7 @@ Both apps live in one repository (pnpm workspace) with shared packages for the A
 | Offline | Room + WorkManager (existing): scans are queued while offline and sent once the connection returns |
 | Scanning | CameraX + ML Kit Barcode Scanning |
 | Token storage | Android Keystore-backed encrypted storage |
-| Minimum Android | **Android 11 (API 30)**; target SDK = latest |
+| Minimum Android | **Android 12 (API 31)**; target SDK = latest |
 
 ### 3.4 Data, messaging and infrastructure
 | Component | Choice | Notes |
@@ -286,7 +286,7 @@ The two 6 GB GPUs are used by **media-worker** for background removal (rembg/onn
 
 | # | Question | Outcome |
 |---|---|---|
-| 1 | Minimum Android version? | **Resolved:** Android 11 (API 30). |
+| 1 | Minimum Android version? | **Resolved:** Android 12 (API 31) (owner, 2026-11-10; was Android 11). The Galaxy Note 10+ test phone runs Android 12, its last update. |
 | 2 | Sentry self-hosted or SaaS? | **Resolved:** neither. Sentry is removed; errors are tracked through logs and Prometheus metrics/alerts. |
 | 3 | Offsite backup target? | **Resolved:** another CIMH site. |
 | 4 | SMTP relay? | **Resolved:** the CIMH mail server. |
