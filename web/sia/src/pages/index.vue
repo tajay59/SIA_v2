@@ -99,7 +99,7 @@ onMounted(async () => {
           <p class="t-body muted">Search by name, model number, keyword or serial number.</p>
         </div>
         <form class="look-form" role="search" @submit.prevent="router.push({ path: '/products', query: q.trim() ? { q: q.trim() } : {} })">
-          <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Find a product" hide-details />
+          <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Find a product" hide-details />
           <v-btn type="submit" color="primary" size="large">Explore products</v-btn>
         </form>
       </v-card>

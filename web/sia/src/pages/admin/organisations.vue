@@ -123,7 +123,7 @@ const headers = [
 <template>
   <div class="page">
     <div class="page-header">
-      <v-text-field v-model="q" :prepend-inner-icon="mdiMagnify" label="Search organisations" clearable hide-details class="search" @click:clear="q = ''" />
+      <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Search organisations" clearable hide-details class="search" @click:clear="q = ''" />
       <span class="spacer" />
       <v-btn v-if="session.isAdmin" color="primary" :prepend-icon="mdiPlus" @click="openEdit(null)">New organisation</v-btn>
     </div>

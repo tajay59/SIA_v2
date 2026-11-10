@@ -11,6 +11,7 @@ import {
   type OrderRequest,
   type ShippingAddress,
   useCart,
+  useDraft,
   useNotify,
   useSession,
 } from '@cimh/web-app'
@@ -75,6 +76,30 @@ onMounted(() => {
   billTo.value = saved.value[0] ?? null
 })
 
+// Unsaved checkout (APD §2): kept if the session ends mid-way, restored after logging back in.
+interface Checkout {
+  step: number
+  currency: Currency | null
+  billTo: ShippingAddress | null
+  shipTo: ShippingAddress | null
+  sameAsBilling: boolean
+  notes: string
+}
+const draft = useDraft<Checkout>(
+  () => (session.account && step.value < 4 ? `checkout:${session.account.id}` : null), // sent: nothing left to keep
+  () => ({ step: Math.min(step.value, 3), currency: currency.value, billTo: billTo.value, shipTo: shipTo.value,
+    sameAsBilling: sameAsBilling.value, notes: notes.value }), // prettier-ignore
+  (v) => {
+    step.value = v.step
+    currency.value = v.currency
+    billTo.value = v.billTo
+    shipTo.value = v.shipTo
+    sameAsBilling.value = v.sameAsBilling
+    notes.value = v.notes
+  },
+  () => ({ step: 1, currency: null, billTo: saved.value[0] ?? null, shipTo: null, sameAsBilling: true, notes: '' }),
+)
+
 function addressLine(a: ShippingAddress): string {
   return [a.organisation, a.line1, a.line2, a.city, a.parish, a.country].filter(Boolean).join(', ')
 }
@@ -102,6 +127,7 @@ async function submit() {
       billTo: clean(billTo.value),
       ...(notes.value.trim() ? { notes: notes.value.trim() } : {}),
     })
+    draft.clear()
     step.value = 4
   } catch (e) {
     notify.report(e)
