@@ -11,6 +11,7 @@ internal pick) -> ship -> deliver. Dev only: refuses non-local Mongo hosts.
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import time
@@ -26,6 +27,7 @@ CAT = "http://catalog-svc:8000/api/catalog/v1"
 INV = "http://inventory-svc:8000/api/inventory/v1"
 ORD = "http://order-svc:8000/api/orders/v1"
 MONGO = "mongodb://mongo:27017/?replicaSet=rs0"
+MAILPIT = "http://mailpit:8025"
 
 
 def check(cond: bool, label: str, r: httpx.Response | None = None) -> None:
@@ -50,6 +52,24 @@ def service_token(c: httpx.Client, name: str) -> dict[str, str]:
     return {"Authorization": "Bearer " + r.json()["token"]}
 
 
+def claim_code(c: httpx.Client, ref: str, email: str) -> str:
+    """The code from identity, or (if notification-consumer claimed it first) from the email in Mailpit."""
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        r = c.get(f"{ID}/internal/codes/{ref}", headers=service_token(c, "notification"))
+        if r.status_code == 200:
+            return str(r.json()["code"])
+        m = c.get(f"{MAILPIT}/api/v1/search", params={"query": f'to:"{email}"', "limit": 1})
+        msgs = m.json().get("messages") or [] if m.status_code == 200 else []
+        if msgs:
+            text = c.get(f"{MAILPIT}/api/v1/message/{msgs[0]['ID']}").json()["Text"]
+            found = re.search(r"\b(\d{6})\b", text)
+            if found:
+                return found.group(1)
+        time.sleep(1)
+    raise SystemExit(f"FAIL no verification code for {email}")
+
+
 def customer_token(c: httpx.Client, db: Any, run: str) -> dict[str, str]:
     """Register, verify (code claimed as notification-svc would), approve in the dev DB, log in."""
     email, pw = f"smoke.customer.{run}@example.org", f"smoke customer password {run}"
@@ -58,7 +78,7 @@ def customer_token(c: httpx.Client, db: Any, run: str) -> dict[str, str]:
     c.post(f"{ID}/auth/register", json=body).raise_for_status()
     acc = db.accounts.find_one({"email": email})
     ref = db.temp.find_one({"accountId": acc["id"], "kind": "verify_email"})["id"]
-    code = c.get(f"{ID}/internal/codes/{ref}", headers=service_token(c, "notification")).json()["code"]
+    code = claim_code(c, ref, email)
     c.post(f"{ID}/auth/verify", json={"email": email, "code": str(code)}).raise_for_status()
     db.accounts.update_one({"email": email}, {"$set": {"status": "ACTIVE", "organisationId": f"ORGSMOKE{run}"}})
     r = c.post(f"{ID}/auth/login", json={"email": email, "password": pw, "client": "mobile"})
