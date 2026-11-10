@@ -94,6 +94,20 @@ class SessionManager(private val api: IdentityApi, private val store: TokenStore
             else -> null
         }
 
+    /**
+     * For background work (the scan queue): true when calls can be made as the signed-in user. In a process the
+     * worker started, the stored session is restored first; a signed-out app stays signed out (no state change).
+     */
+    suspend fun ensureAccessToken(): Boolean {
+        if (accessToken != null) return true
+        when (state.value) {
+            SessionState.Unknown -> restore()
+            is SessionState.SignedIn -> refresh(stale = null)
+            else -> return false
+        }
+        return accessToken != null
+    }
+
     suspend fun logout() {
         val access = accessToken
         end(SessionState.SignedOut)
