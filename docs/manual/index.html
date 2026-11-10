@@ -1417,7 +1417,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tbody>
 </table>
 <p>Key rules:
-- One cart per user (only carts carry <code>cartOf</code>; a sparse unique index).
+- One cart per user (only carts carry <code>cartOf</code>; a sparse unique index). While the customer is suspended the cart carries <code>blocked: true</code> and answers 403 <code>ACCOUNT_SUSPENDED</code>.
 - Accounts with <code>isCimh</code> can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.</p>
@@ -6711,7 +6711,7 @@ export const cimhDark = {
   mongo/                    # mongod.conf, init-replset.js, roles.js (custom per-service roles)
   kafka/                    # server.properties template, topics.yaml, acls.yaml
   redis/                    # redis.conf, users.acl
-  prometheus/               # prometheus.yml, rules/*.yml, alertmanager.yml
+  prometheus/               # prometheus.yml, rules/*.yml, alertmanager.yml.tmpl (scripts/render-config.sh → alertmanager.rendered.yml)
   pki/                      # private CA scripts
   scripts/                  # deploy.sh, migrate.sh, backup.sh, restore.sh, rotate-secret.sh
   bootstrap/                # host setup (ansible playbook or shell)
@@ -6882,7 +6882,7 @@ export const cimhDark = {
 <td>0.1</td>
 <td>128 MB</td>
 <td>data</td>
-<td>SMTP to CIMH mail</td>
+<td>SMTP (Gmail) via <code>render-config.sh</code></td>
 </tr>
 <tr>
 <td>exporters</td>
@@ -7151,7 +7151,7 @@ rs.initiate({
 <li>Start Pis (<code>compose.pi.yml</code>), then mongo1; run <code>init-replset.js</code> and <code>roles.js</code>; check <code>rs.status()</code> (1 primary, 2 secondaries).</li>
 <li>Start Kafka, run <code>kafka-setup</code> (topics + ACLs); start Redis, Apicurio, ClamAV.</li>
 <li>Start services and nginx; obtain Let's Encrypt certs; smoke test <code>/health/ready</code> everywhere.</li>
-<li>Prometheus/Alertmanager up; send a test alert email.</li>
+<li>Prometheus/Alertmanager up (<code>provision.sh</code> runs <code>scripts/render-config.sh prod</code> first: <code>ALERT_EMAIL_TO</code>, <code>SMTP_HOST</code>, <code>SMTP_USER</code> from <code>env/prod.env</code>); send a test alert email. After changing those settings: <code>scripts/render-config.sh prod &amp;&amp; docker compose -f compose.prod.yml up -d alertmanager</code>.</li>
 <li>Configure backups on Pi B; run the first backup and a restore into staging.</li>
 <li>Hand over to the migration (Migration Plan DR-1).</li>
 </ol>

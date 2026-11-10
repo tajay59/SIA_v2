@@ -86,7 +86,11 @@ class Notifier:
         return acc
 
     async def staff(self, list_name: str, **kw: Any) -> list[Message]:
-        return [Message(to=addr, why=STAFF_WHY, **kw) for addr in await self.dir.staff_list(list_name)]
+        addrs = await self.dir.staff_list(list_name)
+        if not addrs:
+            # Nobody is on this list (SIA Settings -> Email lists): the email is dropped, so say so in the log.
+            log.warning("staff email list %r is empty: %r not sent", list_name, kw.get("subject"))
+        return [Message(to=addr, why=STAFF_WHY, **kw) for addr in addrs]
 
     async def to_customer(self, event: EventEnvelope, **kw: Any) -> list[Message]:
         acc = await self.customer(event.payload.get("customer"))

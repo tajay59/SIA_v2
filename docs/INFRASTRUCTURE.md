@@ -81,7 +81,7 @@ deploy/
   mongo/                    # mongod.conf, init-replset.js, roles.js (custom per-service roles)
   kafka/                    # server.properties template, topics.yaml, acls.yaml
   redis/                    # redis.conf, users.acl
-  prometheus/               # prometheus.yml, rules/*.yml, alertmanager.yml
+  prometheus/               # prometheus.yml, rules/*.yml, alertmanager.yml.tmpl (scripts/render-config.sh → alertmanager.rendered.yml)
   pki/                      # private CA scripts
   scripts/                  # deploy.sh, migrate.sh, backup.sh, restore.sh, rotate-secret.sh
   bootstrap/                # host setup (ansible playbook or shell)
@@ -109,7 +109,7 @@ Every service: `restart: unless-stopped`, `read_only: true` (+ `tmpfs: /tmp`), `
 | redis | `redis` | 1 | 0.5 | 512 MB (`maxmemory 384mb`, `allkeys-lru` off → `noeviction` for revocations) | data | `/srv/redis` (AOF) |
 | mongo1 | `mongo` | 1 | 4.0 | 8 GB (`wiredTigerCacheSizeGB: 6`) | data | `/srv/mongo`; port 27017 bound to the VLAN IP only |
 | prometheus | `prom/prometheus` | 1 | 0.5 | 1.5 GB | data, app | `/srv/prometheus` (retention 30 d) |
-| alertmanager | `prom/alertmanager` | 1 | 0.1 | 128 MB | data | SMTP to CIMH mail |
+| alertmanager | `prom/alertmanager` | 1 | 0.1 | 128 MB | data | SMTP (Gmail) via `render-config.sh` |
 | exporters | node, mongodb, kafka, redis | 1 each | 0.1 | 64 MB each | data | node-exporter uses host network/pid read-only |
 | **Total limits** | | | | **≈ 22.9 GB** + OS/Docker ≈ 2 GB = **≈ 25 GB** | | matches TRD §6.3 |
 
@@ -214,7 +214,7 @@ Prometheus scrapes: services `/metrics`, node-exporters (host, Pis), mongodb-exp
 5. Start Pis (`compose.pi.yml`), then mongo1; run `init-replset.js` and `roles.js`; check `rs.status()` (1 primary, 2 secondaries).
 6. Start Kafka, run `kafka-setup` (topics + ACLs); start Redis, Apicurio, ClamAV.
 7. Start services and nginx; obtain Let's Encrypt certs; smoke test `/health/ready` everywhere.
-8. Prometheus/Alertmanager up; send a test alert email.
+8. Prometheus/Alertmanager up (`provision.sh` runs `scripts/render-config.sh prod` first: `ALERT_EMAIL_TO`, `SMTP_HOST`, `SMTP_USER` from `env/prod.env`); send a test alert email. After changing those settings: `scripts/render-config.sh prod && docker compose -f compose.prod.yml up -d alertmanager`.
 9. Configure backups on Pi B; run the first backup and a restore into staging.
 10. Hand over to the migration (Migration Plan DR-1).
 

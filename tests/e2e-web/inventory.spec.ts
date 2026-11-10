@@ -86,6 +86,8 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     await expect(page.getByText('3 units created')).toBeVisible()
     await expect(page.getByRole('img', { name: new RegExp(`QR code ${productId}_`) })).toHaveCount(3)
     await expect(page.getByRole('button', { name: 'Download CSV' })).toBeVisible()
+    // document-svc made the label PDF (fail-soft: without it only the CSV/print path shows).
+    await expect(page.getByRole('link', { name: 'Download PDF' })).toHaveAttribute('href', /\/files\/[^/]+$/)
     units = mongo<string[]>(`return db.storage.find({ product: ${JSON.stringify(productId)} }).sort({ barcode: 1 }).toArray().map((u) => u.barcode);`)
     expect(units).toHaveLength(3)
   })

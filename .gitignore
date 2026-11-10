@@ -64,3 +64,6 @@ tools/perf/results/
 
 # Real legacy data exports (personal data): never commit
 /db/
+
+# Alertmanager config rendered from alertmanager.yml.tmpl by render-config.sh
+deploy/prometheus/alertmanager.rendered.yml

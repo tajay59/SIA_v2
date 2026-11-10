@@ -57,7 +57,10 @@ test.describe.serial('J-10 product with images → SHOP', () => {
   })
 
   test('customers find it in Pro Bono and search, with photos and its limit but no price', async ({ page }) => {
-    await page.goto(`${SHOP}/pro-bono`)
+    // Filter the Pro Bono page by the unique name: the first page holds 24 cards, and a dev DB with
+    // leftover Pro Bono products from earlier runs would push the new one off it. Search keeps probono=true.
+    await page.goto(`${SHOP}/pro-bono?q=${encodeURIComponent(name)}`)
+    await expect(page.getByRole('heading', { level: 1, name: 'Pro Bono Spares' })).toBeVisible()
     const card = page.getByRole('link', { name: new RegExp(name) })
     await expect(card).toBeVisible()
     await expect(card.getByText('Pro Bono')).toBeVisible()

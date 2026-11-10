@@ -6,7 +6,7 @@ info:
     Cart, order requests (PAID and PROBONO), supplier and CIMH quotes, acceptance, purchasing, picking, shipping.
     Owns `orders` (BSD §5.10). Status flows: TAD §7.2.
     **Visibility:** a customer sees their own requests and their organisation's (read); only the requester or an admin
-    may accept, decline or cancel. `@cimh.edu.bb` accounts get 403 (CIMH_CANNOT_REQUEST) on cart and request endpoints.
+    may accept, decline or cancel. `@cimh.edu.bb` accounts get 403 (CIMH_CANNOT_REQUEST) on cart and request endpoints; a suspended customer's cart answers 403 (ACCOUNT_SUSPENDED; defence in depth, sessions are already revoked).
     Every state-changing call needs `If-Match` with the request `version`; an illegal transition returns 409 ORDER_ILLEGAL_TRANSITION.
 servers:
   - url: /api/orders/v1
