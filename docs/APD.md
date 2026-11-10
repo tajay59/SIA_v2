@@ -101,7 +101,7 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 
 ![SIA Mobile navigation map](manual/images/21-mobile-sitemap.svg)
 
-**Bottom navigation:** Home · Lookup · Stow · Pick · Orders. The overflow menu holds Create product, Create location, Sync queue, Settings and Log out.
+**Bottom navigation:** Home · Lookup · Stow · Pick · Orders. The overflow menu holds Create product, Create location, Sync queue and Log out (with a badge for queued or refused scans).
 
 | ID | Route | Screen | Main content | Actions → next |
 |---|---|---|---|---|
@@ -109,8 +109,8 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | M-02 | `home` | Home | Shortcuts, **offline queue badge**, last sync | → any tab |
 | M-03 | `lookup` → `lookup/results` → `product/{id}` | Lookup | Camera scan (shelf/product) or type; results paged; product with locations | Unit → unit sheet (relocate, assign) |
 | M-04 | `stow` | Stow | Scan shelf → scan units loop; vibration + sound per result | Done → M-02 |
-| M-05 | `pick` | Pick | Scan unit → reason picker → confirm | Next scan ↺ |
-| M-06 | `orders` | Orders to pick/ship | Requests with lines to pick (ACCEPTED with CIMH lines, APPROVED Pro Bono, PICKING) | Row → M-07 |
+| M-05 | `pick` | Pick · Issue · Return | Pick: reason once, then scan units. Issue: choose a person (name or email), then scan units. Return: scan units coming back (then stow them) | Next scan ↺ |
+| M-06 | `orders` | Orders to pick/ship | Requests with lines to pick or ship (paid PURCHASING with CIMH-stock lines; Pro Bono APPROVED or PICKING; same filter as the SIA web "To pick" tile) | Row → M-07 |
 | M-07 | `orders/{id}/pick` | Pick order | Lines (CIMH/Pro Bono only) with progress; scan units; wrong unit → error chip | All picked → M-08 |
 | M-08 | `orders/{id}/ship` | Ship | Carrier, tracking (camera scan of the label barcode), note, date | Ship → M-06 |
 | M-09 | `create/product` | Create product | Form + photos (camera) | Save → product/{id} |
@@ -118,9 +118,12 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | M-11 | `sync` | Sync queue | Queued scans with status; retry/discard failed | ↺ |
 
 **Offline:**
-- Scans are saved with a per-scan `Idempotency-Key` in Room and sent by WorkManager when the connection returns.
-- The UI shows "queued" chips.
-- A queued scan that the server rejects appears in M-11 with its error.
+- Every scan (stow, pick, relocate) is saved first, with its own `Idempotency-Key`, in Room. It is then sent at once, or by WorkManager when the connection returns. The key never changes on automatic retries, so a scan that reached the server before the connection dropped is not done twice.
+- Scans are sent oldest first, and a new scan never overtakes a queued one (a stow and a later pick of the same unit arrive in that order).
+- No answer, 408, 429 or 5xx: the scan stays queued. 401: sending stops until the same account logs in again. Any other 4xx: the scan is **refused** and kept in M-11 with the server's message. The server replays a refusal for the same key, so **Retry** in M-11 sends it with a new key; **Discard** deletes it.
+- The UI shows Done / Queued / Refused chips. M-02 shows the queue count and the last sync time; the overflow menu shows a badge.
+- Log out with scans still in the queue asks first: the queue belongs to the account that scanned and is deleted on log out. Scans of another account are never sent with the current account's token.
+- Scan input: live camera (CameraX + ML Kit on the device), or a text field that submits on Enter, for Bluetooth/USB scanners and damaged labels.
 
 ## 6. User journeys
 

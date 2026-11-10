@@ -19,7 +19,8 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import bb.edu.cimh.sia.data.SessionState
-import bb.edu.cimh.sia.ui.home.HomeScreen
+import bb.edu.cimh.sia.data.queue.SyncWorker
+import bb.edu.cimh.sia.ui.nav.SiaApp
 import bb.edu.cimh.sia.ui.lock.LockScreen
 import bb.edu.cimh.sia.ui.lock.canLock
 import bb.edu.cimh.sia.ui.login.LoginScreen
@@ -82,6 +83,8 @@ class MainActivity : FragmentActivity() {
                     }
                     noScreenLock = false
                     lock.reset()
+                    // Scans queued in an earlier session of this account go out now (or when the network is back).
+                    SyncWorker.schedule(this@MainActivity)
                     while (true) {
                         delay(15_000)
                         lock.check(armed = true)
@@ -96,7 +99,7 @@ class MainActivity : FragmentActivity() {
                 if (locked) {
                     LockScreen(this@MainActivity, onUnlocked = lock::unlocked, onLogout = logout)
                 } else {
-                    HomeScreen(s.account, onLogout = logout)
+                    SiaApp(container, s.account, onLogout = logout)
                 }
             }
         }

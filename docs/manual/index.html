@@ -4414,7 +4414,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </table>
 <h2 id="114-sia-mobile-screens-android-12">11.4 SIA Mobile: screens (Android 12+)</h2>
 <figure><a href="images/21-mobile-sitemap.svg" target="_blank" title="Open full size"><img alt="SIA Mobile navigation map" src="images/21-mobile-sitemap.svg" loading="lazy"></a><figcaption>SIA Mobile navigation map</figcaption></figure>
-<p><strong>Bottom navigation:</strong> Home · Lookup · Stow · Pick · Orders. The overflow menu holds Create product, Create location, Sync queue, Settings and Log out.</p>
+<p><strong>Bottom navigation:</strong> Home · Lookup · Stow · Pick · Orders. The overflow menu holds Create product, Create location, Sync queue and Log out (with a badge for queued or refused scans).</p>
 <table>
 <thead>
 <tr>
@@ -4457,15 +4457,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>M-05</td>
 <td><code>pick</code></td>
-<td>Pick</td>
-<td>Scan unit → reason picker → confirm</td>
+<td>Pick · Issue · Return</td>
+<td>Pick: reason once, then scan units. Issue: choose a person (name or email), then scan units. Return: scan units coming back (then stow them)</td>
 <td>Next scan ↺</td>
 </tr>
 <tr>
 <td>M-06</td>
 <td><code>orders</code></td>
 <td>Orders to pick/ship</td>
-<td>Requests with lines to pick (ACCEPTED with CIMH lines, APPROVED Pro Bono, PICKING)</td>
+<td>Requests with lines to pick or ship (paid PURCHASING with CIMH-stock lines; Pro Bono APPROVED or PICKING; same filter as the SIA web "To pick" tile)</td>
 <td>Row → M-07</td>
 </tr>
 <tr>
@@ -4506,9 +4506,12 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tbody>
 </table>
 <p><strong>Offline:</strong>
-- Scans are saved with a per-scan <code>Idempotency-Key</code> in Room and sent by WorkManager when the connection returns.
-- The UI shows "queued" chips.
-- A queued scan that the server rejects appears in M-11 with its error.</p>
+- Every scan (stow, pick, relocate) is saved first, with its own <code>Idempotency-Key</code>, in Room. It is then sent at once, or by WorkManager when the connection returns. The key never changes on automatic retries, so a scan that reached the server before the connection dropped is not done twice.
+- Scans are sent oldest first, and a new scan never overtakes a queued one (a stow and a later pick of the same unit arrive in that order).
+- No answer, 408, 429 or 5xx: the scan stays queued. 401: sending stops until the same account logs in again. Any other 4xx: the scan is <strong>refused</strong> and kept in M-11 with the server's message. The server replays a refusal for the same key, so <strong>Retry</strong> in M-11 sends it with a new key; <strong>Discard</strong> deletes it.
+- The UI shows Done / Queued / Refused chips. M-02 shows the queue count and the last sync time; the overflow menu shows a badge.
+- Log out with scans still in the queue asks first: the queue belongs to the account that scanned and is deleted on log out. Scans of another account are never sent with the current account's token.
+- Scan input: live camera (CameraX + ML Kit on the device), or a text field that submits on Enter, for Bluetooth/USB scanners and damaged labels.</p>
 <h2 id="115-user-journeys">11.5 User journeys</h2>
 <h3 id="j-01-registration-and-approval">J-01 Registration and approval</h3>
 <figure><a href="images/24-journey-registration.svg" target="_blank" title="Open full size"><img alt="Registration journey" src="images/24-journey-registration.svg" loading="lazy"></a><figcaption>Registration journey</figcaption></figure>
