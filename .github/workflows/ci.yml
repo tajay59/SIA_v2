@@ -103,8 +103,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "${{ env.NODE_VERSION }}", cache: npm }
-      - name: Dev stack (Mongo RS, Redis, identity, catalog, inventory, orders, media files)
-        run: docker compose -f deploy/compose.dev.yml up -d --build --wait mongo redis identity-svc catalog-svc inventory-svc order-svc media-files
+      - name: Dev stack (Mongo RS, Redis, identity, catalog, inventory, orders, media files, Mailpit)
+        run: docker compose -f deploy/compose.dev.yml up -d --build --wait mongo redis identity-svc catalog-svc inventory-svc order-svc media-files mailpit
       # Event pipelines: J-10 images (catalog relay -> Kafka -> media-worker -> catalog consumer) and J-09 stock
       # (inventory relay -> catalog consumer; catalog events -> inventory consumer). Started without --wait:
       # kafka-init is a one-shot container.
