@@ -76,7 +76,7 @@ const expiresSoon = (r: RequestSummary) =>
     </div>
 
     <v-card border flat>
-      <v-table hover>
+      <v-table v-scroll-region="'Requests'" hover>
         <thead>
           <tr>
             <th>Request</th>

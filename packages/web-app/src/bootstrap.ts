@@ -9,6 +9,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
 import { type GuardOptions, installGuards } from './guards'
+import { vScrollRegion } from './scroll-region'
 import { storedTheme } from './theme-mode'
 
 export interface BootOptions extends GuardOptions {
@@ -92,6 +93,7 @@ export function boot(opts: BootOptions) {
     }
     window.location.assign(to.fullPath)
   })
+  app.directive('scroll-region', vScrollRegion)
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
   router
