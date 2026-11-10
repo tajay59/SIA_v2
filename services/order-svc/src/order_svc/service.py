@@ -60,6 +60,99 @@ def actor(p: Principal) -> dict[str, str]:
 SYSTEM = {"id": "system", "name": "System", "role": "service"}
 
 
+# ---------------------------------------------------------------- erasure (user.deleted)
+
+DELETED = "[deleted]"
+# Where an Actor {id, name, role} can sit in a request (queried by id; replaced by walking the document).
+ACTOR_PATHS = (
+    "history.by.id",
+    "acceptance.by.id",
+    "decline.by.id",
+    "cancellation.by.id",
+    "agreement.verified.by.id",
+    "agreement.rejections.by.id",
+    "quotes.sentBy.id",
+    "quoteDraft.savedBy.id",
+    "purchaseOrders.placedBy.id",
+)
+CONTACT_FIELDS = ("firstname", "lastname", "email", "tel", "attention")
+OPEN_CANCELLABLE = {(t, src) for (t, src, dst) in d.TRANSITIONS if dst == "CANCELLED"}
+
+
+def _scrub_actors(value: Any, user_id: str) -> Any:
+    """Copy of `value` with the person's name replaced in every Actor that carries their id."""
+    if isinstance(value, dict):
+        out = {k: _scrub_actors(v, user_id) for k, v in value.items()}
+        if out.get("id") == user_id and "name" in out:
+            out["name"] = DELETED
+        return out
+    if isinstance(value, list):
+        return [_scrub_actors(v, user_id) for v in value]
+    return value
+
+
+def _forget_update(doc: dict[str, Any], user_id: str) -> dict[str, Any] | None:
+    """The update that forgets `user_id` in one request, or None when nothing is left to change."""
+    sets: dict[str, Any] = {}
+    push: dict[str, Any] = {}
+    for key in (
+        "history",
+        "acceptance",
+        "decline",
+        "cancellation",
+        "agreement",
+        "quotes",
+        "quoteDraft",
+        "purchaseOrders",
+    ):
+        if key in doc and (scrubbed := _scrub_actors(doc[key], user_id)) != doc[key]:
+            sets[key] = scrubbed
+    if doc.get("customer") == user_id:
+        snap = {"firstname": DELETED, "lastname": DELETED, "email": DELETED}
+        if doc.get("customerSnapshot") != snap:
+            sets["customerSnapshot"] = snap
+        if doc.get("customerName") not in (None, DELETED):
+            sets["customerName"] = DELETED
+        if doc.get("notes") and doc["notes"] != DELETED:
+            sets["notes"] = DELETED
+        ship = doc.get("shipTo")
+        if isinstance(ship, dict):
+            # Ship-to is personal (BSD §8): everything but the country (kept for customs) goes.
+            new_ship = {k: (v if k == "country" or v is None else DELETED) for k, v in ship.items()}
+            if new_ship != ship:
+                sets["shipTo"] = new_ship
+        bill = doc.get("billTo")
+        if isinstance(bill, dict):
+            # Billing stays a financial record: the address is kept, the person's contact details go.
+            new_bill = {k: (DELETED if k in CONTACT_FIELDS and v is not None else v) for k, v in bill.items()}
+            if new_bill != bill:
+                sets["billTo"] = new_bill
+        if isinstance(doc.get("acceptance"), dict) and "ip" in doc["acceptance"]:
+            base = sets.get("acceptance", doc["acceptance"])
+            sets["acceptance"] = {k: v for k, v in base.items() if k != "ip"}  # the IP is personal data
+        if (doc["type"], doc["status"]) in OPEN_CANCELLABLE:
+            t = now()
+            reason = "Account deleted"
+            history = sets.get("history", doc.get("history") or [])
+            sets |= {
+                "status": "CANCELLED",
+                "statusAt": t,
+                "cancellation": {"by": SYSTEM, "at": t, "reason": reason, "auto": True},
+                "history": [
+                    *history,
+                    {"from": doc["status"], "to": "CANCELLED", "by": SYSTEM, "at": t, "reason": reason},
+                ],
+            }
+            payload = {"orderId": doc["id"], "customer": user_id, "reason": reason, "auto": True}
+            push["outbox"] = new_event("order.cancelled", payload, correlation_id=doc["id"]).model_dump(mode="python")
+    if not sets and not push:
+        return None
+    update: dict[str, Any] = {"$set": sets | {"updatedAt": now()}, "$inc": {"version": 1}}
+    if push:
+        update["$push"] = push
+    return update
+
+
 def invalid(field_name: str, message: str, code: str = "VALIDATION_FAILED") -> ProblemError:
     return ProblemError(422, code, message, errors=[{"field": field_name, "message": message}])
 
@@ -1246,6 +1339,31 @@ class OrderService:
             )
             n += res.modified_count
         return n
+
+    async def forget_person(self, user_id: str) -> int:
+        """user.deleted (90-day purge or admin erasure, BSD §8): the person's open requests are cancelled
+        (order.cancelled, auto; inventory releases what was held), personal data in their requests becomes
+        "[deleted]" (financial fields stay), their name is removed wherever they acted, and their cart is deleted.
+        Idempotent: a redelivery finds nothing left to change. Returns the number of requests changed."""
+        await self.store.orders.delete_many({"customer": user_id, "status": d.CART})
+        filt = {"status": {"$ne": d.CART}, "$or": [{"customer": user_id}] + [{p: user_id} for p in ACTOR_PATHS]}
+        changed = 0
+        async for doc in self.store.orders.find(filt):
+            for _ in range(3):  # a concurrent staff edit bumps version: reload and retry
+                update = _forget_update(doc, user_id)
+                if update is None:
+                    break
+                res = await self.store.orders.update_one({"_id": doc["_id"], "version": doc["version"]}, update)
+                if res.modified_count:
+                    changed += 1
+                    break
+                reloaded = await self.store.orders.find_one({"_id": doc["_id"]})
+                if reloaded is None:
+                    break
+                doc = reloaded
+            else:
+                raise RuntimeError(f"request {doc['id']} kept changing while forgetting a person")  # -> retry topic
+        return changed
 
     async def purge_carts(self, days: int = 180, batch: int = 500) -> int:
         """Carts untouched for `days` are emptied (business rule)."""

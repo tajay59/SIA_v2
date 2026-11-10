@@ -173,3 +173,66 @@ def test_old_carts_are_emptied(ctx: Ctx) -> None:
     assert ctx.run(ctx.svc.purge_carts()) == 1
     assert ctx.client.get(ctx.url("/cart"), headers=USER).json()["lines"] == []
     assert ctx.client.get(ctx.url("/cart"), headers=PEER).json()["lines"]
+
+
+def _raw(ctx: Ctx, rid: str) -> dict[str, Any]:
+    doc: dict[str, Any] = ctx.run(ctx.db["orders"].find_one({"id": rid}))
+    return doc
+
+
+@pytest.mark.req("TR-PRIV-1")
+def test_user_deleted_cancels_open_requests_and_forgets_the_person(ctx: Ctx) -> None:
+    """BSD §8 right to erasure: open requests cancelled, personal data "[deleted]", financial fields kept."""
+    pro = probono(ctx)
+    ctx.ok(pro, "approve")  # staff acted: USRSTAFF in history
+    paid = ctx.paid_request("MET1", qty=1)
+    ctx.cart_add("MET2")  # a cart with lines
+    handle = make_handler(ctx.svc)
+    ctx.run(handle(envelope("user.deleted", {"userId": "USRUSER"})))
+
+    for rid in (pro, paid):
+        doc = _raw(ctx, rid)
+        assert doc["status"] == "CANCELLED"
+        assert doc["cancellation"]["auto"] is True
+        assert doc["history"][-1]["reason"] == "Account deleted"
+        assert doc["customerSnapshot"] == {"firstname": "[deleted]", "lastname": "[deleted]", "email": "[deleted]"}
+        assert doc["shipTo"]["line1"] == "[deleted]"
+        assert doc["shipTo"]["country"] == "BB"  # kept for customs
+        assert doc["lines"]  # the request itself stays (financial record)
+        cancelled = [e for e in doc["outbox"] if e["type"] == "order.cancelled"]
+        assert cancelled[-1]["payload"] == {
+            "orderId": rid,
+            "customer": "USRUSER",
+            "reason": "Account deleted",
+            "auto": True,
+        }
+    assert "Una" not in str(_raw(ctx, paid))
+    assert "u@met.bb" not in str(_raw(ctx, paid))
+    assert ctx.run(ctx.db["orders"].count_documents({"customer": "USRUSER", "status": "CART"})) == 0
+
+    before = _raw(ctx, pro)["version"]
+    ctx.run(handle(envelope("user.deleted", {"userId": "USRUSER"})))  # redelivery changes nothing
+    assert _raw(ctx, pro)["version"] == before
+
+
+def test_user_deleted_staff_name_removed_where_they_acted(ctx: Ctx) -> None:
+    rid = probono(ctx)
+    ctx.ok(rid, "approve")
+    approver = [h["by"] for h in _raw(ctx, rid)["history"] if h["by"]["id"] == "USRSTAFF"]
+    assert approver
+    assert approver[0]["name"] != "[deleted]"
+    ctx.run(make_handler(ctx.svc)(envelope("user.deleted", {"userId": "USRSTAFF"})))
+    doc = _raw(ctx, rid)
+    assert all(h["by"]["name"] == "[deleted]" for h in doc["history"] if h["by"]["id"] == "USRSTAFF")
+    assert doc["status"] == "APPROVED"  # someone else's request: not cancelled
+    assert doc["customerSnapshot"]["firstname"] != "[deleted]"
+
+
+def test_user_deleted_leaves_requests_past_the_point_of_no_return(ctx: Ctx) -> None:
+    rid = probono(ctx)
+    ctx.ok(rid, "approve")
+    ctx.run(ctx.db["orders"].update_one({"id": rid}, {"$set": {"status": "SHIPPED"}}))
+    ctx.run(make_handler(ctx.svc)(envelope("user.deleted", {"userId": "USRUSER"})))
+    doc = _raw(ctx, rid)
+    assert doc["status"] == "SHIPPED"  # goods are on their way: staff finish it
+    assert doc["customerSnapshot"]["email"] == "[deleted]"

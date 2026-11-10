@@ -9,6 +9,7 @@
                           document.deleted -> files[].deleted
   identity.user.events    user.suspended -> cart blocked (403 ACCOUNT_SUSPENDED); user.reactivated -> unblocked
                           (defence in depth: suspension already revokes every session)
+                          user.deleted -> open requests cancelled, personal data "[deleted]", cart removed
 Other stock events (counts, unit scans) are ignored. Handlers are idempotent; delivery is at-least-once.
 """
 
@@ -64,6 +65,11 @@ def make_handler(service: OrderService) -> Any:
             if not isinstance(account, str) or not account:
                 raise ValueError(f"{t} {event.eventId} lacks userId")
             await service.set_cart_blocked(account, blocked=t == "user.suspended")
+        elif t == "user.deleted":
+            account = p.get("userId")
+            if not isinstance(account, str) or not account:
+                raise ValueError(f"{t} {event.eventId} lacks userId")
+            await service.forget_person(account)
         elif t == "document.deleted":
             if not isinstance(p.get("orderId"), str) or not isinstance(p.get("fileId"), str):
                 raise ValueError(f"{t} {event.eventId} lacks orderId/fileId")
