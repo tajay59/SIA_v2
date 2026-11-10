@@ -19,6 +19,15 @@ export interface BootOptions extends GuardOptions {
 
 const RELOAD_KEY = 'cimh:chunk-reload'
 
+// Set while the document is being left: chunk loads the browser aborts then are not failures, and a
+// reload would fight the navigation the user (or a test) started.
+let leaving = false
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => (leaving = true))
+  window.addEventListener('beforeunload', () => (leaving = true))
+  window.addEventListener('pageshow', () => (leaving = false))
+}
+
 /**
  * Lazy page chunks (Vite `vite:preloadError`). A CSS preload that fails because the user navigated away
  * mid-load is harmless, so it is ignored (Firefox reports it as an uncaught error). A JS chunk that fails
@@ -29,7 +38,7 @@ export function handleChunkErrors(win: Window = window) {
   win.addEventListener('vite:preloadError', (event) => {
     const e = event as Event & { payload?: unknown }
     const message = e.payload instanceof Error ? e.payload.message : String(e.payload ?? '')
-    if (/preload CSS/i.test(message)) {
+    if (leaving || /preload CSS/i.test(message)) {
       event.preventDefault()
       return
     }
@@ -67,6 +76,7 @@ export function boot(opts: BootOptions) {
   // ("Couldn't resolve component"). Load the target page fresh, once; then let the error page show.
   router.onError((err: unknown, to) => {
     const msg = err instanceof Error ? err.message : String(err)
+    if (leaving) return
     if (!/resolve component|dynamically imported module|Importing a module script failed|error loading dynamically/i.test(msg)) return
     let last = 0
     try {
@@ -84,6 +94,13 @@ export function boot(opts: BootOptions) {
   })
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
-  void router.isReady().then(() => app.mount(opts.mount ?? '#app'))
+  router
+    .isReady()
+    .then(() => app.mount(opts.mount ?? '#app'))
+    .catch(() => {
+      // The first route failed (router.onError above reloads once for a missing chunk). While leaving
+      // the page this is expected; otherwise mount anyway so the app's error handling can show.
+      if (!leaving) app.mount(opts.mount ?? '#app')
+    })
   return { app, router, pinia }
 }
