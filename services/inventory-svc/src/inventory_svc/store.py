@@ -6,6 +6,9 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
+from cimh_common.validation import apply_validators
+from inventory_svc.schemas import SCHEMAS
+
 T = TypeVar("T")
 
 # A unit is available when it is on a shelf, not picked and not reserved (BSD §5.8). `reservedFor: None`
@@ -27,6 +30,8 @@ class Store:
         self.stock = db["stock"]
 
     async def ensure_indexes(self) -> None:
+        # BSD §7 validators first: the collections exist with their schema before any index or write.
+        await apply_validators(self.db, SCHEMAS)
         s = self.storage
         await s.create_index("barcode", unique=True)
         await s.create_index([("product", 1), ("stowed", 1), ("picked", 1), ("reservedFor", 1)])

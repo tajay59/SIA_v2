@@ -19,6 +19,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.parse import urlparse
 
+from bson.decimal128 import Decimal128
+
 DB = "inventory"
 TAG = "perf"
 SAFE_HOSTS = {"localhost", "127.0.0.1", "mongo", "host.docker.internal"}
@@ -76,7 +78,7 @@ def product(rng: random.Random, i: int, base: datetime) -> dict[str, Any]:
         "sellable": sellable,
         "probono": probono,
         "probonoMaxPerRequest": rng.choice([None, 2, 5]) if probono else None,
-        "cost": f"{rng.randint(5, 25000)}.{rng.randint(0, 99):02d}",
+        "cost": Decimal128(f"{rng.randint(5, 25000)}.{rng.randint(0, 99):02d}"),  # money is Decimal128 (BSD)
         "threshold": rng.randint(0, 10),
         "unitquantity": 1,
         "keywords": [ptype.lower(), *item.split()],

@@ -184,6 +184,18 @@ Go/no-go requires **all automated checks green** and the manual spot-check signe
 | DR-2 | After organisation review and fixes | Staging (main host, `sia-staging`) | Full rehearsal incl. files and ClamAV; v2 UI checks | All checks green; spot-check signed; timing measured |
 | DR-3 | ≤ 7 days before cut-over | Staging, fresh dump | Final rehearsal with the exact runbook (§8) | Duration ≤ 45 min; zero manual fixes needed |
 
+**DR-1 result (2026-11-10): pass.** `bash tools/migrate/dr1.sh db` converts the export (M01–M07 + `stock`), loads it into a throwaway MongoDB 8.0.30 replica set, runs M09 with the services' own index code and `xuser` view, and runs every automated check in §6 in **10 s**: 34 pass, 0 fail, 1 warning (after the validator fix below).
+
+| Area | Result |
+|---|---|
+| Counts | accounts 65 → 59 (6 duplicate-email accounts merged); product 83, storage 697, history 860 unchanged; 39 orders → 39 requests (0 split: no legacy order mixed paid and Pro Bono lines) + 9 carts; 83 `stock` docs |
+| Sums | unit states unchanged (484 stowed, 213 picked; no self-stowed units, so 0 `assignedTo`); line quantities 39/39 orders, 185 → 185 |
+| References, enumerations, uniqueness | all pass |
+| Mapping table | every free-text decision: country text → ISO (12 spellings), order state → status, `sellable` → booleans, shipping method → carrier (11 values), organisation text → organisation (24). Values that can hold names (shipping method, organisation text) are summarised in `report.json`; the full table is in `mappings.local.json` next to the export (git-ignored) |
+| Warning | 29 active customers without an organisation: admins assign them before DR-2 (§9) |
+| Validators | **found** missing in every service (first run); **built** the same day (BSD §7). Rerun: every migrated document satisfies its collection's validator (8 collections, 0 invalid); totals now 34 pass, 1 warning |
+| Not covered by DR-1 | M08 files (checked by `files_to_v2.py` on its own output; 66 order uploads missing from the export), logins with existing passwords (need known passwords: DR-2), manual spot-check |
+
 Each dry run produces a **Migration Dry-run Report** (Documentation Index #19).
 
 ## 8. Cut-over runbook (production)

@@ -574,7 +574,7 @@ There are **no foreign keys and no joins across services**. A reference that tur
 
 ## 7. Validation
 
-Every collection gets a `$jsonSchema` validator generated from the service's Pydantic models. Rollout:
+Every collection has a `$jsonSchema` validator, written per service in `<service>/schemas.py` (the services store plain documents, so there are no Pydantic document models to generate them from) and applied by the service at start-up before its indexes (`cimh_common.validation.apply_validators`; the Mongo roles already grant `createCollection`/`collMod`). They require ids, versions, timestamps and enumerations and type the other known fields, but leave extra fields open. `MONGO_VALIDATION=migration` gives `moderate`/`warn` while a migration loads; the default `strict` gives `strict`/`error` (dev, CI and production after sign-off). `stock` requires only `id` because partial upserts build it. Rollout:
 1. `validationLevel: "moderate"`, `validationAction: "warn"` during the migration.
 2. `"strict"` / `"error"` after migration sign-off.
 

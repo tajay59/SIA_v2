@@ -6,6 +6,9 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any, TypeVar
 
+from cimh_common.validation import apply_validators
+from order_svc.schemas import SCHEMAS
+
 T = TypeVar("T")
 
 
@@ -19,6 +22,8 @@ class Store:
         self.orders = db["orders"]
 
     async def ensure_indexes(self) -> None:
+        # BSD §7 validators first: the collections exist with their schema before any index or write.
+        await apply_validators(self.db, SCHEMAS)
         o = self.orders
         await o.create_index("id", unique=True)
         # One cart per user (BSD §5.10): only carts carry `cartOf` (= customer), so a sparse unique index does it
