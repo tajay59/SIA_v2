@@ -8,6 +8,7 @@
 #   - Redis ACLs (allowed and denied cases)
 #   - identity-svc + its outbox relay on that platform: register -> event on identity.user.events
 #   - backup (mongodump --oplog from a secondary -> restic) and restore into a fresh instance, counts verified
+#   - resilience (TEST_STRATEGY §7): one Kafka broker down, outbox relay down + backlog metric, Redis restart (AOF)
 #
 #   tools/infra/rehearsal/run.sh            # run everything, tear down at the end
 #   KEEP=1 tools/infra/rehearsal/run.sh     # leave the stack running for a look around
@@ -71,7 +72,7 @@ tar -C "$SEC" -cf - . | docker run --rm -i -v $SECRETS_VOLUME:/s alpine:3.20 sh 
   put() { d=$1; uid=$2; shift 2; mkdir -p /s/$d; for f in "$@"; do cp "/in/$f" "/s/$d/$(basename "$f")"; done; chown -R "$uid" /s/$d; chmod 500 /s/$d; chmod 400 /s/$d/*; }
   for m in 1 2 3; do
     case $m in 1) h=sia-host.cimh.local;; 2) h=sia-pi-a.cimh.local;; 3) h=sia-pi-b.cimh.local;; esac
-    put m$m 999 pki/ca.pem mongo_keyfile mongo_root mongo_svc_identity mongo_svc_catalog mongo_svc_inventory mongo_svc_order mongo_svc_backup mongo_admin_ops
+    put m$m 999 pki/ca.pem mongo_keyfile mongo_root mongo_svc_identity mongo_svc_catalog mongo_svc_inventory mongo_svc_order mongo_svc_backup mongo_svc_monitor mongo_admin_ops
     cp /in/pki/$h.pem /s/m$m/mongo.pem; chown 999 /s/m$m/mongo.pem; chmod 400 /s/m$m/mongo.pem
   done
   put redis 999 redis_users.acl redis_exporter
@@ -169,6 +170,66 @@ mongo_root --eval '
 if $C --profile tools run --rm -T backup backup.sh; then ok "backup.sh (mongodump --oplog from a secondary -> restic)"; else bad "backup.sh"; fi
 start mongo-restore
 if $C --profile tools run --rm -T backup restore.sh latest; then ok "restore.sh: every collection count matches the manifest"; else bad "restore.sh"; fi
+
+echo "== 9. resilience (TEST_STRATEGY §7: the parts that run on one host)"
+register() { # email -> account id, once the account exists
+  curl -s -X POST http://127.0.0.1:18101/api/identity/v1/auth/register -H 'content-type: application/json' \
+    -d "{\"firstname\":\"Re\",\"lastname\":\"Silience\",\"email\":\"$1\",\"password\":\"Rehearsal-pass-$RANDOM-x\",\"organisationText\":\"Rehearsal Org\",\"country\":\"BB\"}" >/dev/null
+  mongo_root --eval "print(db.getSiblingDB('inventory').accounts.findOne({email: '$1'}).id)" | tr -d '\r'
+}
+published() { # account id -> 0 if user.registered for it is on Kafka (fresh consumer group, read from the start)
+  # A few tries: right after a broker or relay restart the group coordinator can take a while to settle.
+  for _ in 1 2 3; do
+    out=$(kclient identity "timeout 90 /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server kafka1:9092 --consumer.config /tmp/c.properties --group identity-reh-$RANDOM --topic identity.user.events --from-beginning --timeout-ms 30000" || true); grep -q "$1" <<< "$out" && return 0
+  done
+  return 1
+}
+pending() { # account id -> number of events still in its outbox
+  mongo_root --eval "print((db.getSiblingDB('inventory').accounts.findOne({id: '$1'}).outbox || []).length)" | tr -d '\r'
+}
+
+# (Output is captured before grep -q: with pipefail, grep -q closing the pipe early fails the producer.)
+# Exporters: the alert rules need these exact metric names (promtool cannot check names against exporters).
+start mongodb-exporter kafka-exporter redis-exporter
+scrape() { docker run --rm --network sia-rehearsal_data curlimages/curl:8.11.1 -fsS "http://$1/metrics"; }
+has_metric() { for _ in $(seq 1 40); do out=$(scrape "$1" 2>/dev/null || true); grep -q "^$2" <<< "$out" && return 0; sleep 3; done; return 1; }
+check "mongodb-exporter: mongodb_rs_members_health (ReplicaSetMemberDown)" has_metric mongodb-exporter:9216 'mongodb_rs_members_health{'
+check "kafka-exporter: kafka_topic_partition_current_offset (DlqNotEmpty)" has_metric kafka-exporter:9308 'kafka_topic_partition_current_offset{'
+check "kafka-exporter: kafka_consumergroup_lag (ConsumerLagHigh)" has_metric kafka-exporter:9308 'kafka_consumergroup_lag{'
+check "redis-exporter: redis_up 1" has_metric redis-exporter:9121 'redis_up 1'
+# A Pi down shows as an unhealthy member (alert ReplicaSetMemberDown; TEST_STRATEGY §7 "Stop Pi A").
+$C stop mongo2 >/dev/null
+member_down() { for _ in $(seq 1 20); do out=$(scrape mongodb-exporter:9216 2>/dev/null || true); grep -Eq '^mongodb_rs_members_health\{.*\} 0$' <<< "$out" && return 0; sleep 3; done; return 1; }
+check "Pi A stopped: mongodb_rs_members_health 0 for one member" member_down
+$C start mongo2 >/dev/null
+
+# One Kafka broker down: acks=all with min.insync.replicas=2 still succeeds on the other two; nothing is lost.
+$C stop kafka3 >/dev/null
+id=$(register "kafka-down-$RANDOM@example.org")
+for _ in $(seq 1 20); do [[ $(pending "$id") == 0 ]] && break; sleep 2; done
+check "one broker down: relay still publishes (outbox drained)" test "$(pending "$id")" = 0
+check "one broker down: the event is on Kafka" published "$id"
+$C up -d --wait --wait-timeout 180 kafka3 >/dev/null 2>&1 || true
+
+# Outbox relay down: events wait on the document, the service reports the backlog, a restart publishes them.
+$C stop outbox-relay-identity >/dev/null
+id=$(register "relay-down-$RANDOM@example.org")
+sleep 5
+check "relay down: event waits on the document" test "$(pending "$id")" -ge 1
+backlog() { curl -fsS http://127.0.0.1:18101/metrics | grep -E '^outbox_pending_events\{collection="accounts"' | grep -qv ' 0.0$'; }
+check "relay down: identity-svc reports outbox_pending_events > 0 (alert OutboxBacklog)" backlog
+$C start outbox-relay-identity >/dev/null
+for _ in $(seq 1 30); do [[ $(pending "$id") == 0 ]] && break; sleep 2; done
+check "relay restarted: backlog published" test "$(pending "$id")" = 0
+check "relay restarted: the event is on Kafka" published "$id"
+
+# Redis restart: revocations survive (AOF, appendfsync everysec: wait over a second before the restart).
+check "redis: revocation written" bash -c "[[ \$($C exec -T redis redis-cli --no-auth-warning --user identity --pass \"\$(cat '$SEC/redis_identity')\" SET revoked:session:rehearsal 1 EX 900 | tr -d '\r') == OK ]]"
+sleep 2
+$C restart redis >/dev/null
+for _ in $(seq 1 30); do rcli identity PING 2>/dev/null | grep -q PONG && break; sleep 1; done
+check "redis restarted: revocation still there (AOF)" bash -c "[[ \$($C exec -T redis redis-cli --no-auth-warning --user identity --pass \"\$(cat '$SEC/redis_identity')\" EXISTS revoked:session:rehearsal | tr -d '\r') == 1 ]]"
+check "redis restarted: identity-svc ready again" bash -c "for i in \$(seq 1 30); do curl -fsS http://127.0.0.1:18101/health/ready | grep -q '\"status\":\"ok\"' && exit 0; sleep 1; done; exit 1"
 
 echo
 echo "rehearsal: $PASS passed, $FAIL failed"

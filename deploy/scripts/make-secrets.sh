@@ -20,7 +20,7 @@ make() { # name generator...
 }
 
 # MongoDB: root admin, per-service users (roles.js), backup, read-only ops.
-for u in mongo_root mongo_svc_identity mongo_svc_catalog mongo_svc_inventory mongo_svc_order mongo_svc_backup mongo_admin_ops; do
+for u in mongo_root mongo_svc_identity mongo_svc_catalog mongo_svc_inventory mongo_svc_order mongo_svc_backup mongo_svc_monitor mongo_admin_ops; do
   make "$u" rand
 done
 make mongo_keyfile sh -c 'openssl rand -base64 756 | tr -d "\n"'
@@ -56,6 +56,8 @@ for svc in identity catalog inventory order; do
   url "mongo_url_$svc" "mongodb://svc_$svc:$(cat "$DIR/mongo_svc_$svc")@$MONGO_HOSTS/inventory?authSource=admin&$MONGO_OPTS"
 done
 url mongo_url_backup "mongodb://svc_backup:$(cat "$DIR/mongo_svc_backup")@$BACKUP_HOST/?authSource=admin&tls=true&tlsCAFile=/run/secrets/ca.pem&directConnection=true"
+# mongodb-exporter: replica set view (member health, lag) through whichever member is primary.
+url mongo_url_monitor "mongodb://svc_monitor:$(cat "$DIR/mongo_svc_monitor")@$MONGO_HOSTS/admin?replicaSet=rs0&tls=true&tlsCAFile=/run/secrets/ca.pem"
 for svc in identity catalog inventory order document notification media relay; do
   url "redis_url_$svc" "redis://$svc:$(cat "$DIR/redis_$svc")@$REDIS_HOST/0"
 done

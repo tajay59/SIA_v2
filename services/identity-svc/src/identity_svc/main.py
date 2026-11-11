@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, redis_revocation_check
+from cimh_common.outbox import outbox_backlog_hook
 
 from . import security as sec
 from .api import router
@@ -74,6 +75,7 @@ def build_app(
         yield
 
     app.router.lifespan_context = lifespan
+    app.state.metrics.scrape_hooks.append(outbox_backlog_hook(app.state.metrics, {"accounts": db["accounts"]}))
     app.state.settings = s
     app.state.keys = keys
     app.state.identity = IdentityService(

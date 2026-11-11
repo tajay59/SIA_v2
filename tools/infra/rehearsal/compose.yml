@@ -98,6 +98,25 @@ services:
     volumes:
       - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: app } }
 
+  mongodb-exporter:
+    extends: { file: ../../../deploy/compose.prod.yml, service: mongodb-exporter }
+    build: { context: ../../../deploy }
+    secrets: !reset []
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: app } }
+
+  kafka-exporter:
+    extends: { file: ../../../deploy/compose.prod.yml, service: kafka-exporter }
+    secrets: !reset []
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: kafka } }
+
+  redis-exporter:
+    extends: { file: ../../../deploy/compose.prod.yml, service: redis-exporter }
+    secrets: !reset []
+    volumes:
+      - { type: volume, source: secrets, target: /run/secrets, read_only: true, volume: { subpath: redis } }
+
   # Kafka client used by run.sh to read what the relay published, as the `identity` consumer principal.
   kafka-client:
     image: apache/kafka:3.9.0

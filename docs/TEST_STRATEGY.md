@@ -111,16 +111,18 @@ Concurrency (P4 exit): `tests/integration/test_inventory.py` races two reservati
 
 ## 7. Resilience tests
 
-| Test | Expected |
-|---|---|
-| Stop Pi A | No user impact; alert "member down" |
-| Stop sia-host mongo1 | Pi becomes primary within 30 s; writes resume; host rejoins and takes primary back |
-| Stop one Kafka broker | No message loss; producers continue (`min.insync.replicas=2`) |
-| Kill a service replica mid-request | nginx retries idempotent GETs; client retries POST with the same Idempotency-Key → one effect |
-| Restart Redis | Revocations survive (AOF); rate limits reset (acceptable) |
-| Outbox relay down 10 min | Events queue on documents; published on restart; alert "outbox backlog" fired |
-| Disk 90 % | Alert at 80 %; services keep running; Kafka retention trims |
-| Power cut simulation | Pis need manual LUKS unlock; runbook steps work; RTO measured |
+| Test | Expected | Where it runs (P9) |
+|---|---|---|
+| Stop Pi A | No user impact; alert "member down" | **Rehearsal** (`tools/infra/rehearsal/run.sh` §9): member health 0 in `mongodb-exporter`; alert rule in promtool tests. Real Pi: owner |
+| Stop sia-host mongo1 | Pi becomes primary within 30 s; writes resume; host rejoins and takes primary back | **Rehearsal** §7 |
+| Stop one Kafka broker | No message loss; producers continue (`min.insync.replicas=2`) | **Rehearsal** §9: relay publishes, event read back |
+| Kill a service replica mid-request | nginx retries idempotent GETs; client retries POST with the same Idempotency-Key → one effect | Idempotency replay: unit/integration tests (`IdempotencyStore`); nginx retry: on the host (owner) |
+| Restart Redis | Revocations survive (AOF); rate limits reset (acceptable) | **Rehearsal** §9 |
+| Outbox relay down 10 min | Events queue on documents; published on restart; alert "outbox backlog" fired | **Rehearsal** §9 (backlog metric, drain, event read back); alert `OutboxBacklog` in `deploy/prometheus/tests/alerts.test.yml` |
+| Disk 90 % | Alert at 80 %; services keep running; Kafka retention trims | Host (owner) |
+| Power cut simulation | Pis need manual LUKS unlock; runbook steps work; RTO measured | Host + Pis (owner) |
+
+Alert rules are checked in CI (`promtool check config` + `test rules`). Found in P9: the production Prometheus config did not parse (unquoted `${ENV}` in a flow mapping) and the MongoDB/Kafka/Redis exporters it scraped did not exist, so three alerts could never fire; both fixed.
 
 ## 8. Test environments and data
 

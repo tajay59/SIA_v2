@@ -3,7 +3,7 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-  external_labels: { site: cimh, env: ${ENV} }
+  external_labels: { site: cimh, env: "${ENV}" }   # Prometheus 3 expands ${ENV} in external labels
 
 rule_files: [/etc/prometheus/rules/*.yml]
 

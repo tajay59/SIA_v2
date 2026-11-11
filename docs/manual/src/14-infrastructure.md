@@ -109,7 +109,7 @@ Every service: `restart: unless-stopped`, `read_only: true` (+ `tmpfs: /tmp`), `
 | mongo1 | `mongo` | 1 | 4.0 | 8 GB (`wiredTigerCacheSizeGB: 6`) | data | `/srv/mongo`; port 27017 bound to the VLAN IP only |
 | prometheus | `prom/prometheus` | 1 | 0.5 | 1.5 GB | data, app | `/srv/prometheus` (retention 30 d) |
 | alertmanager | `prom/alertmanager` | 1 | 0.1 | 128 MB | data | SMTP (Gmail) via `render-config.sh` |
-| exporters | node, mongodb, kafka, redis | 1 each | 0.1 | 64 MB each | data | node-exporter uses host network/pid read-only |
+| exporters | node, mongodb (`percona/mongodb_exporter` in a busybox wrapper, user `svc_monitor`: `clusterMonitor`), kafka (`danielqsj/kafka-exporter`, SCRAM user `exporter`: Describe only), redis (`oliver006/redis_exporter`, ACL user `exporter`) | 1 each | 0.1 | 64 MB each (redis 32 MB) | data | node-exporter uses host network/pid read-only; each runs as the uid that owns its secret file |
 | **Total limits** | | | | **≈ 22.9 GB** + OS/Docker ≈ 2 GB = **≈ 25 GB** | | matches TRD §6.3 |
 
 ### 4.2 Docker networks
@@ -187,8 +187,10 @@ rs.initiate({
 
 Alerts: backup age > 26 h; restic check failure; repository size growth > 20 %/week.
 
+Restores run `mongorestore --bypassDocumentValidation`: the dump re-creates each collection with its BSD §7 validator, which would otherwise silently drop older documents that predate a schema change (found by the P9 rehearsal).
+
 ## 14.8 Monitoring endpoints
-Prometheus scrapes: services `/metrics`, node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (`/ops/prometheus`, admin basic-auth + IP allow-list).
+Prometheus scrapes: services `/metrics` (incl. `outbox_pending_events` / `outbox_oldest_event_age_seconds`, computed by each owning service at scrape time so a stopped relay still shows), node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (`/ops/prometheus`, admin basic-auth + IP allow-list).
 
 ## 14.9 Environments
 

@@ -91,6 +91,7 @@ def create_app(
     @app.get("/metrics", include_in_schema=False)
     async def metrics_endpoint() -> Response:
         # nginx does not route /metrics; Prometheus scrapes it on the internal network.
+        await metrics.collect()
         return metrics.render()
 
     return app

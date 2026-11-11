@@ -226,6 +226,11 @@ jobs:
           deploy/scripts/render-config.sh prod
           docker run --rm -v "$PWD/deploy/prometheus:/c:ro" --tmpfs /run/secrets --entrypoint sh prom/alertmanager:v0.28.0 \
             -c 'echo x > /run/secrets/smtp_password && amtool check-config /c/alertmanager.rendered.yml'
+      - name: Prometheus config, alert rules and rule unit tests (promtool)
+        run: |
+          docker run --rm -v "$PWD/deploy/prometheus:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.1.0 check config --syntax-only /etc/prometheus/prometheus.yml
+          docker run --rm -v "$PWD/deploy/prometheus:/etc/prometheus:ro" --entrypoint promtool prom/prometheus:v3.1.0 check config --syntax-only /etc/prometheus/prometheus.dev.yml
+          docker run --rm -v "$PWD/deploy/prometheus:/p:ro" -w /p/tests --entrypoint promtool prom/prometheus:v3.1.0 test rules alerts.test.yml
 
   rehearsal:
     name: platform rehearsal (replica set, Kafka TLS/ACL, Redis ACL, backup/restore)

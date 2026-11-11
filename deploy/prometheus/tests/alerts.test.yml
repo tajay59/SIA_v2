@@ -1,0 +1,31 @@
+# promtool test rules deploy/prometheus/tests/alerts.test.yml (CI job infra)
+rule_files: [../rules/alerts.yml]
+evaluation_interval: 30s
+tests:
+  # Relay stopped: the oldest event ages past 5 min, then 2 min more -> OutboxBacklog fires (TEST_STRATEGY §7).
+  - interval: 30s
+    input_series:
+      - series: 'outbox_oldest_event_age_seconds{service="order-svc",collection="orders",instance="a"}'
+        values: '0+30x20'
+      - series: 'outbox_oldest_event_age_seconds{service="order-svc",collection="orders",instance="b"}'
+        values: '0+30x20'
+      - series: 'outbox_oldest_event_age_seconds{service="catalog-svc",collection="product",instance="a"}'
+        values: '0x20'
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: OutboxBacklog
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: OutboxBacklog
+        exp_alerts:
+          - exp_labels: { severity: critical, service: order-svc, collection: orders }
+            exp_annotations: { summary: "Outbox of orders not published for 8m 0s: is its outbox relay running?" }
+  # A relay that keeps up never fires.
+  - interval: 30s
+    input_series:
+      - series: 'outbox_oldest_event_age_seconds{service="identity-svc",collection="accounts",instance="a"}'
+        values: '0 2 0 1 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0'
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: OutboxBacklog
+        exp_alerts: []

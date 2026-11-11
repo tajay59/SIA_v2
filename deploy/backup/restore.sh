@@ -16,7 +16,7 @@ echo "restoring $WHICH"
 
 restic dump --tag "mongo,$WHICH" --path /manifest.json latest manifest.json > /tmp/manifest.json
 restic dump --tag "mongo,$WHICH" --path /mongo.archive.gz latest mongo.archive.gz \
-  | mongorestore --uri "$TARGET" --archive --gzip --oplogReplay ${DROP:+--drop} --quiet
+  | mongorestore --uri "$TARGET" --archive --gzip --oplogReplay --bypassDocumentValidation ${DROP:+--drop} --quiet
 
 # Verify counts.
 mongosh "$TARGET" --quiet --eval '

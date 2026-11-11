@@ -35,6 +35,13 @@ groups:
         for: 5m
         labels: { severity: warning }
         annotations: { summary: "{{ $labels.consumergroup }} lag on {{ $labels.topic }} > 1000" }
+      - alert: OutboxBacklog
+        # Reported by the owning services (not the relay), so a stopped relay still fires this. The relay
+        # normally publishes within seconds (change stream) and sweeps every 30 s.
+        expr: max by (service, collection) (outbox_oldest_event_age_seconds) > 300
+        for: 2m
+        labels: { severity: critical }
+        annotations: { summary: "Outbox of {{ $labels.collection }} not published for {{ $value | humanizeDuration }}: is its outbox relay running?" }
 
   - name: data
     rules:
