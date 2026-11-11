@@ -164,6 +164,7 @@ rs.initiate({
 ### 5.4 nginx
 - Sites: `store`, `sia`, `staging-*`; snippets: `security-headers.conf` (CSP, HSTS, etc.), `rate-limits.conf` (TRD TR-SEC-5), `api-upstreams.conf` (Docker DNS `resolver 127.0.0.11 valid=10s`), `protected-files.conf` (`location /_protected/ { internal; alias /srv/sia-data/protected/; }`).
 - Caching: hashed SPA assets `immutable` 1 y; `index.html` no-cache; `/media/products/` 30 d.
+- **Built (P9, pen test F-01):** `deploy/nginx/` (`templates/sites.conf.template` rendered from `env/prod.env`; `snippets/` security headers, proxy, shared API routes incl. `/_protected/`), `certs.sh` (first certificate), `test-config.sh` (`nginx -t` in CI). `/internal/*` refused on the decoded URI; `X-Real-IP` always overwritten; services' duplicate headers hidden; certbot renews every 12 h, nginx reloads every 6 h. Prometheus serves under `/ops/prometheus/` (route prefix).
 
 ### 5.5 ClamAV
 `clamd` container on `data`; document-svc streams uploads via `INSTREAM`; `freshclam` daily; alert if signatures older than 48 h.
@@ -215,7 +216,7 @@ Prometheus scrapes: services `/metrics` (incl. `outbox_pending_events` / `outbox
 4. Create private CA; issue MongoDB/Kafka/Redis certs; load secrets from the password manager into `deploy/secrets/`.
 5. Start Pis (`compose.pi.yml`), then mongo1; run `init-replset.js` and `roles.js`; check `rs.status()` (1 primary, 2 secondaries).
 6. Start Kafka, run `kafka-setup` (topics + ACLs); start Redis, Apicurio, ClamAV.
-7. Start services and nginx; obtain Let's Encrypt certs; smoke test `/health/ready` everywhere.
+7. Copy the SHOP and SIA builds to `/srv/sia-web/shop` and `/srv/sia-web/sia`; set `SIA_HOST`, `STORE_HOST`, `OPS_ALLOW_CIDR`, `CERT_EMAIL` in `env/prod.env`; start services; `bash nginx/certs.sh` (temporary certificate → Let's Encrypt for both names → reload; renewal is then automatic); smoke test `/health/ready` everywhere and `tools/security/probes.py` gateway probes (`GW_URL`, `GW_HOST`). Staging server blocks (LAN-only, §3.2) join when staging is provisioned: the production nginx must not depend on the on-demand staging network.
 8. Prometheus/Alertmanager up (`provision.sh` runs `scripts/render-config.sh prod` first: `ALERT_EMAIL_TO`, `SMTP_HOST`, `SMTP_USER` from `env/prod.env`); send a test alert email. After changing those settings: `scripts/render-config.sh prod && docker compose -f compose.prod.yml up -d alertmanager`.
 9. Configure backups on Pi B; run the first backup and a restore into staging.
 10. Hand over to the migration (Migration Plan DR-1).

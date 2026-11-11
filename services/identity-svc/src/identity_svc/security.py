@@ -3,6 +3,7 @@ TOTP (RFC 6238) and AES-GCM envelopes for secrets at rest."""
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import hmac
@@ -17,10 +18,14 @@ from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
+from cimh_common.errors import ProblemError
+
 log = logging.getLogger(__name__)
 
-# OWASP-recommended Argon2id parameters (m=19 MiB is the floor; we use 64 MiB, t=3, p=4).
-_hasher = PasswordHasher(time_cost=3, memory_cost=64 * 1024, parallelism=4)
+# Argon2id at the OWASP recommended setting (m=19 MiB, t=2, p=1): owner decision 2026-11-11 after the P9 burst
+# test (64 MiB/t=3/p=4 cost 540 ms per check at 0.5 CPU, ~1.7 logins/s; this costs ~63 ms). Older hashes are
+# upgraded at the next successful login (needs_rehash).
+_hasher = PasswordHasher(time_cost=2, memory_cost=19 * 1024, parallelism=1)
 _DUMMY_HASH = _hasher.hash("dummy-password-for-timing")
 
 
@@ -158,3 +163,40 @@ def otpauth_uri(secret_b32: str, email: str, issuer: str = "CIMH Stores") -> str
         f"otpauth://totp/{quote(issuer)}:{quote(email)}?secret={secret_b32}"
         f"&issuer={quote(issuer)}&algorithm=SHA1&digits=6&period=30"
     )
+
+
+# Argon2 is CPU- and memory-heavy (64 MiB each). It runs in worker threads (argon2-cffi releases the GIL), so
+# the event loop keeps serving health checks, refreshes and reads while logins queue (P9 burst test: hashing
+# on the loop froze identity for minutes). At most HASH_CONCURRENCY hashes per process (memory: 4 x 19 MiB
+# inside a 256 MB container); a caller that cannot start within HASH_WAIT_S gets 503 AUTH_BUSY.
+HASH_CONCURRENCY = int(os.environ.get("HASH_CONCURRENCY", "4"))
+HASH_WAIT_S = float(os.environ.get("HASH_WAIT_S", "5"))
+_hash_slots: asyncio.Semaphore | None = None
+
+
+async def _in_thread(fn: Callable[..., object], *args: object) -> object:
+    global _hash_slots
+    if _hash_slots is None:
+        _hash_slots = asyncio.Semaphore(HASH_CONCURRENCY)
+    try:
+        await asyncio.wait_for(_hash_slots.acquire(), timeout=HASH_WAIT_S)
+    except TimeoutError:
+        raise ProblemError(
+            503, "AUTH_BUSY", "Sign-in is busy; try again in a moment", headers={"Retry-After": "3"}
+        ) from None
+    try:
+        return await asyncio.to_thread(fn, *args)
+    finally:
+        _hash_slots.release()
+
+
+async def hash_password_async(password: str) -> str:
+    return str(await _in_thread(hash_password, password))
+
+
+async def verify_password_async(stored_hash: str | None, password: str) -> bool:
+    return bool(await _in_thread(verify_password, stored_hash, password))
+
+
+async def verify_legacy_async(stored: str, password: str) -> bool:
+    return bool(await _in_thread(verify_legacy_werkzeug, stored, password))

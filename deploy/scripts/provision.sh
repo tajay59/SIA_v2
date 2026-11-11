@@ -42,6 +42,8 @@ mkdir -p /srv/mongo /srv/redis /srv/kafka/1 /srv/kafka/2 /srv/kafka/3 /srv/prome
 chown 999 /srv/mongo /srv/redis
 chown 1000 /srv/kafka/1 /srv/kafka/2 /srv/kafka/3
 chown 65534 /srv/prometheus
+# Edge (deploy/nginx): certificates (certbot writes, nginx reads), HTTP-01 webroot, SPA builds (shop/, sia/).
+mkdir -p /srv/letsencrypt /srv/certbot-www /srv/sia-web/shop /srv/sia-web/sia
 # Files volume (INFRASTRUCTURE §5): services write as 10001; nginx serves products/ read-only.
 mkdir -p /srv/sia-data/incoming /srv/sia-data/public/products /srv/sia-data/protected /srv/sia-data/quarantine
 chown 10001 /srv/sia-data /srv/sia-data/incoming /srv/sia-data/public /srv/sia-data/public/products /srv/sia-data/protected /srv/sia-data/quarantine

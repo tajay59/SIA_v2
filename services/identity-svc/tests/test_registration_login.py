@@ -320,3 +320,20 @@ def test_admin_session_is_at_most_8h(ctx: Ctx) -> None:
     sid = jwt.decode(t["accessToken"], options={"verify_signature": False})["sid"]
     sess = json.loads(ctx.run(ctx.redis.get(f"sess:{sid}")))
     assert sess["exp"] - time.time() <= 8 * 3600 + 5
+
+
+def test_login_answers_503_when_hashing_is_saturated(ctx: Ctx, monkeypatch: pytest.MonkeyPatch) -> None:
+    """P9 burst test: Argon2 runs in threads with a per-process cap; a full queue answers 503 quickly."""
+    import asyncio
+
+    from identity_svc import security as sec
+
+    ctx.seed_account("u@met.bb")
+    monkeypatch.setattr(sec, "HASH_WAIT_S", 0.05)
+    monkeypatch.setattr(sec, "_hash_slots", asyncio.Semaphore(0))  # every slot taken
+    r = ctx.client.post(ctx.url("/auth/login"), json={"email": "u@met.bb", "password": GOOD_PW})
+    assert r.status_code == 503
+    assert r.json()["code"] == "AUTH_BUSY"
+    assert r.headers["Retry-After"] == "3"
+    monkeypatch.setattr(sec, "_hash_slots", None)
+    assert ctx.client.post(ctx.url("/auth/login"), json={"email": "u@met.bb", "password": GOOD_PW}).status_code == 200
