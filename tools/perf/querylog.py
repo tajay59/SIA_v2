@@ -48,6 +48,10 @@ class _Cursor:
         self._q.limit = n
         return self
 
+    def max_time_ms(self, ms: int) -> _Cursor:
+        self._max_ms = ms
+        return self
+
     async def to_list(self, length: int | None = None) -> list[dict[str, Any]]:
         self._log.queries.append(self._q)
         cur = self._real.find(self._q.filter, self._q.projection, **self._kw)  # keeps the transaction session
@@ -57,6 +61,8 @@ class _Cursor:
             cur = cur.skip(self._q.skip)
         if self._q.limit:
             cur = cur.limit(self._q.limit)
+        if getattr(self, "_max_ms", None):
+            cur = cur.max_time_ms(self._max_ms)
         return list(await cur.to_list(length))
 
 

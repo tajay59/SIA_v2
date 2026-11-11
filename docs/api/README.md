@@ -121,7 +121,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | Accounts / organisations | `ACCOUNT_ILLEGAL_TRANSITION`, `DUPLICATE`, `ORG_MERGE_INVALID` |
 | Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `CURRENCY_REQUIRED`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `CHOICE_REQUIRED`, `TRACKING_REQUIRED` |
 | Inventory | `UNIT_NOT_FOUND`, `SHELF_NOT_FOUND`, `UNIT_NOT_STOWED`, `UNIT_ALREADY_STOWED` (on another shelf: relocate instead), `UNIT_ALREADY_PICKED`, `UNIT_RESERVED`, `UNIT_NOT_RESERVED_FOR_ORDER`, `UNIT_ASSIGNED` (issued to a person: unassign first), `UNIT_NOT_ASSIGNED`, `RESERVATION_FAILED` |
-| General | `VERSION_CONFLICT`, `PRECONDITION_REQUIRED` (428: `If-Match` missing), `VALIDATION_FAILED`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED` (422: same key, different request), `IDEMPOTENCY_IN_PROGRESS` (409: the first request with this key is still running; retry) |
+| General | `VERSION_CONFLICT`, `PRECONDITION_REQUIRED` (428: `If-Match` missing), `VALIDATION_FAILED`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED` (422: same key, different request), `IDEMPOTENCY_IN_PROGRESS` (409: the first request with this key is still running; retry), `SEARCH_BUSY` (503 + `Retry-After`: too many searches at once, or a broad query hit its time limit) |
 
 ## 5. Endpoint catalogue
 
@@ -156,7 +156,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | Method | Path | Role | Purpose |
 |---|---|---|---|
 | GET | `/products` | public | Browse (filters: type, department, project, `probono`, inStock; staff also `sellable`, `includeInactive`) |
-| GET | `/products/search?q=` | public | Full-text search |
+| GET | `/products/search?q=` | public | Full-text search (ranked; a word matching more than 300 products is ranked over the first 300 matches and pages stop there: refine the words) |
 | GET | `/products/{id}` | public | Detail (staff view adds cost, serials, stockCount) |
 | POST / PATCH / DELETE | `/products` · `/products/{id}` | staff | Create (`probono` required), edit, deactivate |
 | POST | `/products/{id}/images` | staff | Upload (async processing; background removal optional) |
