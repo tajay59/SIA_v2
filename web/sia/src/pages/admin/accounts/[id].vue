@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * A-17 account detail: details, organisation, status history. Admin actions with If-Match: change role,
- * suspend (reason; revokes sessions), reactivate; pending accounts → approve/deny. Staff read only.
+ * suspend (reason; revokes sessions), reactivate; reset another admin's lost two-step verification; pending accounts → approve/deny. Staff read only.
  */
 import {
   type Account,
@@ -86,6 +86,15 @@ async function suspend() {
   if (await act((a) => call(() => identity.POST('/admin/accounts/{accountId}/suspend', { params: params(a), body: { reason: suspendReason.value.trim() } })), 'Account suspended; its sessions were signed out'))
     suspendOpen.value = false
 }
+// lost authenticator (runbook OPERATIONS): another admin removes the MFA enrolment
+const mfaOpen = ref(false)
+const mfaReason = ref('')
+const mfaValid = ref(false)
+async function resetMfa() {
+  if (await act((a) => call(() => identity.POST('/admin/accounts/{accountId}/mfa/reset', { params: params(a), body: { reason: mfaReason.value.trim() } })), 'Two-step verification reset; they were signed out and must set it up again'))
+    mfaOpen.value = false
+}
+
 function reactivate() {
   void act((a) => call(() => identity.POST('/admin/accounts/{accountId}/reactivate', { params: params(a) })), 'Account reactivated')
 }
@@ -163,6 +172,7 @@ async function erase() {
           <v-btn v-if="account.status === 'ACTIVE'" variant="outlined" :disabled="isSelf" @click="newRole = account.role; roleOpen = true">Change role</v-btn>
           <v-btn v-if="account.status === 'ACTIVE'" variant="outlined" color="error" :disabled="isSelf" @click="suspendReason = ''; suspendOpen = true">Suspend</v-btn>
           <v-btn v-if="account.status === 'SUSPENDED'" color="primary" :loading="busy" @click="reactivate">Reactivate</v-btn>
+          <v-btn v-if="account.role === 'admin' && account.mfaEnabled && !isSelf" variant="outlined" @click="mfaReason = ''; mfaOpen = true">Reset two-step verification</v-btn>
           <v-btn variant="outlined" :loading="exporting" @click="exportData">Export data</v-btn>
           <v-btn variant="outlined" color="error" :disabled="isSelf" @click="openErase">Erase</v-btn>
         </template>
@@ -237,6 +247,22 @@ async function erase() {
         <v-card-actions class="row-end">
           <v-btn variant="text" @click="suspendOpen = false">Cancel</v-btn>
           <v-btn color="error" :loading="busy" :disabled="!suspendValid" @click="suspend">Suspend</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <v-dialog v-model="mfaOpen" max-width="480">
+      <v-card>
+        <v-card-title class="t-h3">Reset two-step verification</v-card-title>
+        <v-card-text>
+          <v-form v-model="mfaValid" @submit.prevent="resetMfa">
+            <p class="t-body muted mb-4">For an administrator who lost their authenticator. They are signed out everywhere and must set up two-step verification again at their next sign-in. Check who is asking before you do this.</p>
+            <v-textarea v-model="mfaReason" label="Reason" rows="3" auto-grow counter="500" :rules="[rule(reasonSchema)]" />
+          </v-form>
+        </v-card-text>
+        <v-card-actions class="row-end">
+          <v-btn variant="text" @click="mfaOpen = false">Cancel</v-btn>
+          <v-btn color="error" :loading="busy" :disabled="!mfaValid" @click="resetMfa">Reset</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>

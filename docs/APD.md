@@ -91,7 +91,7 @@ Shows **what happens when someone clicks and which page comes next**, for SHOP, 
 | A-14 | `/reports/assignments` | Who has what | staff | Units issued to people, grouped by person; filter one person | Return ↺ |
 | A-15 | `/reports/history` | Movement history | staff | Filters unit, user, operation, dates | — |
 | A-16 | `/admin/approvals` | Pending accounts | admin | Oldest first; organisation text, email domain, suggested organisation match; checkbox multi-select | **Approve** ⧉ (pick/create organisation, role) ↺ · **Deny** ⧉ reason ↺ · Bulk approve/deny ⧉ (207 results) ↺ |
-| A-17 | `/admin/accounts` · `/admin/accounts/[id]` | Accounts | admin (staff read) | List with filters (incl. "asked to be deleted"); detail with status history | Role ⧉ · Suspend ⧉ / Reactivate · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered |
+| A-17 | `/admin/accounts` · `/admin/accounts/[id]` | Accounts | admin (staff read) | List with filters (incl. "asked to be deleted"); detail with status history | Role ⧉ · Suspend ⧉ / Reactivate · Reset two-step verification ⧉ (another admin with MFA; reason; signs them out) · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered |
 | A-18 | `/admin/organisations` | Organisations | admin | List, members, aliases, domains | New/Edit ⧉ · **Merge** ⧉ target |
 | A-19 | `/admin/settings` | Settings | admin | Tabs: Fees (admin fee) · Email lists · Workflow (quote validity, reminders, purge, cart inactivity) · Reference (departments, projects) | Save ↺ |
 | A-20 | `/admin/audit` | Audit log | admin | Filters entity, actor, action, dates | Entity link → its screen |

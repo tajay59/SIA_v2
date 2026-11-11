@@ -515,6 +515,26 @@ paths:
         '200': { description: SUSPENDED, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
+  /admin/accounts/{accountId}/mfa/reset:
+    parameters: [ { $ref: '#/components/parameters/AccountId' } ]
+    post:
+      tags: [admin-accounts]
+      summary: Reset another admin's multi-factor sign-in (lost device); revokes their sessions (admin)
+      description: >-
+        For an admin who lost their authenticator. Removes the TOTP enrolment and signs the person out
+        everywhere; at the next sign-in they must enrol again before any admin endpoint works (MFA_REQUIRED).
+        Not for yourself, and only for admins with MFA enabled. Audited with the reason.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
+      responses:
+        '200': { description: MFA removed, content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
   /admin/accounts/{accountId}/reactivate:
     parameters: [ { $ref: '#/components/parameters/AccountId' } ]
     post:

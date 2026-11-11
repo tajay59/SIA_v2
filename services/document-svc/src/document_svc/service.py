@@ -69,6 +69,7 @@ class DocumentService:
     ) -> None:
         self.files, self.orders, self.publisher, self.scanner = files, orders, publisher, scanner
         self.max_bytes = max_bytes
+        self.on_event: Callable[[str, str], None] = lambda event, role: None  # main.py → metrics
 
     # ------------------------------------------------------------------ upload
 
@@ -93,6 +94,7 @@ class DocumentService:
             self.files.quarantine(fid, data, {"id": fid, "requestId": rid, "kind": kind, "signature": found,
                                               "by": p.sub, "at": now().isoformat(), "name": filename})  # fmt: skip
             log.warning("upload quarantined", extra={"fileId": fid, "requestId": rid, "signature": found})
+            self.on_event("malware_detected", p.role)
             await self._audit(p, "file.quarantined", fid, cid, requestId=rid, signature=found)
             raise ProblemError(422, "FILE_INFECTED", "The file contains malware and was not stored")
         mime = sniff(data)

@@ -444,8 +444,8 @@ components:
         probono: { type: boolean, description: Required. Pro Bono implies sellable=true. }
         probonoMaxPerRequest: { type: [integer, 'null'], minimum: 1 }
         cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
-        threshold: { type: integer, minimum: 0 }
-        unitquantity: { type: [integer, 'null'], minimum: 1 }
+        threshold: { type: integer, minimum: 0, maximum: 1000000 }
+        unitquantity: { type: [integer, 'null'], minimum: 1, maximum: 1000000 }
         weight: { type: [number, 'null'], minimum: 0 }
         dimension: { type: [string, 'null'], maxLength: 100 }
         sn: { type: [string, 'null'], maxLength: 100 }
@@ -469,7 +469,7 @@ components:
         probono: { type: boolean }
         probonoMaxPerRequest: { type: [integer, 'null'], minimum: 1 }
         cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
-        threshold: { type: integer, minimum: 0 }
+        threshold: { type: integer, minimum: 0, maximum: 1000000 }
         unitquantity: { type: [integer, 'null'] }
         weight: { type: [number, 'null'] }
         dimension: { type: [string, 'null'] }

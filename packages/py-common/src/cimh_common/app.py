@@ -61,8 +61,9 @@ def create_app(
         try:
             response = await call_next(request)
             status = response.status_code
-        except Exception:
+        except Exception as exc:
             log.exception("unhandled error", extra={"path": request.url.path})
+            metrics.unhandled.labels(service, type(exc).__name__).inc()  # alert NewExceptionType
             raise
         finally:
             elapsed = time.perf_counter() - start

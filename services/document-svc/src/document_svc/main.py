@@ -84,5 +84,6 @@ def build_app(
     app.router.lifespan_context = lifespan
     app.state.settings = s
     app.state.documents = DocumentService(files, orders, publisher, scanner, max_bytes=s.max_bytes)
+    app.state.documents.on_event = app.state.metrics.security_event
     app.include_router(router, prefix=BASE)
     return app

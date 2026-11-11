@@ -67,3 +67,4 @@ tools/perf/results/
 
 # Alertmanager config rendered from alertmanager.yml.tmpl by render-config.sh
 deploy/prometheus/alertmanager.rendered.yml
+deploy/prometheus/blackbox-targets.rendered.yml

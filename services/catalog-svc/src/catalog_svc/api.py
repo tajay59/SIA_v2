@@ -39,10 +39,10 @@ class ProductPatch(Strict):
     project: str | None = Field(default=None, max_length=50)
     sellable: bool | None = None
     probono: bool | None = None
-    probonoMaxPerRequest: int | None = Field(default=None, ge=1)
+    probonoMaxPerRequest: int | None = Field(default=None, ge=1, le=100_000)
     cost: Money | None = None
-    threshold: int | None = Field(default=None, ge=0)
-    unitquantity: int | None = Field(default=None, ge=1)
+    threshold: int | None = Field(default=None, ge=0, le=1_000_000)
+    unitquantity: int | None = Field(default=None, ge=1, le=1_000_000)
     weight: float | None = Field(default=None, ge=0)
     dimension: str | None = Field(default=None, max_length=100)
     sn: str | None = Field(default=None, max_length=100)
@@ -57,7 +57,7 @@ class ProductInput(ProductPatch):
     department: str = Field(min_length=1, max_length=100)
     sellable: bool
     probono: bool
-    threshold: int = Field(ge=0)
+    threshold: int = Field(ge=0, le=1_000_000)
 
 
 class ValuesIn(Strict):
@@ -118,7 +118,7 @@ class PlaceIn(Strict):
     name: str = Field(min_length=1, max_length=200)
     site: str | None = Field(default=None, max_length=64)
     location: str | None = Field(default=None, max_length=64)
-    number: int | None = None
+    number: int | None = Field(default=None, ge=0, le=1_000_000)
     country: str | None = Field(default=None, max_length=2)
     address: str | None = Field(default=None, max_length=500)
     description: str | None = Field(default=None, max_length=500)
@@ -145,9 +145,12 @@ def if_match(value: str | None) -> int:
     if not value:
         raise ProblemError(428, "PRECONDITION_REQUIRED", "If-Match header with the current version is required")
     try:
-        return int(value.strip().removeprefix("W/").strip('"'))
+        version = int(value.strip().removeprefix("W/").strip('"'))
     except ValueError as exc:
         raise ProblemError(400, None, "If-Match must be a version number") from exc
+    if not 0 <= version < 2**31:  # MongoDB stores int64; larger values were a 500
+        raise ProblemError(400, None, "If-Match must be a version number")
+    return version
 
 
 def with_etag(body: dict[str, Any], status: int = 200) -> JSONResponse:

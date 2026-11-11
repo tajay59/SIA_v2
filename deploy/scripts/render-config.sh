@@ -3,7 +3,8 @@
 #
 #   deploy/scripts/render-config.sh <prod|staging>
 #
-# Today: prometheus/alertmanager.yml.tmpl -> prometheus/alertmanager.rendered.yml (git-ignored).
+# prometheus/alertmanager.yml.tmpl -> alertmanager.rendered.yml, prometheus/blackbox-targets.yml.tmpl ->
+# blackbox-targets.rendered.yml (both git-ignored).
 # Alertmanager does not expand ${VARS} itself. Only the listed variables are substituted, and a missing
 # one stops the script, so a half-rendered file is never mounted. The SMTP password stays a Docker
 # secret (auth_password_file); it is never read here.
@@ -13,7 +14,7 @@ ENVIRONMENT=${1:?usage: render-config.sh <prod|staging>}
 case "$ENVIRONMENT" in staging|prod) ;; *) echo "bad env: $ENVIRONMENT" >&2; exit 2 ;; esac
 DEPLOY_DIR=$(cd "$(dirname "$0")/.." && pwd)
 ENV_FILE="$DEPLOY_DIR/env/${ENVIRONMENT}.env"
-VARS=(ALERT_EMAIL_TO SMTP_HOST SMTP_USER)
+VARS=(ALERT_EMAIL_TO SMTP_HOST SMTP_USER SIA_HOST STORE_HOST)
 
 # Values already in the environment win over the env file (lets CI or an operator override one).
 for name in "${VARS[@]}"; do
@@ -40,3 +41,4 @@ render() {  # <template> <output>
 }
 
 render "$DEPLOY_DIR/prometheus/alertmanager.yml.tmpl" "$DEPLOY_DIR/prometheus/alertmanager.rendered.yml"
+render "$DEPLOY_DIR/prometheus/blackbox-targets.yml.tmpl" "$DEPLOY_DIR/prometheus/blackbox-targets.rendered.yml"
