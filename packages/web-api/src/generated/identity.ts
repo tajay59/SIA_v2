@@ -1173,6 +1173,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/accounts/{accountId}/mfa/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                accountId: components["parameters"]["AccountId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset another admin's multi-factor sign-in (lost device); revokes their sessions (admin)
+         * @description For an admin who lost their authenticator. Removes the TOTP enrolment and signs the person out everywhere; at the next sign-in they must enrol again before any admin endpoint works (MFA_REQUIRED). Not for yourself, and only for admins with MFA enabled. Audited with the reason.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    accountId: components["parameters"]["AccountId"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ReasonBody"];
+                };
+            };
+            responses: {
+                /** @description MFA removed */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Account"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/accounts/{accountId}/reactivate": {
         parameters: {
             query?: never;

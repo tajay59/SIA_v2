@@ -196,5 +196,6 @@ def check_csrf(request: Request) -> None:
         return
     cookie = request.cookies.get(CSRF_COOKIE, "")
     header = request.headers.get(CSRF_HEADER, "")
-    if not cookie or not header or not hmac.compare_digest(cookie, header):
+    # Bytes: compare_digest raises TypeError on non-ASCII str, which would be a 500 instead of a 403.
+    if not cookie or not header or not hmac.compare_digest(cookie.encode(), header.encode()):
         raise ProblemError(403, "CSRF_FAILED", "Missing or invalid CSRF token")

@@ -2892,7 +2892,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tbody>
 </table>
 <h2 id="penetration-test-2026-11">Penetration test 2026-11</h2>
-<p>Run by Claude on the local dev stack and a local copy of the staging gateway, under a scope the owner approved (staging and real data were out of scope). Method: OWASP ASVS L2, ZAP API scans of all five services, and 80 repeatable probes (<code>tools/security/probes.py</code>). Eight findings:</p>
+<p>Run by Claude on the local dev stack and a local copy of the staging gateway, under a scope the owner approved (staging and real data were out of scope). Method: OWASP ASVS L2, ZAP API scans of all five services, and 80 repeatable probes (<code>tools/security/probes.py</code>). Ten findings:</p>
 <table>
 <thead>
 <tr>
@@ -2944,6 +2944,18 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>S4</td>
 <td>No <code>Cross-Origin-Resource-Policy</code> header</td>
 <td>Fixed</td>
+</tr>
+<tr>
+<td>F-09</td>
+<td>S3</td>
+<td>Non-ASCII secrets, TOTP codes or CSRF tokens crashed a comparison (500)</td>
+<td>Fixed (found by the contract tests)</td>
+</tr>
+<tr>
+<td>F-10</td>
+<td>S3</td>
+<td>Integers beyond MongoDB's range (product fields, If-Match) crashed writes (500)</td>
+<td>Fixed (found by the contract tests)</td>
 </tr>
 <tr>
 <td>F-05</td>
@@ -7290,7 +7302,7 @@ rs.initiate({
 <li>Install OS on all three; run <code>bootstrap</code> (users, SSH, ufw, Docker, chrony, unattended upgrades, fail2ban; LUKS on Pis).</li>
 <li>Host: NVIDIA driver + Container Toolkit; verify <code>docker run --gpus all nvidia/cuda… nvidia-smi</code>.</li>
 <li>Create private CA; issue MongoDB/Kafka/Redis certs; load secrets from the password manager into <code>deploy/secrets/</code>.</li>
-<li>Start Pis (<code>compose.pi.yml</code>), then mongo1; run <code>init-replset.js</code> and <code>roles.js</code>; check <code>rs.status()</code> (1 primary, 2 secondaries).</li>
+<li>On each Pi run <code>scripts/check-db-host.sh</code> (refuses CPUs older than ARMv8.2-A such as Pi 3/4, &lt; 4 GB RAM, kernels MongoDB 8.0 rejects; every member runs the same <code>mongo:8.0.30</code>), then start Pis (<code>compose.pi.yml</code>), then mongo1; run <code>init-replset.js</code> and <code>roles.js</code>; check <code>rs.status()</code> (1 primary, 2 secondaries).</li>
 <li>Start Kafka, run <code>kafka-setup</code> (topics + ACLs); start Redis, Apicurio, ClamAV.</li>
 <li>Copy the SHOP and SIA builds to <code>/srv/sia-web/shop</code> and <code>/srv/sia-web/sia</code>; set <code>SIA_HOST</code>, <code>STORE_HOST</code>, <code>OPS_ALLOW_CIDR</code>, <code>CERT_EMAIL</code> in <code>env/prod.env</code>; start services; <code>bash nginx/certs.sh</code> (temporary certificate → Let's Encrypt for both names → reload; renewal is then automatic); smoke test <code>/health/ready</code> everywhere and <code>tools/security/probes.py</code> gateway probes (<code>GW_URL</code>, <code>GW_HOST</code>). Staging server blocks (LAN-only, §3.2) join when staging is provisioned: the production nginx must not depend on the on-demand staging network.</li>
 <li>Prometheus/Alertmanager up (<code>provision.sh</code> runs <code>scripts/render-config.sh prod</code> first: <code>ALERT_EMAIL_TO</code>, <code>SMTP_HOST</code>, <code>SMTP_USER</code> from <code>env/prod.env</code>); send a test alert email. After changing those settings: <code>scripts/render-config.sh prod &amp;&amp; docker compose -f compose.prod.yml up -d alertmanager</code>.</li>

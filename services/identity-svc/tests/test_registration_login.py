@@ -337,3 +337,17 @@ def test_login_answers_503_when_hashing_is_saturated(ctx: Ctx, monkeypatch: pyte
     assert r.headers["Retry-After"] == "3"
     monkeypatch.setattr(sec, "_hash_slots", None)
     assert ctx.client.post(ctx.url("/auth/login"), json={"email": "u@met.bb", "password": GOOD_PW}).status_code == 200
+
+
+def test_non_ascii_secrets_and_codes_are_refused_not_500(ctx: Ctx) -> None:
+    """Schemathesis found a 500: hmac.compare_digest raises TypeError on non-ASCII str (P9)."""
+    from identity_svc.security import new_totp_secret
+
+    r = ctx.client.post(ctx.url("/internal/service-token"), json={"service": "notification", "secret": "sécret"})
+    assert r.status_code == 401
+    secret = new_totp_secret()
+    ctx.seed_account("boss@cimh.edu.bb", role="admin", mfa_secret=secret)
+    r = ctx.client.post(
+        ctx.url("/auth/login"), json={"email": "boss@cimh.edu.bb", "password": GOOD_PW, "totp": "12345é"}
+    )
+    assert r.status_code in (401, 422)

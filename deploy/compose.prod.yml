@@ -581,6 +581,7 @@ services:
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
+      - ./prometheus/blackbox-targets.rendered.yml:/etc/prometheus/blackbox-targets.yml:ro
       - "${PROM_DATA:-/srv/prometheus}:/prometheus"
     networks: [data, app]
     mem_limit: 1536m
@@ -636,6 +637,16 @@ services:
     networks: [data]
     mem_limit: 64m
     cpus: 0.1
+
+  blackbox-exporter:
+    <<: *hardening
+    image: prom/blackbox-exporter:v0.25.0
+    user: "65534"
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes: ["./prometheus/blackbox.yml:/etc/blackbox/blackbox.yml:ro"]
+    networks: [data, edge]   # edge: reaches the public names like a user
+    mem_limit: 32m
+    cpus: 0.05
 
   redis-exporter:
     <<: *hardening

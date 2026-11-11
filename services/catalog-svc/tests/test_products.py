@@ -186,3 +186,15 @@ def test_customers_cannot_write(ctx: Ctx) -> None:
         json={"name": "X", "type": "MET", "department": "D", "sellable": True, "probono": False, "threshold": 0},
     )
     assert r.status_code == 403
+
+
+def test_integers_beyond_mongodb_range_are_422_or_400_not_500(ctx: Ctx) -> None:
+    """Schemathesis found a 500: threshold 2**63 overflowed MongoDB's int64 (P9)."""
+    body = {"name": "X", "type": "MET", "department": "D", "sellable": True, "probono": False}
+    for field, value in [("threshold", 2**63), ("threshold", 1_000_001), ("unitquantity", 2**63),
+                         ("probonoMaxPerRequest", 2**63)]:  # fmt: skip
+        r = ctx.client.post(ctx.url("/products"), headers=STAFF, json={**body, "threshold": 0, field: value})
+        assert r.status_code == 422, (field, value, r.status_code)
+    p = ctx.create()
+    r = ctx.client.patch(ctx.url(f"/products/{p['id']}"), headers={**STAFF, "If-Match": str(2**63)}, json={"name": "Y"})
+    assert r.status_code == 400

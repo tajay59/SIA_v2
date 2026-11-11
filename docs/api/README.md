@@ -142,6 +142,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | POST | `/admin/accounts/{id}/approve` · `/deny` | admin | Approval decision (approve needs `organisationId`) |
 | POST | `/admin/accounts/bulk-decision` | admin | Up to 100 decisions (207) |
 | POST | `/admin/accounts/{id}/suspend` · `/reactivate` | admin | Suspension |
+| POST | `/admin/accounts/{id}/mfa/reset` | admin | Reset another admin's lost authenticator (revokes sessions; audited) |
 | PUT | `/admin/accounts/{id}/role` | admin | Role change |
 | GET | `/admin/accounts/{id}/export` | admin | Export a person's data |
 | POST | `/admin/accounts/{id}/erase` | admin | Erase a person's data (reason, If-Match; 204) |

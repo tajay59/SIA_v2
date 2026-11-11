@@ -130,7 +130,7 @@ class ReasonIn(Strict):
 
 class Decision(Strict):
     accountId: str
-    version: int
+    version: int = Field(ge=1, lt=2**31)
     decision: Literal["approve", "deny"]
     organisationId: str | None = None
     role: Role | None = None
@@ -184,9 +184,12 @@ def if_match(value: str | None) -> int:
     if not value:
         raise ProblemError(428, "PRECONDITION_REQUIRED", "If-Match header with the current version is required")
     try:
-        return int(value.strip().removeprefix("W/").strip('"'))
+        version = int(value.strip().removeprefix("W/").strip('"'))
     except ValueError as exc:
         raise ProblemError(400, None, "If-Match must be a version number") from exc
+    if not 0 <= version < 2**31:  # MongoDB stores int64; larger values were a 500
+        raise ProblemError(400, None, "If-Match must be a version number")
+    return version
 
 
 def with_etag(body: dict[str, Any], status: int = 200) -> JSONResponse:
@@ -423,6 +426,13 @@ async def suspend(
     accountId: str, body: ReasonIn, request: Request, version: IfMatch = None, me: Principal = Depends(require_admin)
 ) -> JSONResponse:
     return with_etag(await svc(request).suspend(me, accountId, if_match(version), body.reason, cid(request)))
+
+
+@router.post("/admin/accounts/{accountId}/mfa/reset", tags=["admin-accounts"])
+async def reset_mfa(
+    accountId: str, body: ReasonIn, request: Request, version: IfMatch = None, me: Principal = Depends(require_admin)
+) -> JSONResponse:
+    return with_etag(await svc(request).reset_mfa(me, accountId, if_match(version), body.reason, cid(request)))
 
 
 @router.post("/admin/accounts/{accountId}/reactivate", tags=["admin-accounts"])

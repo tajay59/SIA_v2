@@ -7,6 +7,7 @@ pushes the outbox event, so state and event can't diverge (TAD §5).
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -124,6 +125,8 @@ class IdentityService:
         self.tokens = tokens
         self.env = envelope
         self.breached = breach_check
+        # Security metrics (TR-OBS-3); main.py wires this to app.state.metrics.security_event.
+        self.on_event: Callable[[str, str], None] = lambda event, role: None
 
     # ------------------------------------------------------------------ helpers
 
@@ -387,6 +390,7 @@ class IdentityService:
                 headers={"Retry-After": str(int((locked_until - t).total_seconds()) + 1)},
             )
         if not acc or not ok:
+            self.on_event("login_failed", acc["role"] if acc else "unknown")
             if acc:
                 await self._register_failure(acc, ip, cid)
             raise unauthorized("Invalid email or password", code="INVALID_CREDENTIALS")
@@ -424,6 +428,8 @@ class IdentityService:
                 ip=ip,
                 after={"newIp": bool(ip and last_ip and ip != last_ip)},
             )
+            if ip and last_ip and ip != last_ip:
+                self.on_event("admin_login_new_ip", "admin")
             await self.store.accounts.update_one({"id": acc["id"]}, {"$set": {"lastAdminIp": ip}})
         tokens = await self.tokens.start_session(acc, mfa=mfa_passed or acc["role"] != "admin")
         return acc, tokens
@@ -451,6 +457,7 @@ class IdentityService:
                 ip=ip,
                 after={"seconds": seconds, "role": acc["role"]},
             )
+            self.on_event("account_locked", acc["role"])
         await self.store.accounts.update_one({"id": acc["id"]}, {"$set": update})
 
     async def refresh(self, refresh_token: str) -> tuple[dict[str, Any], IssuedTokens]:
@@ -464,6 +471,7 @@ class IdentityService:
             code = "TOKEN_REUSE" if exc.code == "TOKEN_REUSE" else "TOKEN_INVALID"
             if code == "TOKEN_REUSE":
                 log.warning("refresh token reuse detected")
+                self.on_event("token_reuse", "-")
             raise unauthorized("Session is no longer valid; log in again", code=code) from exc
         return acc, tokens
 
@@ -823,6 +831,33 @@ class IdentityService:
         )
         return account_view(doc, staff_view=True, org_name=await self._org_name(doc.get("organisationId")))
 
+    async def reset_mfa(self, p: Principal, account_id: str, version: int, reason: str, cid: str) -> dict[str, Any]:
+        """Another admin lost their authenticator (runbook OPERATIONS): remove the enrolment, sign them out."""
+        if account_id == p.sub:
+            raise conflict("ACCOUNT_ILLEGAL_TRANSITION", "Use your own multi-factor setup instead")
+        target = await self.store.accounts.find_one({"id": account_id})
+        if target is None:
+            raise not_found("No account with this id")
+        if target["role"] != "admin" or not (target.get("mfa") or {}).get("enabled"):
+            raise conflict("ACCOUNT_ILLEGAL_TRANSITION", "Only an admin with multi-factor sign-in can be reset")
+        doc = await self.store.accounts.find_one_and_update(
+            {"id": account_id, "version": version},
+            {"$unset": {"mfa": ""}, "$inc": {"version": 1}, "$set": {"updatedAt": now()}},
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc is None:
+            raise conflict("VERSION_CONFLICT", "The account changed; reload and try again")
+        await self.tokens.revoke_all(account_id)
+        await self.store.record_audit(
+            actor=actor_of(p),
+            action="account.mfa_reset",
+            entity_type="account",
+            entity_id=account_id,
+            correlation_id=cid,
+            reason=reason,
+        )
+        return account_view(doc, staff_view=True, org_name=await self._org_name(doc.get("organisationId")))
+
     async def reactivate(self, p: Principal, account_id: str, version: int, cid: str) -> dict[str, Any]:
         doc = await self._transition(
             account_id,
@@ -1092,7 +1127,8 @@ class IdentityService:
         import hmac as _hmac
 
         expected = self.s.service_secrets.get(service)
-        if not expected or not _hmac.compare_digest(expected, secret):
+        # Bytes: compare_digest raises TypeError on non-ASCII str (a 500, found by Schemathesis).
+        if not expected or not _hmac.compare_digest(expected.encode(), secret.encode()):
             raise unauthorized("Invalid service credentials")
         return self.tokens.service_token(service)
 

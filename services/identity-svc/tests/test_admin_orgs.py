@@ -318,3 +318,34 @@ def test_internal_service_token_and_code_claim(ctx: Ctx) -> None:
     assert ctx.client.get(ctx.url(f"/internal/accounts/{acc['id']}"), headers=oh).json()["email"] == "z@x.org"
     ctx.seed_account("u@met.bb")
     assert ctx.client.get(ctx.url(f"/internal/accounts/{acc['id']}"), headers=ctx.bearer("u@met.bb")).status_code == 403
+
+
+@pytest.mark.req("TR-AUTH-9")
+def test_admin_resets_another_admins_lost_authenticator(ctx: Ctx) -> None:
+    """Runbook OPERATIONS: an admin lost their TOTP device; another admin resets it and signs them out."""
+    from identity_svc.security import new_totp_secret, totp_now
+
+    boss, h = ctx.admin()
+    secret = new_totp_secret()
+    other = ctx.seed_account("admin2@cimh.edu.bb", role="admin", mfa_secret=secret)
+    oh = ctx.bearer("admin2@cimh.edu.bb", totp=totp_now(secret))
+    url = ctx.url(f"/admin/accounts/{other['id']}/mfa/reset")
+
+    assert ctx.client.post(url, headers=h, json={"reason": "lost phone"}).status_code == 428  # If-Match needed
+    r = ctx.client.post(url, headers={**h, "If-Match": "1"}, json={"reason": "lost phone"})
+    assert r.status_code == 200, r.text
+    assert ctx.client.get(ctx.url("/me"), headers=oh).status_code == 401  # signed out everywhere
+    # Next sign-in: password only, then MFA_REQUIRED until enrolled again.
+    nh = ctx.bearer("admin2@cimh.edu.bb")
+    assert ctx.client.get(ctx.url("/admin/accounts"), headers=nh).json()["code"] == "MFA_REQUIRED"
+    assert ctx.run(ctx.db["auditlog"].count_documents({"action": "account.mfa_reset"})) == 1
+
+    # Not yourself, not a non-admin, not twice.
+    me = ctx.client.post(ctx.url(f"/admin/accounts/{boss['id']}/mfa/reset"), headers={**h, "If-Match": "1"},
+                         json={"reason": "lost phone"})  # fmt: skip
+    assert me.status_code == 409
+    user = ctx.seed_account("u@met.bb")
+    r = ctx.client.post(ctx.url(f"/admin/accounts/{user['id']}/mfa/reset"), headers={**h, "If-Match": "1"},
+                        json={"reason": "lost phone"})  # fmt: skip
+    assert r.status_code == 409
+    assert ctx.client.post(url, headers={**h, "If-Match": "2"}, json={"reason": "again"}).status_code == 409

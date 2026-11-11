@@ -84,5 +84,6 @@ def build_app(
         sec.Envelope(s.data_key_b64),
         breach_check or (sec.hibp_check() if s.hibp_enabled else sec.no_breach_check),
     )
+    app.state.identity.on_event = app.state.metrics.security_event
     app.include_router(router, prefix=BASE)
     return app

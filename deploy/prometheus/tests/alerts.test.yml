@@ -29,3 +29,45 @@ tests:
       - eval_time: 10m
         alertname: OutboxBacklog
         exp_alerts: []
+  # 30 failed logins per minute for 5 minutes -> FailedLoginsHigh; 5 per minute never fires.
+  - interval: 1m
+    input_series:
+      - series: 'security_events_total{service="identity-svc",event="login_failed",role="unknown"}'
+        values: '0+30x10'
+      - series: 'security_events_total{service="identity-svc",event="login_failed",role="user",instance="b"}'
+        values: '0+0x10'
+    alert_rule_test:
+      - eval_time: 1m
+        alertname: FailedLoginsHigh
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: FailedLoginsHigh
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations: { summary: "More than 20 failed logins per minute (30/min): password guessing?" }
+  # An admin lockout fires at once; a user lockout does not.
+  - interval: 1m
+    input_series:
+      - series: 'security_events_total{service="identity-svc",event="account_locked",role="admin"}'
+        values: '0 0 1 1 1'
+      - series: 'security_events_total{service="identity-svc",event="account_locked",role="user"}'
+        values: '0 5 9 9 9'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: AdminLockedOut
+        exp_alerts:
+          - exp_labels: { severity: critical }
+            exp_annotations: { summary: "An administrator account was locked after repeated failed logins" }
+  # A certificate with 10 days left fires; 60 days does not.
+  - interval: 1m
+    input_series:
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox",instance="https://sia.example/health"}'
+        values: '864000+0x5'
+      - series: 'probe_ssl_earliest_cert_expiry{job="blackbox",instance="https://store.example/health"}'
+        values: '5184000+0x5'
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CertExpiringSoon
+        exp_alerts:
+          - exp_labels: { severity: warning, job: blackbox, instance: "https://sia.example/health" }
+            exp_annotations: { summary: "Certificate for https://sia.example/health expires in 10d 0h 0m 0s: is certbot renewing?" }

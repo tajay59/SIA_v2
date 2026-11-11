@@ -151,7 +151,7 @@ def totp_verify(secret_b32: str, code: str, at: float | None = None, window: int
     """Return the matching time step (for replay protection) or None."""
     step = int((at if at is not None else time.time()) // 30)
     for s in range(step - window, step + window + 1):
-        if hmac.compare_digest(_hotp(secret_b32, s), code):
+        if hmac.compare_digest(_hotp(secret_b32, s).encode(), code.encode()):  # bytes: non-ASCII input
             return s
     return None
 
