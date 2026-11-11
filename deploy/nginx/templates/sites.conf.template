@@ -1,0 +1,115 @@
+# Production edge (INFRASTRUCTURE §3.2, §5.4; pen test 2026-11 F-01). Rendered by the nginx image at start:
+# ${SIA_HOST}, ${STORE_HOST} and ${OPS_ALLOW_CIDR} come from env/prod.env (only defined variables are replaced,
+# nginx's own $variables are left alone).
+
+server_tokens off;
+client_max_body_size 1m;
+resolver 127.0.0.11 valid=10s ipv6=off;   # Docker DNS: replicas and restarted containers
+resolver_timeout 2s;
+
+limit_req_zone $binary_remote_addr zone=api:10m rate=20r/s;
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
+limit_req_status 429;
+limit_conn_zone $binary_remote_addr zone=perip:10m;
+limit_conn_status 429;
+
+# /internal/* is for services only. $uri is decoded and normalised, so /%69nternal/ and internal%2F are caught
+# (pen test F-02).
+map $uri $is_internal { default 0; ~*^/api/[^/]+/v1/internal(/|$) 1; }
+
+ssl_protocols TLSv1.2 TLSv1.3;
+ssl_prefer_server_ciphers off;
+ssl_session_cache shared:SSL:10m;
+ssl_session_timeout 1d;
+ssl_session_tickets off;
+
+# Port 80: certificate challenges only; everything else goes to HTTPS.
+server {
+  listen 80 default_server;
+  server_name _;
+  location /.well-known/acme-challenge/ { root /var/www/certbot; }
+  location / { return 301 https://$host$request_uri; }
+}
+
+# Unknown host names on 443: close the connection (no default site).
+server {
+  listen 443 ssl default_server;
+  server_name _;
+  ssl_certificate /etc/letsencrypt/live/${SIA_HOST}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${SIA_HOST}/privkey.pem;
+  return 444;
+}
+
+# SIA (staff web app, staff/mobile APIs).
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${SIA_HOST};
+  ssl_certificate /etc/letsencrypt/live/${SIA_HOST}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${SIA_HOST}/privkey.pem;
+  limit_conn perip 50;
+  include /etc/nginx/snippets/security-headers.conf;
+  if ($is_internal) { return 404; }
+
+  include /etc/nginx/snippets/api-common.conf;
+
+  # Staff only (SIA web, mobile): never routed on the SHOP host.
+  location /api/inventory/v1/ {
+    limit_req zone=api burst=40 nodelay;
+    set $up inventory-svc:8000;
+    proxy_pass http://$up;
+    include /etc/nginx/snippets/proxy.conf;
+  }
+
+  # Prometheus UI: CIMH LAN only + admin password (INFRASTRUCTURE §8).
+  location /ops/prometheus/ {
+    allow ${OPS_ALLOW_CIDR};
+    deny all;
+    auth_basic "CIMH ops";
+    auth_basic_user_file /run/secrets/ops_htpasswd;
+    set $up prometheus:9090;
+    proxy_pass http://$up;
+    include /etc/nginx/snippets/proxy.conf;
+  }
+
+  location /assets/ {
+    root /srv/sia-web/sia;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+  location / {
+    root /srv/sia-web/sia;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Cache-Control "no-cache" always;
+    try_files $uri /index.html;
+  }
+}
+
+# SHOP (customer web store).
+server {
+  listen 443 ssl;
+  http2 on;
+  server_name ${STORE_HOST};
+  ssl_certificate /etc/letsencrypt/live/${SIA_HOST}/fullchain.pem;
+  ssl_certificate_key /etc/letsencrypt/live/${SIA_HOST}/privkey.pem;
+  limit_conn perip 50;
+  include /etc/nginx/snippets/security-headers.conf;
+  if ($is_internal) { return 404; }
+
+  include /etc/nginx/snippets/api-common.conf;
+  location /api/inventory/v1/ { return 404; }
+
+  location /assets/ {
+    root /srv/sia-web/shop;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+  location / {
+    root /srv/sia-web/shop;
+    include /etc/nginx/snippets/security-headers.conf;
+    add_header Cache-Control "no-cache" always;
+    try_files $uri /index.html;
+  }
+}

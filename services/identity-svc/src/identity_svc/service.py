@@ -273,7 +273,7 @@ class IdentityService:
         acc = {
             "id": new_id("USR"),
             "email": email,
-            "passwordHash": sec.hash_password(body["password"]),
+            "passwordHash": await sec.hash_password_async(body["password"]),
             "firstname": body["firstname"].strip(),
             "lastname": body["lastname"].strip(),
             "phone": body.get("phone"),
@@ -362,16 +362,19 @@ class IdentityService:
                     locked_until = locked
         ok = False
         if acc and acc.get("passwordHash"):
-            ok = sec.verify_password(acc["passwordHash"], password)
+            ok = await sec.verify_password_async(acc["passwordHash"], password)
         elif acc and acc.get("legacyPasswordHash"):
-            ok = sec.verify_legacy_werkzeug(acc["legacyPasswordHash"], password)
+            ok = await sec.verify_legacy_async(acc["legacyPasswordHash"], password)
             if ok and locked_until is None:  # upgrade to Argon2id at first login (BSD §5.1)
                 await self.store.accounts.update_one(
                     {"id": acc["id"]},
-                    {"$set": {"passwordHash": sec.hash_password(password)}, "$unset": {"legacyPasswordHash": ""}},
+                    {
+                        "$set": {"passwordHash": await sec.hash_password_async(password)},
+                        "$unset": {"legacyPasswordHash": ""},
+                    },
                 )
         else:
-            sec.verify_password(None, password)  # same cost for unknown emails
+            await sec.verify_password_async(None, password)  # same cost for unknown emails
         if locked_until is not None:
             # Pen test 2026-11: a locked account must not answer differently (status or timing) from an unknown
             # email, or locking it reveals that it exists (T-02). Only the right password learns about the lock.
@@ -404,7 +407,7 @@ class IdentityService:
 
         if acc.get("passwordHash") and sec.needs_rehash(acc["passwordHash"]):
             await self.store.accounts.update_one(
-                {"id": acc["id"]}, {"$set": {"passwordHash": sec.hash_password(password)}}
+                {"id": acc["id"]}, {"$set": {"passwordHash": await sec.hash_password_async(password)}}
             )
         await self.store.accounts.update_one(
             {"id": acc["id"]},
@@ -490,7 +493,7 @@ class IdentityService:
             {"id": acc["id"]},
             {
                 "$set": {
-                    "passwordHash": sec.hash_password(new_password),
+                    "passwordHash": await sec.hash_password_async(new_password),
                     "failedLogins": {"count": 0, "lockouts": 0},
                     "updatedAt": now(),
                 },
@@ -509,12 +512,12 @@ class IdentityService:
 
     async def change_password(self, p: Principal, current: str, new: str, cid: str) -> None:
         acc = await self._me(p)
-        if not sec.verify_password(acc.get("passwordHash"), current):
+        if not await sec.verify_password_async(acc.get("passwordHash"), current):
             raise unauthorized("Current password is wrong", code="INVALID_CREDENTIALS")
         await self._check_new_password(new)
         await self.store.accounts.update_one(
             {"id": acc["id"]},
-            {"$set": {"passwordHash": sec.hash_password(new), "updatedAt": now()}, "$inc": {"version": 1}},
+            {"$set": {"passwordHash": await sec.hash_password_async(new), "updatedAt": now()}, "$inc": {"version": 1}},
         )
         await self.tokens.revoke_all(acc["id"], except_sid=p.session_id)
         await self.store.record_audit(
@@ -527,7 +530,7 @@ class IdentityService:
 
     async def request_email_change(self, p: Principal, new_email: str, password: str, cid: str) -> None:
         acc = await self._me(p)
-        if not sec.verify_password(acc.get("passwordHash"), password):
+        if not await sec.verify_password_async(acc.get("passwordHash"), password):
             raise unauthorized("Password is wrong", code="INVALID_CREDENTIALS")
         new_email = new_email.lower().strip()
         if await self.store.accounts.find_one({"email": new_email}):
@@ -654,7 +657,7 @@ class IdentityService:
 
     async def request_erasure(self, p: Principal, password: str, cid: str) -> None:
         acc = await self._me(p)
-        if not sec.verify_password(acc.get("passwordHash"), password):
+        if not await sec.verify_password_async(acc.get("passwordHash"), password):
             raise unauthorized("Password is wrong", code="INVALID_CREDENTIALS")
         if acc.get("erasureRequestedAt"):
             return

@@ -75,7 +75,7 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-07 | S | Verification / reset code guessing | M | 6 digits, hashed, 15 min, 5 attempts, 3 resends/hour, rate-limited endpoint | ✅ |
 | T-08 | R | User denies having accepted a quote | M | Acceptance records user, time, IP, choices **and the signed agreement file** (SHA-256); `auditlog` (insert-only) | ✅ |
 | T-09 | E | Suspended user keeps working with a live token | M | Suspension writes revoke-all marker in Redis, checked on every request | ✅ |
-| T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline); HttpOnly cookies; DOMPurify for any rich text | ✅ (pen test 2026-11: no `v-html`/`innerHTML`; CSP at the gateway) · 🛠 production edge (F-01) |
+| T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline); HttpOnly cookies; DOMPurify for any rich text | ✅ (pen test 2026-11: no `v-html`/`innerHTML`; CSP at the production edge) |
 | T-11 | T | CSRF on cookie-authenticated changes | H | `SameSite=Lax` + double-submit `X-CSRF-Token` on POST/PUT/PATCH/DELETE | ✅ |
 
 ### 5.2 Authorisation and data access (all services)
@@ -211,7 +211,7 @@ Authoritative matrix: [API README §3](api/README.md#3-roles-and-access). Summar
 | Patch windows | Monthly (OS, Docker, images); critical within 72 h | Ops |
 | Security review gate | Pre-launch | Checklist = every T-xx row ✅ or accepted ⚠ with sign-off |
 
-**Pen test 2026-11 (local dev stack, owner-approved scope):** [security/PENTEST-2026-11.md](security/PENTEST-2026-11.md), findings in [security/PENTEST-2026-11-findings.md](security/PENTEST-2026-11-findings.md). 8 findings; all fixed except **F-01: production has no nginx/certbot yet** (go-live gate) and F-05 (accepted). Repeatable probes: `tools/security/probes.py`. A rerun against staging-sized infrastructure and a fresh-context review (R7) remain.
+**Pen test 2026-11 (local dev stack, owner-approved scope):** [security/PENTEST-2026-11.md](security/PENTEST-2026-11.md), findings in [security/PENTEST-2026-11-findings.md](security/PENTEST-2026-11-findings.md). 8 findings; all fixed (F-01, the production edge, built in P9; live check at the first deploy) except F-05 (accepted). Repeatable probes: `tools/security/probes.py`. A rerun against staging-sized infrastructure and a fresh-context review (R7) remain.
 
 ## 12. Residual risks and decisions
 

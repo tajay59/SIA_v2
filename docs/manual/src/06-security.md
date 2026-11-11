@@ -268,7 +268,7 @@ Run by Claude on the local dev stack and a local copy of the staging gateway, un
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
-| F-01 | S2 | Production has no nginx/certbot yet, although rate limits, CSP, body size and protected downloads rely on them | **Open: go-live gate** |
+| F-01 | S2 | Production had no nginx/certbot, although rate limits, CSP, body size and protected downloads rely on them | Fixed: `deploy/nginx/` built and probed |
 | F-02 | S2 | URL-encoded paths (`/%69nternal/`) passed the gateway's `/internal` block | Fixed (match the decoded URI) |
 | F-06 | S2 | An admin without MFA got the staff catalogue view (costs, serials) on public endpoints | Fixed |
 | F-07 | S2 | Every Redis restart caused bursts of 503s (stale connections, fail-closed revocation) | Fixed (shared retrying client) |

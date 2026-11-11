@@ -39,6 +39,9 @@ done
 make jwt_private_key openssl genpkey -algorithm ed25519
 make data_key sh -c 'openssl rand -base64 32 | tr -d "\n"'
 make code_pepper rand
+# /ops/prometheus behind nginx (INFRASTRUCTURE §8): user "ops"; copy ops_password to the password manager.
+make ops_password rand
+make ops_htpasswd sh -c "printf 'ops:%s\n' \"\$(openssl passwd -apr1 -stdin < '$DIR/ops_password')\""
 make service_secrets sh -c 'for s in notification order catalog inventory document media; do echo "$s=$(openssl rand -hex 24)"; done'
 # identity-svc reads the whole list; each calling service reads only its own line (SERVICE_SECRET_FILE).
 while IFS='=' read -r name value; do

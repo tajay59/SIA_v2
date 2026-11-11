@@ -34,11 +34,11 @@ Every document to be produced for the CIMH Stores Platform (SHOP · SIA · SIA M
 | 18 | Changelog and Release Notes | — | During | `CHANGELOG.md` | ⬜ Planned |
 | 19 | Migration Dry-run Reports | — | During | `migration/` | ⬜ Planned |
 | 20 | Load and Security Test Reports | — | During | `reports/` | ⬜ Planned |
-| 21 | Deployment / Release Run Book | — | After | `runbooks/DEPLOYMENT.md` | ⬜ Planned |
-| 22 | Operations Run Book | — | After | `runbooks/OPERATIONS.md` | ⬜ Planned |
-| 23 | Backup and Disaster Recovery Plan | DRP | After | `runbooks/DISASTER_RECOVERY.md` | ⬜ Planned |
-| 24 | Monitoring and Alerting Guide | — | After | `runbooks/MONITORING.md` | ⬜ Planned |
-| 25 | Incident Response Plan + Post-mortem Template | IRP | After | `runbooks/INCIDENT_RESPONSE.md` | ⬜ Planned |
+| 21 | Deployment / Release Run Book | — | After | `runbooks/DEPLOYMENT.md` | ✅ Drafted (P9) |
+| 22 | Operations Run Book | — | After | `runbooks/OPERATIONS.md` | ✅ Drafted (P9) |
+| 23 | Backup and Disaster Recovery Plan | DRP | After | `runbooks/DISASTER_RECOVERY.md` | ✅ Drafted (P9) |
+| 24 | Monitoring and Alerting Guide | — | After | `runbooks/MONITORING.md` | ✅ Drafted (P9) |
+| 25 | Incident Response Plan + Post-mortem Template | IRP | After | `runbooks/INCIDENT_RESPONSE.md` | ✅ Drafted (P9) |
 | 26 | User Guides (SHOP, SIA, Mobile) | — | After | `guides/` | ⬜ Planned |
 | 27 | Admin Guide | — | After | `guides/ADMIN.md` | ⬜ Planned |
 | 28 | Training Material | — | After | `training/` | ⬜ Planned |

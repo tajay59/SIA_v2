@@ -12,6 +12,7 @@ Prints one line per probe: PASS (control held), FAIL (finding), INFO (observatio
 from __future__ import annotations
 
 import base64
+import os
 import statistics
 import subprocess
 import sys
@@ -28,9 +29,9 @@ CAT = "http://catalog-svc:8000/api/catalog/v1"
 INV = "http://inventory-svc:8000/api/inventory/v1"
 ORD = "http://order-svc:8000/api/orders/v1"
 DOC = "http://document-svc:8000/api/documents/v1"
-GW = "http://sia-pentest-gateway"
+GW = os.environ.get("GW_URL", "http://sia-pentest-gateway")  # or the production edge: https://sia-edge
 MONGO = "mongodb://mongo:27017/?replicaSet=rs0"
-HOST = {"Host": "sia.hashiz.store"}  # the gateway's server_name; nothing leaves this machine
+HOST = {"Host": os.environ.get("GW_HOST", "sia.hashiz.store")}  # the gateway's server_name; nothing leaves this machine
 
 RESULTS: list[tuple[str, str, str]] = []
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "e2e"))
@@ -309,9 +310,14 @@ def main() -> int:
     if "mongo:27017" not in MONGO:
         return 2
     db = MongoClient(MONGO)["inventory"]
-    with httpx.Client(timeout=20) as c:
+    only = os.environ.get("PROBES", "all")
+    with httpx.Client(timeout=20, verify=False) as c:  # noqa: S501  (local throwaway certificates only)
         print("== gateway (staging-lite config, local)")
         gateway(c)
+        if only == "gateway":
+            fails = [r for r in RESULTS if r[0] == "FAIL"]
+            print(f"{len(RESULTS)} gateway probes: {len(fails)} FAIL")
+            return 1 if fails else 0
         print("== internal endpoints")
         internal_matrix(c)
         print("== users, data access, sessions")
