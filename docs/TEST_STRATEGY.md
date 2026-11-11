@@ -102,12 +102,14 @@ Each service phase ends with a smaller check on the dev stack, with **one** cont
 |---|---|---|---|
 | **P3 catalogue** (2026-11-07) | 200k products | 55 req/s for 3 min: 35 % lists (+ next page), 25 % detail, 25 % search, 15 % staff | **Pass.** p95 43 ms, p99 71 ms, 0 errors in 9,927 requests; search p95 68 ms; 132 of 256 MB. 55 of 55 queries index-backed (fixed on the way: "show inactive" scanned all 200k products; type filters relied on MET being common) |
 | **P4 inventory** (2026-11-07) | 200k units, 2k products, 400k history rows (`explain_inventory.py`) | Explain only (P4's gate is the concurrency test, below) | **Pass.** 133 queries, all index-backed incl. the partial indexes (fixed on the way: assigned count filtered every unit of a product; unit lists looked up product names one by one) |
+| **P9 search at 2M products** (2026-11-11) | 2,000,448 products; MongoDB with production memory (`tools/perf/compose.prod-mongo.yml`: 8 GB, cache 6 GB) | Same mix, 55 req/s for 3 min | **Pass after a fix.** Before: `$text` + `textScore` sort read every match ("sensor": 187k documents, 10 s cold); concurrent searches **OOM-killed MongoDB even at 8 GB**. Fix (catalog-svc `_ranked`): fetch ≤ `SEARCH_CANDIDATES` matches without the score (index order, 2–5 ms); narrow queries keep MongoDB's ranking, broad ones are ranked in the service with the text-index weights; 2 s `maxTimeMS`; ≤ 6 ranked searches per process, else 503 `SEARCH_BUSY`. 1,000 candidates: search p95 342 ms, 0.18 % errors (fail). **300 (default): search p95 20 ms, p99 63 ms, all requests p95 16 ms, 0 errors in 9,946.** 70 queries index-backed. Trade-off: a word matching > 300 products ranks the first 300 matches only |
 
 Concurrency (P4 exit): `tests/integration/test_inventory.py` races two reservations for the last units (one wins, the loser holds nothing), two requests taking the same two products in opposite order (only possible to get right with the transaction; the test fails with transactions switched off), and two devices scanning the same unit.
 
 **Findings for P9:**
 - One catalog-svc container (0.5 CPU, 2 workers) is **CPU-bound in Python**: p95 stays < 80 ms up to ~145 req/s, then requests queue (no errors, but p95 reaches seconds by ~250 req/s). The 1,000 req/s browse mix (~850 req/s on the catalogue) therefore needs about **6 replicas at 0.5 CPU or more CPU per replica**, not today's 2 × 0.5 (INFRASTRUCTURE §4.1). This is CPU, not memory.
-- `$text` ranking sorts all matches in memory: ~30 ms for ~10k matches at 200k products. At 2M products a broad word ("sensor") matches ~100k, so search is the first read to check in P9.
+- `$text` ranking sorts all matches in memory: ~30 ms for ~10k matches at 200k products. At 2M products a broad word ("sensor") matches ~100k, so search is the first read to check in P9. **Checked in P9: confirmed (OOM) and fixed, see the P9 row.**
+- MongoDB cache 6 GB inside an 8 GB container leaves ~2 GB for query memory and connections (INFRASTRUCTURE §5.1); input to the 64 GB decision.
 
 ## 7. Resilience tests
 

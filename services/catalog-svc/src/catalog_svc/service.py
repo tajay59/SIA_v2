@@ -6,6 +6,8 @@ event can't diverge (TAD §5). Customers only ever get PUBLIC_FIELDS (store.py).
 
 from __future__ import annotations
 
+import asyncio
+import os
 import re
 import secrets
 from collections.abc import Awaitable, Callable
@@ -15,14 +17,14 @@ from typing import Any
 
 from bson.decimal128 import Decimal128
 from pymongo import ReturnDocument
-from pymongo.errors import DuplicateKeyError
+from pymongo.errors import DuplicateKeyError, ExecutionTimeout
 
 from cimh_common.auth import Principal
 from cimh_common.errors import ProblemError, conflict, forbidden, not_found
 from cimh_common.outbox import new_event
 from cimh_common.paging import clamp_limit, decode_cursor, encode_cursor, page
 
-from .store import PUBLIC_FIELDS, PUBLIC_FILTER, Store, now
+from .store import PUBLIC_FIELDS, PUBLIC_FILTER, TEXT_WEIGHTS, Store, now
 
 PRODUCT_TYPES = ("MET", "RAD", "EQUIP", "SUPP", "MISC", "PRO")
 EVENT_FIELDS = ("name", "type", "sellable", "probono", "probonoMaxPerRequest", "active", "threshold")
@@ -159,10 +161,37 @@ def _offset_cursor(cursor: str | None) -> int:
     return value
 
 
+SEARCH_CANDIDATES = int(
+    os.environ.get("SEARCH_CANDIDATES", "300")
+)  # broad queries rank this many (P9: 1000 -> p95 342 ms)
+SEARCH_MS = 2000  # MongoDB time limit per search query
+SEARCH_CONCURRENCY = 6  # ranked searches at once per process; more -> 503 SEARCH_BUSY
+
+
+def candidate_score(doc: dict[str, Any], terms: list[str]) -> float:
+    """Field-weighted term hits (same weights as the text index); whole-word hits count double."""
+    score = 0.0
+    for field, weight in TEXT_WEIGHTS.items():
+        value = doc.get(field)
+        if isinstance(value, list):
+            value = " ".join(str(v) for v in value)
+        if not value:
+            continue
+        low = str(value).lower()
+        words = set(re.findall(r"\w+", low))
+        for t in terms:
+            if t in words:
+                score += 2 * weight
+            elif t in low:
+                score += weight
+    return score
+
+
 class CatalogService:
     def __init__(self, store: Store, lookup_account: AccountLookup | None = None) -> None:
         self.store = store
         self.lookup_account = lookup_account
+        self._search_slots = asyncio.Semaphore(SEARCH_CONCURRENCY)
 
     # ------------------------------------------------------------------ products: read (C1-C3)
 
@@ -213,17 +242,54 @@ class CatalogService:
             serial = {"$or": [{"sn": rx}, {"sn1": rx}, {"modelnumber": rx}, {"id": text.strip()}]}
             found = await self.store.product.find({**base, **serial}).limit(n).to_list()
         seen = {d["id"] for d in found}
-        cur = (
-            self.store.product.find({**base, "$text": {"$search": text}}, {"score": {"$meta": "textScore"}})
-            .sort([("score", {"$meta": "textScore"}), ("id", 1)])
-            .skip(offset)
-            .limit(n + 1)
-        )
-        ranked = await cur.to_list()
-        nxt = encode_cursor(offset + n, "offset") if len(ranked) > n else None
-        found += [d for d in ranked[:n] if d["id"] not in seen]
+        ranked, more = await self._ranked(text, base, offset, n)
+        nxt = encode_cursor(offset + n, "offset") if more else None
+        found += [d for d in ranked if d["id"] not in seen]
         view = staff_view if staff else public_view
         return [view(d) for d in found], nxt
+
+    async def _ranked(self, text: str, base: dict[str, Any], offset: int, n: int) -> tuple[list[dict[str, Any]], bool]:
+        """One page of ranked text matches, with bounded cost at any catalogue size (P9, 2M products).
+
+        MongoDB's `textScore` sort reads every match first: a broad word ("sensor") ranks ~190k documents at 2M
+        products, and concurrent searches exhausted the primary's memory. So: fetch up to SEARCH_CANDIDATES
+        matches without the score (streams from the index, ~2-5 ms). Narrow queries (all matches fetched) keep
+        MongoDB's exact ranking; broad ones are ranked here with the same field weights over those candidates,
+        and paging stops at SEARCH_CANDIDATES (the UI asks to refine). Bounded by a time limit and a per-process
+        concurrency cap: overload answers 503, it never piles work onto MongoDB.
+        """
+        q = {**base, "$text": {"$search": text}}
+        if self._search_slots.locked():
+            raise ProblemError(
+                503, "SEARCH_BUSY", "Search is busy; try again in a moment", headers={"Retry-After": "2"}
+            )
+        async with self._search_slots:
+            try:
+                fields = {"_id": 0, "id": 1, **{f: 1 for f in TEXT_WEIGHTS}}
+                probe = (
+                    await self.store.product.find(q, fields)
+                    .limit(SEARCH_CANDIDATES + 1)
+                    .max_time_ms(SEARCH_MS)
+                    .to_list()
+                )
+                if len(probe) <= SEARCH_CANDIDATES:
+                    cur = (
+                        self.store.product.find(q, {"score": {"$meta": "textScore"}})
+                        .sort([("score", {"$meta": "textScore"}), ("id", 1)])
+                        .skip(offset)
+                        .limit(n + 1)
+                        .max_time_ms(SEARCH_MS)
+                    )
+                    docs = await cur.to_list()
+                    return docs[:n], len(docs) > n
+                probe = probe[:SEARCH_CANDIDATES]
+                terms = [t for t in re.findall(r"\w+", text.lower()) if len(t) > 1]
+                probe.sort(key=lambda d: (-candidate_score(d, terms), d["id"]))
+                ids = [d["id"] for d in probe[offset : offset + n]]
+                full = {d["id"]: d for d in await self.store.product.find({"id": {"$in": ids}}).to_list()}
+                return [full[i] for i in ids if i in full], offset + n < len(probe)
+            except ExecutionTimeout:
+                raise ProblemError(503, "SEARCH_BUSY", "Search took too long; try more specific words") from None
 
     # ------------------------------------------------------------------ products: write (C4, C5)
 

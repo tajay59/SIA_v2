@@ -96,6 +96,8 @@ P4's gate is concurrency: integration tests race two reservations for the last u
 
 **For P9:** one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.
 
+**Search at 2M products (P9, 2026-11-11).** The text-score sort read every match ("sensor": 187k documents) and concurrent searches ran MongoDB out of memory even with production memory. catalog-svc now ranks a broad query over its first 300 matches (index order, scored with the text-index weights); narrow queries keep MongoDB's ranking. Each search has a 2 s limit and at most 6 run at once per process (more: 503 `SEARCH_BUSY`). Result at 55 req/s: search p95 20 ms, no errors.
+
 ## 15.7 Resilience tests
 
 | Test | Expected | Where it runs (P9) |

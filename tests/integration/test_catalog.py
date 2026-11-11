@@ -33,7 +33,7 @@ def _staff() -> dict[str, str]:
     return {"Authorization": "Bearer " + jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})}
 
 
-def test_search_and_xuser_view_on_real_mongo(stack: Any, tmp_path: Path) -> None:
+def test_search_and_xuser_view_on_real_mongo(stack: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from pymongo import AsyncMongoClient
 
     from catalog_svc.config import Settings
@@ -89,6 +89,37 @@ def test_search_and_xuser_view_on_real_mongo(stack: Any, tmp_path: Path) -> None
         page2 = client.get(f"{base}/products/search", params={"q": "wind", "limit": 2, "cursor": page1["nextCursor"]})
         assert len(page2.json()["items"]) == 1
         assert page2.json()["nextCursor"] is None
+
+        # Broad queries (more matches than SEARCH_CANDIDATES) are ranked in the service over a bounded candidate
+        # set, so cost does not grow with the catalogue (P9: 2M products). "rain" has 3 staff matches; cap 2.
+        import catalog_svc.service as service_mod
+
+        monkeypatch.setattr(service_mod, "SEARCH_CANDIDATES", 2)
+        broad = client.get(f"{base}/products/search", headers=staff, params={"q": "rain", "limit": 1}).json()
+        assert len(broad["items"]) == 1
+        assert broad["nextCursor"]
+        rest = client.get(
+            f"{base}/products/search", headers=staff, params={"q": "rain", "limit": 1, "cursor": broad["nextCursor"]}
+        ).json()
+        assert len(rest["items"]) == 1
+        assert rest["nextCursor"] is None
+        assert rest["items"][0]["id"] != broad["items"][0]["id"]
+        assert service_mod.candidate_score({"name": "Rain gauge", "keywords": ["rain"]}, ["rain"]) > (
+            service_mod.candidate_score({"make": "Rainwise"}, ["rain"])
+        )
+        monkeypatch.setattr(service_mod, "SEARCH_CANDIDATES", 300)
+
+        # Overload answers 503 SEARCH_BUSY instead of queueing more work on MongoDB.
+        slots = app.state.catalog._search_slots
+        held = slots._value
+        slots._value = 0
+        try:
+            busy = client.get(f"{base}/products/search", params={"q": "rain"})
+            assert busy.status_code == 503
+            assert busy.json()["code"] == "SEARCH_BUSY"
+            assert busy.headers["Retry-After"] == "2"
+        finally:
+            slots._value = held
 
     # The async client is bound to the TestClient's event loop: read the view with a plain client.
     from pymongo import MongoClient

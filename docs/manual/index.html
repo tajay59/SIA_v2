@@ -7663,6 +7663,7 @@ rs.initiate({
 </table>
 <p>P4's gate is concurrency: integration tests race two reservations for the last units (one wins, the loser holds nothing), two crossing multi-line reservations (fails without the transaction), and two devices scanning the same unit.</p>
 <p><strong>For P9:</strong> one catalog-svc container (0.5 CPU) is CPU-bound at ~145 req/s, so the 1,000 req/s browse mix needs about 6 replicas at 0.5 CPU (or more CPU each), not 2. Text search ranks all matches in memory and is the first read to re-check at 2M products.</p>
+<p><strong>Search at 2M products (P9, 2026-11-11).</strong> The text-score sort read every match ("sensor": 187k documents) and concurrent searches ran MongoDB out of memory even with production memory. catalog-svc now ranks a broad query over its first 300 matches (index order, scored with the text-index weights); narrow queries keep MongoDB's ranking. Each search has a 2 s limit and at most 6 run at once per process (more: 503 <code>SEARCH_BUSY</code>). Result at 55 req/s: search p95 20 ms, no errors.</p>
 <h2 id="157-resilience-tests">15.7 Resilience tests</h2>
 <table>
 <thead>

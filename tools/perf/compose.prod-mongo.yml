@@ -1,0 +1,11 @@
+# Overlay for perf checks at production data sizes (TEST_STRATEGY §6): gives the dev MongoDB the memory of the
+# production primary (INFRASTRUCTURE §4.1: mem_limit 8g, wiredTigerCacheSizeGB 6). The dev default (1 GB) is
+# OOM-killed by 2M products. Needs a Docker VM with ≥ 12 GB.
+#
+#   docker compose -f deploy/compose.dev.yml -f tools/perf/compose.prod-mongo.yml up -d --wait mongo
+#   ... run tools/perf/run_catalog.sh ...
+#   docker compose -f deploy/compose.dev.yml up -d --wait mongo     # back to the dev limit
+services:
+  mongo:
+    command: ["--replSet", "rs0", "--bind_ip_all", "--wiredTigerCacheSizeGB", "6"]
+    mem_limit: 8g
