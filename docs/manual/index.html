@@ -6932,12 +6932,12 @@ export const cimhDark = {
 </tr>
 <tr>
 <td>exporters</td>
-<td>node, mongodb, kafka, redis</td>
+<td>node, mongodb (<code>percona/mongodb_exporter</code> in a busybox wrapper, user <code>svc_monitor</code>: <code>clusterMonitor</code>), kafka (<code>danielqsj/kafka-exporter</code>, SCRAM user <code>exporter</code>: Describe only), redis (<code>oliver006/redis_exporter</code>, ACL user <code>exporter</code>)</td>
 <td>1 each</td>
 <td>0.1</td>
-<td>64 MB each</td>
+<td>64 MB each (redis 32 MB)</td>
 <td>data</td>
-<td>node-exporter uses host network/pid read-only</td>
+<td>node-exporter uses host network/pid read-only; each runs as the uid that owns its secret file</td>
 </tr>
 <tr>
 <td><strong>Total limits</strong></td>
@@ -7109,8 +7109,9 @@ rs.initiate({
 </tbody>
 </table>
 <p>Alerts: backup age &gt; 26 h; restic check failure; repository size growth &gt; 20 %/week.</p>
+<p>Restores run <code>mongorestore --bypassDocumentValidation</code>: the dump re-creates each collection with its BSD §7 validator, which would otherwise silently drop older documents that predate a schema change (found by the P9 rehearsal).</p>
 <h2 id="148-monitoring-endpoints">14.8 Monitoring endpoints</h2>
-<p>Prometheus scrapes: services <code>/metrics</code>, node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (<code>/ops/prometheus</code>, admin basic-auth + IP allow-list).</p>
+<p>Prometheus scrapes: services <code>/metrics</code> (incl. <code>outbox_pending_events</code> / <code>outbox_oldest_event_age_seconds</code>, computed by each owning service at scrape time so a stopped relay still shows), node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (<code>/ops/prometheus</code>, admin basic-auth + IP allow-list).</p>
 <h2 id="149-environments">14.9 Environments</h2>
 <table>
 <thead>
@@ -7668,43 +7669,53 @@ rs.initiate({
 <tr>
 <th>Test</th>
 <th>Expected</th>
+<th>Where it runs (P9)</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Stop Pi A</td>
 <td>No user impact; alert "member down"</td>
+<td><strong>Rehearsal</strong> (<code>tools/infra/rehearsal/run.sh</code> §9): member health 0 in <code>mongodb-exporter</code>; alert rule in promtool tests. Real Pi: owner</td>
 </tr>
 <tr>
 <td>Stop sia-host mongo1</td>
 <td>Pi becomes primary within 30 s; writes resume; host rejoins and takes primary back</td>
+<td><strong>Rehearsal</strong> §7</td>
 </tr>
 <tr>
 <td>Stop one Kafka broker</td>
 <td>No message loss; producers continue (<code>min.insync.replicas=2</code>)</td>
+<td><strong>Rehearsal</strong> §9: relay publishes, event read back</td>
 </tr>
 <tr>
 <td>Kill a service replica mid-request</td>
 <td>nginx retries idempotent GETs; client retries POST with the same Idempotency-Key → one effect</td>
+<td>Idempotency replay: unit/integration tests (<code>IdempotencyStore</code>); nginx retry: on the host (owner)</td>
 </tr>
 <tr>
 <td>Restart Redis</td>
 <td>Revocations survive (AOF); rate limits reset (acceptable)</td>
+<td><strong>Rehearsal</strong> §9</td>
 </tr>
 <tr>
 <td>Outbox relay down 10 min</td>
 <td>Events queue on documents; published on restart; alert "outbox backlog" fired</td>
+<td><strong>Rehearsal</strong> §9 (backlog metric, drain, event read back); alert <code>OutboxBacklog</code> in <code>deploy/prometheus/tests/alerts.test.yml</code></td>
 </tr>
 <tr>
 <td>Disk 90 %</td>
 <td>Alert at 80 %; services keep running; Kafka retention trims</td>
+<td>Host (owner)</td>
 </tr>
 <tr>
 <td>Power cut simulation</td>
 <td>Pis need manual LUKS unlock; runbook steps work; RTO measured</td>
+<td>Host + Pis (owner)</td>
 </tr>
 </tbody>
 </table>
+<p>Alert rules are checked in CI (<code>promtool check config</code> + <code>test rules</code>). Found in P9: the production Prometheus config did not parse (unquoted <code>${ENV}</code> in a flow mapping) and the MongoDB/Kafka/Redis exporters it scraped did not exist, so three alerts could never fire; both fixed.</p>
 <h2 id="158-test-environments-and-data">15.8 Test environments and data</h2>
 <table>
 <thead>

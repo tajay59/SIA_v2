@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Histogram, generate_latest
+import logging
+from collections.abc import Awaitable, Callable
+
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Counter, Gauge, Histogram, generate_latest
 from starlette.requests import Request
 from starlette.responses import Response
+
+log = logging.getLogger(__name__)
+ScrapeHook = Callable[[], Awaitable[None]]
 
 
 class ServiceMetrics:
@@ -26,13 +32,31 @@ class ServiceMetrics:
         self.events = Counter(
             "events_consumed_total", "Kafka events consumed", ["service", "topic", "outcome"], registry=self.registry
         )
+        self.outbox_pending = Gauge(
+            "outbox_pending_events", "Events waiting in the outbox", ["service", "collection"], registry=self.registry
+        )
+        self.outbox_oldest = Gauge(
+            "outbox_oldest_event_age_seconds",
+            "Age of the oldest event waiting in the outbox (0 when empty)",
+            ["service", "collection"],
+            registry=self.registry,
+        )
         self.service = service
+        self.scrape_hooks: list[ScrapeHook] = []
 
     def observe(self, request: Request, status: int, seconds: float) -> None:
         # Use the route template, not the raw path, to keep label cardinality bounded.
         route = getattr(request.scope.get("route"), "path", "unmatched")
         self.requests.labels(self.service, request.method, route, str(status)).inc()
         self.latency.labels(self.service, request.method, route).observe(seconds)
+
+    async def collect(self) -> None:
+        """Run the scrape-time hooks (e.g. outbox backlog); a failing hook never breaks /metrics."""
+        for hook in self.scrape_hooks:
+            try:
+                await hook()
+            except Exception:
+                log.warning("metrics hook failed", exc_info=True)
 
     def render(self) -> Response:
         return Response(generate_latest(self.registry), media_type=CONTENT_TYPE_LATEST)

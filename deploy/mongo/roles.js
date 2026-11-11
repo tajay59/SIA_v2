@@ -53,5 +53,7 @@ for (const [svc, colls] of Object.entries(OWN)) {
 }
 
 upsertUser("svc_backup", secret("mongo_svc_backup"), [{ role: "backup", db: "admin" }, { role: "clusterMonitor", db: "admin" }]);
+// mongodb-exporter (INFRASTRUCTURE §8): server and replica set status only, no data.
+upsertUser("svc_monitor", secret("mongo_svc_monitor"), [{ role: "clusterMonitor", db: "admin" }]);
 upsertUser("admin_ops", secret("mongo_admin_ops"), [{ role: "readAnyDatabase", db: "admin" }, { role: "clusterMonitor", db: "admin" }]);
 print("users ready");

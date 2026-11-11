@@ -187,3 +187,32 @@ def topic_by_prefix(mapping: dict[str, str]) -> TopicFor:
         raise KeyError(f"no topic for event type {event_type!r}")
 
     return topic_for
+
+
+def outbox_backlog_hook(metrics: Any, collections: dict[str, Any], *, now: Callable[[], datetime] = _now) -> Any:
+    """Scrape-time gauges of what the relay has not published yet (alert `OutboxBacklog`).
+
+    Reported by the owning service, not the relay, so a stopped relay still shows up. Uses the sparse
+    `{outbox.0: 1}` index and looks at no more than 10,000 documents.
+    """
+
+    async def hook() -> None:
+        for name, coll in collections.items():
+            pipeline = [
+                {"$match": {"outbox.0": {"$exists": True}}},
+                {"$limit": 10_000},
+                {"$project": {"n": {"$size": "$outbox"}, "t": {"$min": "$outbox.occurredAt"}}},
+                {"$group": {"_id": None, "n": {"$sum": "$n"}, "t": {"$min": "$t"}}},
+            ]
+            rows = await (await coll.aggregate(pipeline, maxTimeMS=2000)).to_list(1)
+            pending = rows[0]["n"] if rows else 0
+            oldest = rows[0]["t"] if rows else None
+            age = 0.0
+            if isinstance(oldest, datetime):
+                if oldest.tzinfo is None:
+                    oldest = oldest.replace(tzinfo=UTC)
+                age = max(0.0, (now() - oldest).total_seconds())
+            metrics.outbox_pending.labels(metrics.service, name).set(pending)
+            metrics.outbox_oldest.labels(metrics.service, name).set(age)
+
+    return hook

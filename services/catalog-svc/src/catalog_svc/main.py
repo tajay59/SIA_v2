@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_revocation_check
+from cimh_common.outbox import outbox_backlog_hook
 
 from .api import router
 from .config import Settings
@@ -83,6 +84,9 @@ def build_app(
         yield
 
     app.router.lifespan_context = lifespan
+    app.state.metrics.scrape_hooks.append(
+        outbox_backlog_hook(app.state.metrics, {"product": db["product"], "misc": db["misc"]})
+    )
     app.state.settings = s
     app.state.catalog = CatalogService(store, lookup_account)
     app.include_router(router, prefix=BASE)

@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_revocation_check
 from cimh_common.idempotency import IdempotencyStore
+from cimh_common.outbox import outbox_backlog_hook
 
 from .api import router
 from .clients import Deps, HttpDeps
@@ -85,6 +86,7 @@ def build_app(
         yield
 
     app.router.lifespan_context = lifespan
+    app.state.metrics.scrape_hooks.append(outbox_backlog_hook(app.state.metrics, {"orders": db["orders"]}))
     app.state.settings = s
     app.state.orders = OrderService(store, deps, quote_valid_days=s.quote_valid_days)
     app.state.idempotency = IdempotencyStore(redis, prefix="ord:idem")  # Redis ACL: order owns ord:*

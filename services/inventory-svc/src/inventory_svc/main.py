@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_revocation_check
 from cimh_common.idempotency import IdempotencyStore
+from cimh_common.outbox import outbox_backlog_hook
 
 from .api import router
 from .config import Settings
@@ -84,6 +85,7 @@ def build_app(
         yield
 
     app.router.lifespan_context = lifespan
+    app.state.metrics.scrape_hooks.append(outbox_backlog_hook(app.state.metrics, {"stock": db["stock"]}))
     app.state.settings = s
     app.state.inventory = InventoryService(
         store, places, redis, cache_seconds=s.place_cache_seconds, label_pdfs=label_pdfs

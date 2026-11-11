@@ -533,6 +533,7 @@ services:
     user: "65534"
     command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
               "--storage.tsdb.retention.time=30d"]
+    environment: { ENV: "${ENV:-prod}" }   # external label env (prometheus.yml)
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro
@@ -564,6 +565,44 @@ services:
     mem_limit: 64m
     cpus: 0.1
 
+  # Exporters (INFRASTRUCTURE §8): read-only principals; passwords come from secret files at start-up, never
+  # from this file. The MongoDB exporter image has no shell, so a busybox wrapper reads the URI file.
+  mongodb-exporter:
+    <<: *hardening
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM percona/mongodb_exporter:0.44.0 AS bin
+        FROM busybox:1.37.0
+        COPY --from=bin /mongodb_exporter /mongodb_exporter
+    image: cimh/mongodb-exporter:0.44.0
+    user: "10001"   # owner of mongo_url_* (provision.sh)
+    entrypoint: ["sh", "-c", "MONGODB_URI=\"$$(cat /run/secrets/mongo_url_monitor)\" exec /mongodb_exporter --no-mongodb.direct-connect --collector.replicasetstatus --collector.diagnosticdata --web.listen-address=:9216"]
+    secrets: [ca.pem, mongo_url_monitor]
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+  kafka-exporter:
+    <<: *hardening
+    image: danielqsj/kafka-exporter:v1.9.0
+    user: "1000"    # owner of kafka_* (provision.sh)
+    entrypoint: ["sh", "-c", "exec kafka_exporter --kafka.server=kafka1:9092 --kafka.server=kafka2:9092 --kafka.server=kafka3:9092 --tls.enabled --tls.ca-file=/run/secrets/ca.pem --sasl.enabled --sasl.mechanism=scram-sha512 --sasl.username=exporter --sasl.password=\"$$(cat /run/secrets/kafka_exporter)\""]
+    secrets: [ca.pem, kafka_exporter]
+    networks: [data]
+    mem_limit: 64m
+    cpus: 0.1
+
+  redis-exporter:
+    <<: *hardening
+    image: oliver006/redis_exporter:v1.67.0-alpine
+    user: "999"     # owner of redis_exporter (provision.sh)
+    entrypoint: ["sh", "-c", "REDIS_USER=exporter REDIS_PASSWORD=\"$$(cat /run/secrets/redis_exporter)\" exec /redis_exporter --redis.addr=redis://redis:6379"]
+    secrets: [redis_exporter]
+    networks: [data]
+    mem_limit: 32m
+    cpus: 0.05
+
 configs:
   mongod-conf: { file: ./mongo/mongod.conf }
   redis-conf: { file: ./redis/redis.conf }
@@ -576,6 +615,7 @@ secrets:
   mongo_keyfile: { file: "${SECRETS:-./secrets}/mongo_keyfile" }
   redis_users.acl: { file: "${SECRETS:-./secrets}/redis_users.acl" }
   redis_exporter: { file: "${SECRETS:-./secrets}/redis_exporter" }
+  mongo_url_monitor: { file: "${SECRETS:-./secrets}/mongo_url_monitor" }
   mongo_url_identity: { file: "${SECRETS:-./secrets}/mongo_url_identity" }
   redis_url_identity: { file: "${SECRETS:-./secrets}/redis_url_identity" }
   redis_url_relay: { file: "${SECRETS:-./secrets}/redis_url_relay" }
