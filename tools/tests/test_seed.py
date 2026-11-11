@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "seed"))
+from bson.decimal128 import Decimal128
 from seed_dev import build, main
 
 
@@ -20,7 +21,8 @@ def test_seed_is_deterministic_and_covers_cases() -> None:
     by_id = {u["id"]: u for u in users}
     assert all(by_id[o]["status"] == "ACTIVE" and not by_id[o]["isCimh"] for o in owners)
     # money is a 2-decimal string, never a float
-    assert all(isinstance(p["cost"], str) and p["cost"].split(".")[1].__len__() == 2 for p in a["product"])
+    # Money is Decimal128 with 2 decimals, as catalog-svc writes it (the BSD §7 validator refuses strings).
+    assert all(isinstance(p["cost"], Decimal128) and str(p["cost"]).split(".")[1].__len__() == 2 for p in a["product"])
     assert all(not p["probono"] or p["sellable"] for p in a["product"])
 
 

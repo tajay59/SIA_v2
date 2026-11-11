@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -37,6 +38,9 @@ def _service(db: Any) -> Any:
     return InventoryService(Store(db), _Places())
 
 
+T0 = datetime(2026, 11, 1, tzinfo=UTC)
+
+
 async def _setup(db: Any, pid: str, units: int, *, stowed: bool = True) -> list[str]:
     from inventory_svc.store import Store
 
@@ -45,7 +49,17 @@ async def _setup(db: Any, pid: str, units: int, *, stowed: bool = True) -> list[
     codes = [f"{pid}_{i:08x}" for i in range(units)]
     await db.storage.insert_many(
         [
-            {"barcode": c, "product": pid, "stowed": stowed, "picked": False, "shelf": "SHEL1" if stowed else None}
+            # Same shape as inventory-svc writes (the BSD §7 validator requires images and timestamps).
+            {
+                "barcode": c,
+                "product": pid,
+                "stowed": stowed,
+                "picked": False,
+                "shelf": "SHEL1" if stowed else None,
+                "images": [],
+                "createdAt": T0,
+                "updatedAt": T0,
+            }
             for c in codes
         ]
     )
@@ -116,7 +130,10 @@ def test_crossing_multi_line_reservations_are_all_or_nothing(stack: Any) -> None
         p1, p2 = "MET" + "c" * 32, "MET" + "d" * 32
         await _setup(db, p1, 1)
         await db.stock.insert_one({"id": p2, "productName": "Vane", "threshold": 0, "active": True, "outbox": []})
-        await db.storage.insert_one({"barcode": f"{p2}_00000000", "product": p2, "stowed": True, "picked": False})
+        await db.storage.insert_one(
+            {"barcode": f"{p2}_00000000", "product": p2, "stowed": True, "picked": False}
+            | {"images": [], "createdAt": T0, "updatedAt": T0}
+        )
         for rnd in range(6):
             await db.storage.update_many({}, {"$unset": {"reservedFor": "", "reservedAt": ""}})
             l1 = {"lineId": "L1", "productId": p1, "qty": 1}

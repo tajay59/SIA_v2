@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Any
 
 from cimh_common.ids import ulid
+from cimh_common.validation import apply_validators
+from identity_svc.schemas import SCHEMAS
 
 
 def now() -> datetime:
@@ -21,6 +23,8 @@ class Store:
         self.audit = db["auditlog"]
 
     async def ensure_indexes(self) -> None:
+        # BSD §7 validators first: the collections exist with their schema before any index or write.
+        await apply_validators(self.db, SCHEMAS)
         await self.accounts.create_index("id", unique=True)
         await self.accounts.create_index("email", unique=True)
         await self.accounts.create_index([("status", 1), ("createdAt", 1)])

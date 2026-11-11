@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
+from catalog_svc.schemas import SCHEMAS
+from cimh_common.validation import apply_validators
+
 # Customer-facing fields (ProductPublic). The `xuser` view and every public API answer use THIS list, so the
 # view, the API and the snapshot tests can't drift apart (BSD §5.6).
 PUBLIC_FIELDS: tuple[str, ...] = (
@@ -46,6 +49,8 @@ class Store:
         self.misc = db["misc"]
 
     async def ensure_indexes(self) -> None:
+        # BSD §7 validators first: the collections exist with their schema before any index or write.
+        await apply_validators(self.db, SCHEMAS)
         p = self.product
         await p.create_index("id", unique=True)
         await p.create_index(

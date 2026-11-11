@@ -1513,7 +1513,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </table>
 <p>Writes use <code>w: majority</code> + <code>retryWrites</code>. Reads come from the <code>primary</code>, except reports and backups, which read from secondaries.</p>
 <h2 id="47-validation">4.7 Validation</h2>
-<p>Every collection has a <code>$jsonSchema</code> validator generated from the service's Pydantic models. It is set to <code>moderate</code>/<code>warn</code> during migration, then switched to <code>strict</code>/<code>error</code> once the migration is signed off.</p>
+<p>Every collection has a <code>$jsonSchema</code> validator, written per service in <code>&lt;service&gt;/schemas.py</code> (the services store plain documents, so there are no Pydantic document models to generate them from) and applied by the service at start-up before its indexes (<code>cimh_common.validation.apply_validators</code>; the Mongo roles already grant <code>createCollection</code>/<code>collMod</code>). They require ids, versions, timestamps and enumerations and type the other known fields, but leave extra fields open. <code>MONGO_VALIDATION=migration</code> gives <code>moderate</code>/<code>warn</code> while a migration loads; the default <code>strict</code> gives <code>strict</code>/<code>error</code> (dev, CI and production after sign-off). <code>stock</code> requires only <code>id</code> because partial upserts build it. It is set to <code>moderate</code>/<code>warn</code> during migration, then switched to <code>strict</code>/<code>error</code> once the migration is signed off.</p>
 <h2 id="48-retention">4.8 Retention</h2>
 <table>
 <thead>
@@ -6355,6 +6355,45 @@ export const cimhDark = {
 <td>Staging, fresh dump</td>
 <td>Final rehearsal with the exact runbook (§8)</td>
 <td>Duration ≤ 45 min; zero manual fixes needed</td>
+</tr>
+</tbody>
+</table>
+<p><strong>DR-1 result (2026-11-10): pass.</strong> <code>bash tools/migrate/dr1.sh db</code> converts the export (M01–M07 + <code>stock</code>), loads it into a throwaway MongoDB 8.0.30 replica set, runs M09 with the services' own index code and <code>xuser</code> view, and runs every automated check in §6 in <strong>10 s</strong>: 34 pass, 0 fail, 1 warning (after the validator fix below).</p>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Counts</td>
+<td>accounts 65 → 59 (6 duplicate-email accounts merged); product 83, storage 697, history 860 unchanged; 39 orders → 39 requests (0 split: no legacy order mixed paid and Pro Bono lines) + 9 carts; 83 <code>stock</code> docs</td>
+</tr>
+<tr>
+<td>Sums</td>
+<td>unit states unchanged (484 stowed, 213 picked; no self-stowed units, so 0 <code>assignedTo</code>); line quantities 39/39 orders, 185 → 185</td>
+</tr>
+<tr>
+<td>References, enumerations, uniqueness</td>
+<td>all pass</td>
+</tr>
+<tr>
+<td>Mapping table</td>
+<td>every free-text decision: country text → ISO (12 spellings), order state → status, <code>sellable</code> → booleans, shipping method → carrier (11 values), organisation text → organisation (24). Values that can hold names (shipping method, organisation text) are summarised in <code>report.json</code>; the full table is in <code>mappings.local.json</code> next to the export (git-ignored)</td>
+</tr>
+<tr>
+<td>Warning</td>
+<td>29 active customers without an organisation: admins assign them before DR-2 (§9)</td>
+</tr>
+<tr>
+<td>Validators</td>
+<td><strong>found</strong> missing in every service (first run); <strong>built</strong> the same day (BSD §7). Rerun: every migrated document satisfies its collection's validator (8 collections, 0 invalid); totals now 34 pass, 1 warning</td>
+</tr>
+<tr>
+<td>Not covered by DR-1</td>
+<td>M08 files (checked by <code>files_to_v2.py</code> on its own output; 66 order uploads missing from the export), logins with existing passwords (need known passwords: DR-2), manual spot-check</td>
 </tr>
 </tbody>
 </table>

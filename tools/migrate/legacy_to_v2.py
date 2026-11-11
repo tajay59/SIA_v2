@@ -121,6 +121,33 @@ def utc(v: Any) -> datetime | None:
     return None
 
 
+# Every free-text -> v2 value decision, for the DR-1 report (MIGRATION_PLAN §4 "mapping table of every free-text
+# value"). Fields marked personal can hold names ("hand delivered by ..."): their source values go only to the
+# git-ignored local file next to the export, never into report.json.
+MAPPINGS: defaultdict[str, Counter] = defaultdict(Counter)
+PERSONAL = {"shipping.method -> carrier", "organisation text -> organisation"}
+
+
+def record_mapping(field: str, source: Any, target: Any) -> None:
+    MAPPINGS[field][(str(source), str(target))] += 1
+
+
+def mapping_tables(local: bool) -> list[dict[str, Any]]:
+    out = []
+    for field, counter in sorted(MAPPINGS.items()):
+        rows = [{"from": a, "to": b, "count": n} for (a, b), n in sorted(counter.items())]
+        if field in PERSONAL and not local:
+            by_target: Counter = Counter()
+            for r in rows:
+                by_target[r["to"] if not r["to"].startswith("ORG") else "an organisation"] += r["count"]
+            rows = [
+                {"from": f"{len(counter)} distinct free-text values", "to": t, "count": n}
+                for t, n in sorted(by_target.items())
+            ]
+        out.append({"field": field, "personal": field in PERSONAL, "rows": rows})
+    return out
+
+
 def fold(s: str) -> str:
     s = unicodedata.normalize("NFKD", s or "").encode("ascii", "ignore").decode()
     s = s.lower().replace("&", " and ").replace("st.", "st ")
@@ -133,10 +160,13 @@ def country(s: str, report: Counter) -> str | None:
         return None
     k = fold(s)
     if k in COUNTRIES:
+        record_mapping("country text -> ISO code", s.strip(), COUNTRIES[k])
         return COUNTRIES[k]
     if k.endswith("xico"):  # "México" exported with a broken accent
+        record_mapping("country text -> ISO code", s.strip(), "MX")
         return "MX"
     report[s.strip()] += 1
+    record_mapping("country text -> ISO code", s.strip(), "UNMAPPED (review)")
     return None
 
 
@@ -298,6 +328,7 @@ def m02_accounts(
             if not iso:
                 rep["review"].append(f"organisation {org['id']}: country unknown, set to BB")
             orgs[key] = org
+        record_mapping("organisation text -> organisation", clean, org["id"])
         return org
 
     cimh = org_for("CIMH", "BB")
@@ -389,6 +420,11 @@ def m03_products(
     out = []
     for p in products:
         sellable = str(p.get("sellable", "")).lower()
+        record_mapping(
+            "product.sellable",
+            sellable or "(empty)",
+            "probono" if sellable == "probono" else str(sellable in ("yes", "probono")).lower(),
+        )
         project = (p.get("project") or "").strip().lower()
         if project and project not in project_codes:
             rep["warnings"].append(f"product {p['id']}: unknown project {project!r} cleared")
@@ -594,6 +630,11 @@ def m07_orders(
         if acc is None:
             rep["warnings"].append(f"order {o['id']}: unknown customer {o['customer']}")
         status = "DELIVERED" if o.get("complete") else "CANCELLED" if o.get("cancelled") else "SUBMITTED"
+        record_mapping(
+            "order state -> status",
+            "complete" if o.get("complete") else "cancelled" if o.get("cancelled") else "open",
+            status,
+        )
         submitted = utc(o.get("ordered")) or NOW
         sh = o.get("shipping") or {}
         method = (sh.get("method") or "").strip()
@@ -601,6 +642,7 @@ def m07_orders(
         if method:
             m = method.lower()
             carrier = "FEDEX" if m == "fedex" else "DHL" if m == "dhl" else "HAND"
+            record_mapping("shipping.method -> carrier", method, carrier)
             sdate = utc(sh.get("date"))
             if sh.get("date") and sdate is None:
                 rep["warnings"].append(f"order {o['id']}: shipping date unparseable")
@@ -757,7 +799,10 @@ def main() -> None:
         (dst / f"{name}.json").write_text(
             json_util.dumps(docs, json_options=json_util.CANONICAL_JSON_OPTIONS), encoding="utf-8"
         )
+    rep["mappings"] = mapping_tables(local=False)
     (dst / "report.json").write_text(json.dumps(rep, indent=2, default=dict), encoding="utf-8")
+    # Full table incl. personal free text: stays next to the export (git-ignored `db/`), for the reviewers only.
+    (dst / "mappings.local.json").write_text(json.dumps(mapping_tables(local=True), indent=2), encoding="utf-8")
     print(
         json.dumps(
             {"counts": rep["counts"], "warnings": len(rep["warnings"]), "review": len(rep["review"])},

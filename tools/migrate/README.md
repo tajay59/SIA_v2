@@ -15,3 +15,10 @@ Input: a mongoexport of the legacy `inventory` db in `db/` (git-ignored: real pe
 
 Rules applied beyond the plan: duplicate emails keep the account with orders, else the oldest; accounts get
 their organisation from their latest order (legacy had no org field); unknown countries default to `BB`.
+
+## DR-1 (local rehearsal, MIGRATION_PLAN §7)
+`bash tools/migrate/dr1.sh db` (repo root; Docker + `.venv`): converts, loads into a **throwaway** MongoDB on port
+27099 (removed afterwards), runs M09 through the services' own `ensure_indexes`/`ensure_view`, and runs the §6
+checks. Output in `db/v2/`: `report.json` (ids, counts, mapping summary), `mappings.local.json` (full free-text
+mapping table, may contain names: review locally, never share), `dr1/verify.{json,md}`. Exit code 1 if any check
+fails. `dr1.py` refuses any target that is not a localhost port other than 27017/27018, because it wipes it.

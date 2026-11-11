@@ -59,7 +59,7 @@ async def seed(db: Any, units: int, seed: int = 11) -> None:
         pid = rng.choice(products)
         r = rng.random()
         doc: dict[str, Any] = {"barcode": f"{pid}_{i:08x}", "product": pid, "stowed": False, "picked": False,
-                               "images": [], "updatedAt": t0}  # fmt: skip
+                               "images": [], "createdAt": t0, "updatedAt": t0}  # fmt: skip
         if r < 0.75:
             doc |= {"stowed": True, "shelf": rng.choice(SHELVES), "site": "SITE1", "location": "LOC1"}
             if rng.random() < 0.05:

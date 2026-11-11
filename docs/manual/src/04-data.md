@@ -185,7 +185,7 @@ Writes use `w: majority` + `retryWrites`. Reads come from the `primary`, except 
 
 ## 4.7 Validation
 
-Every collection has a `$jsonSchema` validator generated from the service's Pydantic models. It is set to `moderate`/`warn` during migration, then switched to `strict`/`error` once the migration is signed off.
+Every collection has a `$jsonSchema` validator, written per service in `<service>/schemas.py` (the services store plain documents, so there are no Pydantic document models to generate them from) and applied by the service at start-up before its indexes (`cimh_common.validation.apply_validators`; the Mongo roles already grant `createCollection`/`collMod`). They require ids, versions, timestamps and enumerations and type the other known fields, but leave extra fields open. `MONGO_VALIDATION=migration` gives `moderate`/`warn` while a migration loads; the default `strict` gives `strict`/`error` (dev, CI and production after sign-off). `stock` requires only `id` because partial upserts build it. It is set to `moderate`/`warn` during migration, then switched to `strict`/`error` once the migration is signed off.
 
 ## 4.8 Retention
 
