@@ -21,6 +21,7 @@ import signal
 from typing import Any
 
 from cimh_common.outbox import EventEnvelope
+from cimh_common.redis_client import redis_client
 
 from .service import DocumentService
 
@@ -62,7 +63,6 @@ def make_handler(service: DocumentService) -> Any:
 
 
 async def main() -> None:
-    from redis.asyncio import from_url
 
     from cimh_common.consume_loop import kafka_security, run_service_consumer
     from cimh_common.consumer import IdempotentConsumer
@@ -75,7 +75,7 @@ async def main() -> None:
 
     configure_logging("document-consumer", os.environ.get("LOG_LEVEL", "INFO"))
     s = Settings.from_env()
-    redis: Any = from_url(env_secret("REDIS_URL"))
+    redis: Any = redis_client(env_secret("REDIS_URL"))
     security = kafka_security(dict(os.environ))
     bootstrap = os.environ["KAFKA_BOOTSTRAP"]
     publisher = KafkaPublisher(bootstrap, security)

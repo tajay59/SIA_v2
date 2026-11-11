@@ -18,6 +18,7 @@ import signal
 from typing import Any
 
 from cimh_common.outbox import EventEnvelope
+from cimh_common.redis_client import redis_client
 
 from .handlers import Notifier
 
@@ -34,7 +35,6 @@ def make_handler(notifier: Notifier) -> Any:
 
 async def main() -> None:
     from aiokafka import AIOKafkaProducer
-    from redis.asyncio import from_url
 
     from cimh_common.consume_loop import kafka_security, run_service_consumer
     from cimh_common.consumer import IdempotentConsumer
@@ -47,7 +47,7 @@ async def main() -> None:
     s = Settings.from_env()
     if not s.service_secret:
         raise RuntimeError("SERVICE_SECRET is required (codes, accounts, email lists)")
-    redis: Any = from_url(env_secret("REDIS_URL"))
+    redis: Any = redis_client(env_secret("REDIS_URL"))
     security = kafka_security(dict(os.environ))
     bootstrap = os.environ["KAFKA_BOOTSTRAP"]
     producer = AIOKafkaProducer(bootstrap_servers=bootstrap, acks="all", **security)

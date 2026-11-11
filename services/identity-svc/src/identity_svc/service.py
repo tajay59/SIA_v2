@@ -353,29 +353,36 @@ class IdentityService:
         email = email.lower().strip()
         acc = await self.store.accounts.find_one({"email": email})
         t = now()
+        locked_until = None
         if acc:
             locked = (acc.get("failedLogins") or {}).get("lockedUntil")
             if locked is not None:
                 locked = locked if locked.tzinfo else locked.replace(tzinfo=UTC)
                 if locked > t:
-                    raise ProblemError(
-                        403,
-                        "ACCOUNT_LOCKED",
-                        "Too many failed attempts; try again later",
-                        headers={"Retry-After": str(int((locked - t).total_seconds()) + 1)},
-                    )
+                    locked_until = locked
         ok = False
         if acc and acc.get("passwordHash"):
             ok = sec.verify_password(acc["passwordHash"], password)
         elif acc and acc.get("legacyPasswordHash"):
             ok = sec.verify_legacy_werkzeug(acc["legacyPasswordHash"], password)
-            if ok:  # upgrade to Argon2id at first login (BSD §5.1)
+            if ok and locked_until is None:  # upgrade to Argon2id at first login (BSD §5.1)
                 await self.store.accounts.update_one(
                     {"id": acc["id"]},
                     {"$set": {"passwordHash": sec.hash_password(password)}, "$unset": {"legacyPasswordHash": ""}},
                 )
         else:
             sec.verify_password(None, password)  # same cost for unknown emails
+        if locked_until is not None:
+            # Pen test 2026-11: a locked account must not answer differently (status or timing) from an unknown
+            # email, or locking it reveals that it exists (T-02). Only the right password learns about the lock.
+            if not ok:
+                raise unauthorized("Invalid email or password", code="INVALID_CREDENTIALS")
+            raise ProblemError(
+                403,
+                "ACCOUNT_LOCKED",
+                "Too many failed attempts; try again later",
+                headers={"Retry-After": str(int((locked_until - t).total_seconds()) + 1)},
+            )
         if not acc or not ok:
             if acc:
                 await self._register_failure(acc, ip, cid)

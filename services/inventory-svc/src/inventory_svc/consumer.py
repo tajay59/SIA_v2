@@ -24,6 +24,7 @@ from typing import Any
 from cimh_common.auth import Principal
 from cimh_common.errors import ProblemError
 from cimh_common.outbox import EventEnvelope
+from cimh_common.redis_client import redis_client
 
 from .service import InventoryService
 
@@ -71,7 +72,6 @@ def make_handler(service: InventoryService) -> Any:
 async def main() -> None:
     from aiokafka import AIOKafkaProducer
     from pymongo import AsyncMongoClient
-    from redis.asyncio import from_url
 
     from cimh_common.consume_loop import kafka_security, run_service_consumer
     from cimh_common.consumer import IdempotentConsumer
@@ -82,7 +82,7 @@ async def main() -> None:
 
     configure_logging("inventory-consumer", os.environ.get("LOG_LEVEL", "INFO"))
     db: Any = AsyncMongoClient(env_secret("MONGO_URL"), tz_aware=True)[os.environ.get("MONGO_DB", "inventory")]
-    redis: Any = from_url(env_secret("REDIS_URL"))
+    redis: Any = redis_client(env_secret("REDIS_URL"))
     security = kafka_security(dict(os.environ))
     bootstrap = os.environ["KAFKA_BOOTSTRAP"]
     producer = AIOKafkaProducer(bootstrap_servers=bootstrap, acks="all", **security)

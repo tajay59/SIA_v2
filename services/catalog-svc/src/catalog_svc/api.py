@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from cimh_common.auth import Principal
-from cimh_common.authz import optional_principal, require_admin, require_service, require_staff
+from cimh_common.authz import optional_principal, require_admin, require_services, require_staff
 from cimh_common.errors import ProblemError
 
 from .service import CatalogService
@@ -169,6 +169,12 @@ def image_ext(head: bytes) -> str | None:
             return ext
     return None
 
+
+# Internal endpoints: who may call them (least privilege, pen test 2026-11).
+FROM_ORDER_INVENTORY = require_services("order", "inventory")
+FROM_NOTIFICATION = require_services("notification")
+FROM_ORDER = require_services("order")
+FROM_INVENTORY = require_services("inventory")
 
 router = APIRouter()
 
@@ -386,18 +392,18 @@ async def put_general(body: SettingsIn, request: Request, me: Principal = Depend
 
 
 @router.post("/internal/products/summaries", tags=["internal"])
-async def summaries(body: IdsIn, request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+async def summaries(body: IdsIn, request: Request, me: Principal = Depends(FROM_ORDER_INVENTORY)) -> dict[str, Any]:
     return {"items": await svc(request).summaries(body.ids)}
 
 
 @router.get("/internal/email-lists", tags=["internal"])
-async def internal_email_lists(request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+async def internal_email_lists(request: Request, me: Principal = Depends(FROM_NOTIFICATION)) -> dict[str, Any]:
     """notification-svc: who gets staff emails (registration, order, invoice, cancellation, lowStock)."""
     return await svc(request).email_lists()
 
 
 @router.get("/internal/fees", tags=["internal"])
-async def internal_fees(request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+async def internal_fees(request: Request, me: Principal = Depends(FROM_ORDER)) -> dict[str, Any]:
     """order-svc: the admin fee added to paid quotes (PRD O15)."""
     return await svc(request).fees()
 
@@ -409,12 +415,12 @@ async def places(
     site: str | None = None,
     location: str | None = None,
     barcode: str | None = None,
-    me: Principal = Depends(require_service),
+    me: Principal = Depends(FROM_INVENTORY),
 ) -> dict[str, Any]:
     filters = {"kind": kind, "site": site, "location": location, "barcode": barcode}
     return {"items": await svc(request).places(filters)}
 
 
 @router.put("/internal/places", tags=["internal"])
-async def put_place(body: PlaceIn, request: Request, me: Principal = Depends(require_service)) -> dict[str, Any]:
+async def put_place(body: PlaceIn, request: Request, me: Principal = Depends(FROM_INVENTORY)) -> dict[str, Any]:
     return await svc(request).put_place(me, body.model_dump())

@@ -26,6 +26,7 @@ from typing import Any
 from .locks import RedisLock
 from .logging import configure_logging
 from .outbox import OutboxRelay, topic_by_prefix
+from .redis_client import redis_client
 from .settings import env_secret
 
 log = logging.getLogger("cimh.relay")
@@ -93,13 +94,12 @@ async def run_leader(relays: list[OutboxRelay], lock: RedisLock, collections: li
 async def main() -> None:
     from aiokafka import AIOKafkaProducer
     from pymongo import AsyncMongoClient
-    from redis.asyncio import from_url
 
     name = os.environ.get("RELAY_NAME", "svc")
     configure_logging(f"outbox-relay-{name}", os.environ.get("LOG_LEVEL", "INFO"))
     topics = topic_by_prefix(parse_topics(os.environ["RELAY_TOPICS"]))
     db: Any = AsyncMongoClient(env_secret("MONGO_URL"), tz_aware=True)[os.environ.get("MONGO_DB", "inventory")]
-    redis = from_url(env_secret("REDIS_URL"))
+    redis = redis_client(env_secret("REDIS_URL"))
     names = [c.strip() for c in os.environ["RELAY_COLLECTIONS"].split(",") if c.strip()]
     collections = [db[n] for n in names]
 

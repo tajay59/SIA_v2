@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from cimh_common.outbox import new_event
+from cimh_common.redis_client import redis_client
 
 from .privacy import strip_account
 from .service import user_ref
@@ -168,7 +169,6 @@ class Jobs:
 
 async def main(once: bool = False) -> None:
     from pymongo import AsyncMongoClient
-    from redis.asyncio import from_url
 
     from cimh_common.locks import RedisLock
     from cimh_common.logging import configure_logging
@@ -181,7 +181,7 @@ async def main(once: bool = False) -> None:
         log.info("jobs done", extra=await jobs.run_all())
         return
 
-    redis = from_url(env_secret("REDIS_URL"))
+    redis = redis_client(env_secret("REDIS_URL"))
     interval = float(os.environ.get("JOBS_INTERVAL_SECONDS", "900"))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

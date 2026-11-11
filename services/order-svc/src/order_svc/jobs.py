@@ -22,6 +22,8 @@ import os
 import signal
 from typing import Any
 
+from cimh_common.redis_client import redis_client
+
 from .service import OrderService
 
 log = logging.getLogger("order.jobs")
@@ -38,7 +40,6 @@ async def run_all(service: OrderService) -> dict[str, int]:
 
 async def main(once: bool = False) -> None:
     from pymongo import AsyncMongoClient
-    from redis.asyncio import from_url
 
     from cimh_common.locks import RedisLock
     from cimh_common.logging import configure_logging
@@ -52,7 +53,7 @@ async def main(once: bool = False) -> None:
     if once:
         log.info("jobs done", extra=await run_all(service))
         return
-    redis = from_url(env_secret("REDIS_URL"))
+    redis = redis_client(env_secret("REDIS_URL"))
     interval = float(os.environ.get("JOBS_INTERVAL_SECONDS", "900"))
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()

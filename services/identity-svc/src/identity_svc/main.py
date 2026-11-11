@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, redis_revocation_check
 from cimh_common.outbox import outbox_backlog_hook
+from cimh_common.redis_client import redis_client
 
 from . import security as sec
 from .api import router
@@ -38,11 +39,9 @@ def build_app(
             raise RuntimeError("MONGO_URL is required")
         db = AsyncMongoClient(s.mongo_url, tz_aware=True)[s.db_name]
     if redis is None:
-        import redis.asyncio as aioredis
-
         if not s.redis_url:
             raise RuntimeError("REDIS_URL is required")
-        redis = aioredis.from_url(s.redis_url)
+        redis = redis_client(s.redis_url)
 
     keys = KeyRing(s.private_key_pem, s.previous_public_keys_pem)
 

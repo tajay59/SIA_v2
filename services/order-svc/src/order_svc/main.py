@@ -12,6 +12,7 @@ from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_revocation_check
 from cimh_common.idempotency import IdempotencyStore
 from cimh_common.outbox import outbox_backlog_hook
+from cimh_common.redis_client import redis_client
 
 from .api import router
 from .clients import Deps, HttpDeps
@@ -41,9 +42,8 @@ def build_app(
     if redis is None:
         if not s.redis_url:
             raise RuntimeError("REDIS_URL is required (idempotency keys, revocation)")
-        import redis.asyncio as aioredis
 
-        redis = aioredis.from_url(s.redis_url)
+        redis = redis_client(s.redis_url)
     if token_verifier is None:
         if not s.jwks_url:
             raise RuntimeError("JWKS_URL is required")

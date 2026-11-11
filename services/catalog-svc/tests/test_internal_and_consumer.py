@@ -38,7 +38,8 @@ def test_places_are_written_by_inventory_only(ctx: Ctx) -> None:
     assert ctx.client.put(ctx.url("/internal/places"), headers=INVENTORY, json=bad).status_code == 422
     assert ctx.client.put(ctx.url("/internal/places"), headers=INVENTORY, json={**loc, "site": None}).status_code == 422
 
-    every = ctx.client.get(ctx.url("/internal/places"), headers=ORDER).json()["items"]
+    assert ctx.client.get(ctx.url("/internal/places"), headers=ORDER).status_code == 403  # inventory only
+    every = ctx.client.get(ctx.url("/internal/places"), headers=INVENTORY).json()["items"]
     assert [p["barcode"] for p in every] == ["LOC1", "SHF1", "SITE1"]  # by kind, then id
     shelves = ctx.client.get(
         ctx.url("/internal/places"), headers=INVENTORY, params={"kind": "shelf", "location": "LOC1"}
