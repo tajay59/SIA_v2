@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from cimh_common.app import create_app
 from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_revocation_check
+from cimh_common.redis_client import redis_client
 
 from .api import router
 from .clients import HttpOrders, KafkaPublisher, Orders, Publisher
@@ -34,9 +35,8 @@ def build_app(
     if token_verifier is None:
         if not (s.jwks_url and s.redis_url):
             raise RuntimeError("JWKS_URL and REDIS_URL are required")
-        import redis.asyncio as aioredis
 
-        redis = redis or aioredis.from_url(s.redis_url)
+        redis = redis or redis_client(s.redis_url)
         token_verifier = TokenVerifier(
             JwksCache(http_jwks_fetcher(s.jwks_url)),
             issuer=s.issuer,

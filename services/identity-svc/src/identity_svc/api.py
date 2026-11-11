@@ -17,6 +17,7 @@ from cimh_common.authz import (
     require_admin,
     require_admin_mfa_setup,
     require_service,
+    require_services,
     require_staff,
 )
 from cimh_common.errors import ProblemError, unauthorized
@@ -229,6 +230,9 @@ async def _login_response(request: Request, acc: dict[str, Any], tokens: IssuedT
 
 IfMatch = Annotated[str | None, Header(alias="If-Match")]
 Limit = Annotated[int | None, Query(ge=1, le=100)]
+
+# Internal endpoints: who may call them (least privilege, pen test 2026-11).
+FROM_ACCOUNT_LOOKUP_SERVICES = require_services("catalog", "notification", "order")
 
 router = APIRouter()
 
@@ -525,7 +529,7 @@ async def service_token(body: ServiceTokenIn, request: Request) -> dict[str, Any
 
 @router.get("/internal/accounts/{accountId}", tags=["internal"])
 async def internal_account(
-    accountId: str, request: Request, me: Principal = Depends(require_service)
+    accountId: str, request: Request, me: Principal = Depends(FROM_ACCOUNT_LOOKUP_SERVICES)
 ) -> dict[str, Any]:
     return await svc(request).internal_account(accountId)
 

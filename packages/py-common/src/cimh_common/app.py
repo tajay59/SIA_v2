@@ -23,6 +23,8 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
     "Cache-Control": "no-store",
+    # ZAP 90004 (pen test 2026-11): API responses are never read by other sites (Spectre-style leaks).
+    "Cross-Origin-Resource-Policy": "same-site",
 }
 
 log = logging.getLogger("cimh.http")

@@ -23,6 +23,7 @@ import signal
 from typing import Any
 
 from cimh_common.outbox import EventEnvelope
+from cimh_common.redis_client import redis_client
 
 from .service import OrderService
 
@@ -81,7 +82,6 @@ def make_handler(service: OrderService) -> Any:
 async def main() -> None:
     from aiokafka import AIOKafkaProducer
     from pymongo import AsyncMongoClient
-    from redis.asyncio import from_url
 
     from cimh_common.consume_loop import kafka_security, run_service_consumer
     from cimh_common.consumer import IdempotentConsumer
@@ -92,7 +92,7 @@ async def main() -> None:
 
     configure_logging("order-consumer", os.environ.get("LOG_LEVEL", "INFO"))
     db: Any = AsyncMongoClient(env_secret("MONGO_URL"), tz_aware=True)[os.environ.get("MONGO_DB", "inventory")]
-    redis: Any = from_url(env_secret("REDIS_URL"))
+    redis: Any = redis_client(env_secret("REDIS_URL"))
     security = kafka_security(dict(os.environ))
     bootstrap = os.environ["KAFKA_BOOTSTRAP"]
     producer = AIOKafkaProducer(bootstrap_servers=bootstrap, acks="all", **security)

@@ -261,3 +261,21 @@ Authoritative matrix: [API README §3](../api/README.md#3-roles-and-access). Sum
 | R5 | MFA for admins is "Should" in TRD | **Make it Must** | **Agreed**: TR-AUTH-9 is Must |
 | R6 | ClamAV, Kafka SASL/ACLs, Redis ACL, container hardening, cosign, LUKS on Pis, mobile cert pinning and app lock are not yet in the TRD | Add them to TRD as requirements | **Agreed**: TR-SEC-6 to TR-SEC-11 |
 | R7 | No **independent** penetration test (no budget): the test is run by Claude within the project, so it may share the design's blind spots | Claude-run pen test (ASVS L2 + authenticated DAST + manual probes) with a fresh-context review; reconsider an external test if budget appears or after any incident | **Accepted** |
+
+## Penetration test 2026-11
+
+Run by Claude on the local dev stack and a local copy of the staging gateway, under a scope the owner approved (staging and real data were out of scope). Method: OWASP ASVS L2, ZAP API scans of all five services, and 80 repeatable probes (`tools/security/probes.py`). Eight findings:
+
+| # | Severity | Finding | Status |
+|---|---|---|---|
+| F-01 | S2 | Production has no nginx/certbot yet, although rate limits, CSP, body size and protected downloads rely on them | **Open: go-live gate** |
+| F-02 | S2 | URL-encoded paths (`/%69nternal/`) passed the gateway's `/internal` block | Fixed (match the decoded URI) |
+| F-06 | S2 | An admin without MFA got the staff catalogue view (costs, serials) on public endpoints | Fixed |
+| F-07 | S2 | Every Redis restart caused bursts of 503s (stale connections, fail-closed revocation) | Fixed (shared retrying client) |
+| F-03 | S3 | Locking an account revealed that the email exists (different status and timing) | Fixed |
+| F-04 | S3 | Internal endpoints accepted any service, not just their callers | Fixed (per-route caller lists) |
+| F-08 | S4 | No `Cross-Origin-Resource-Policy` header | Fixed |
+| F-05 | S4 | Services trust `X-Real-IP` as sent (safe only behind the edge) | Accepted |
+
+Held: JWT forgery (alg none, HS256 with the public key, edited claims), refresh-token reuse, mass assignment, same-organisation rules, idempotency per caller, paging tampering, upload type checks, revocation failing closed, mobile token storage and pinning.
+

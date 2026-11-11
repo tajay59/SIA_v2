@@ -151,6 +151,19 @@ def test_lockout_after_five_failures_and_audit(ctx: Ctx) -> None:
     assert ctx.run(ctx.db["auditlog"].count_documents({"action": "auth.locked"})) == 1
 
 
+@pytest.mark.req("TR-AUTH-6")
+def test_locked_account_answers_like_an_unknown_email(ctx: Ctx) -> None:
+    """Pen test 2026-11 (T-02): locking an account must not reveal that it exists."""
+    ctx.seed_account("u@met.bb")
+    for _ in range(5):
+        ctx.client.post(ctx.url("/auth/login"), json={"email": "u@met.bb", "password": "wrong password!"})
+    locked = ctx.client.post(ctx.url("/auth/login"), json={"email": "u@met.bb", "password": "wrong password!"})
+    ghost = ctx.client.post(ctx.url("/auth/login"), json={"email": "ghost@met.bb", "password": "wrong password!"})
+    assert locked.status_code == ghost.status_code == 401
+    assert locked.json()["code"] == ghost.json()["code"] == "INVALID_CREDENTIALS"
+    assert "Retry-After" not in locked.headers
+
+
 def test_legacy_werkzeug_hash_upgraded(ctx: Ctx) -> None:
     import hashlib
 

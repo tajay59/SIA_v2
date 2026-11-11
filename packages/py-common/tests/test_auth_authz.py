@@ -248,3 +248,25 @@ def test_admin_without_mfa_is_refused_except_setup(verifier: TokenVerifier, keys
     assert c.get("/setup", headers=no_mfa).status_code == 200
     assert c.get("/x", headers=bearer(keys.token("USR9", "admin"))).status_code == 200
     assert c.get("/x", headers=bearer(keys.token("USR8", "staff", mfa=False))).status_code == 200
+
+
+def test_public_endpoints_apply_the_same_token_rules(verifier: TokenVerifier, keys: Keys) -> None:
+    """Pen test 2026-11: an admin without MFA must not get the staff view of a public endpoint, and service
+    tokens are refused there too. Anonymous callers and normal tokens still work."""
+    from cimh_common.authz import optional_principal
+
+    app = create_app("t", token_verifier=verifier, configure_logs=False)
+
+    @app.get("/catalogue")
+    async def catalogue(p: Principal | None = Depends(optional_principal)) -> dict[str, str]:
+        return {"view": "staff" if p and p.is_staff else "public"}
+
+    c = TestClient(app)
+    assert c.get("/catalogue").json() == {"view": "public"}
+    assert c.get("/catalogue", headers=bearer(keys.token("USR1", "user"))).json() == {"view": "public"}
+    assert c.get("/catalogue", headers=bearer(keys.token("USR2", "staff"))).json() == {"view": "staff"}
+    assert c.get("/catalogue", headers=bearer(keys.token("USR3", "admin"))).json() == {"view": "staff"}
+    r = c.get("/catalogue", headers=bearer(keys.token("USR4", "admin", mfa=False)))
+    assert r.status_code == 403
+    assert r.json()["code"] == "MFA_REQUIRED"
+    assert c.get("/catalogue", headers=bearer(keys.token("svc:order", "service"))).status_code == 403

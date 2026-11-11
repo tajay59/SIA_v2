@@ -24,7 +24,8 @@ def _verifier(request: Request) -> TokenVerifier:
     return verifier
 
 
-async def optional_principal(request: Request) -> Principal | None:
+async def _token_principal(request: Request) -> Principal | None:
+    """The verified token's principal, or None without a token. No role or MFA rules: building block only."""
     token, from_cookie = extract_token(request)
     if token is None:
         return None
@@ -35,12 +36,28 @@ async def optional_principal(request: Request) -> Principal | None:
     return principal
 
 
+async def optional_principal(request: Request) -> Principal | None:
+    """Public endpoints that show more to signed-in callers (e.g. the catalogue's staff view).
+
+    Same rules as every other user endpoint (pen test 2026-11): service tokens are refused, and an admin
+    without MFA gets 403 MFA_REQUIRED instead of the staff view. No token: anonymous (None).
+    """
+    principal = await _token_principal(request)
+    if principal is None:
+        return None
+    if principal.role == "service":
+        raise forbidden("Service tokens cannot call user endpoints")
+    if principal.is_admin and not principal.mfa:
+        raise forbidden("Set up multi-factor sign-in first", code="MFA_REQUIRED")
+    return principal
+
+
 async def authenticated_principal(request: Request) -> Principal:
     """Any valid token, including an admin who has not set up MFA yet.
 
     Use ONLY on the endpoints needed to finish MFA setup (/auth/mfa/*, GET /me, /auth/logout).
     """
-    principal = await optional_principal(request)
+    principal = await _token_principal(request)
     if principal is None:
         raise unauthorized()
     if principal.role == "service":
@@ -71,7 +88,7 @@ def require_roles(*roles: Role) -> Callable[[Request], Awaitable[Principal]]:
         raise ValueError("require_roles needs at least one role")
 
     async def dependency(request: Request) -> Principal:
-        principal = await optional_principal(request)
+        principal = await _token_principal(request)
         if principal is None:
             raise unauthorized()
         if principal.role not in allowed:
@@ -86,6 +103,23 @@ def require_roles(*roles: Role) -> Callable[[Request], Awaitable[Principal]]:
 require_staff = require_roles("staff", "admin")
 require_admin = require_roles("admin")
 require_service = require_roles("service")
+
+
+def require_services(*names: str) -> Callable[[Request], Awaitable[Principal]]:
+    """Internal endpoints: a service token from one of the named callers only (least privilege, pen test 2026-11).
+
+    `require_service` alone admits every service; use this so a compromised service reaches only what it needs.
+    """
+    allowed = {f"svc:{n}" for n in names}
+    base = require_roles("service")
+
+    async def dependency(request: Request) -> Principal:
+        principal = await base(request)
+        if principal.sub not in allowed:
+            raise forbidden("This service may not call this endpoint")
+        return principal
+
+    return dependency
 
 
 async def require_requester(request: Request) -> Principal:

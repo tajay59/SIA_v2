@@ -5,3 +5,4 @@ add_header X-Frame-Options DENY always;
 add_header Content-Security-Policy $csp always;
 add_header Permissions-Policy "camera=(self), microphone=(), geolocation=()" always;
 add_header Strict-Transport-Security "max-age=31536000" always;
+add_header Cross-Origin-Resource-Policy same-site always;

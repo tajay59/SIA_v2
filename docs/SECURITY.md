@@ -75,14 +75,14 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-07 | S | Verification / reset code guessing | M | 6 digits, hashed, 15 min, 5 attempts, 3 resends/hour, rate-limited endpoint | ✅ |
 | T-08 | R | User denies having accepted a quote | M | Acceptance records user, time, IP, choices **and the signed agreement file** (SHA-256); `auditlog` (insert-only) | ✅ |
 | T-09 | E | Suspended user keeps working with a live token | M | Suspension writes revoke-all marker in Redis, checked on every request | ✅ |
-| T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline); HttpOnly cookies; DOMPurify for any rich text | 🛠 |
+| T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline); HttpOnly cookies; DOMPurify for any rich text | ✅ (pen test 2026-11: no `v-html`/`innerHTML`; CSP at the gateway) · 🛠 production edge (F-01) |
 | T-11 | T | CSRF on cookie-authenticated changes | H | `SameSite=Lax` + double-submit `X-CSRF-Token` on POST/PUT/PATCH/DELETE | ✅ |
 
 ### 5.2 Authorisation and data access (all services)
 
 | ID | STRIDE | Threat | Risk | Controls | Status |
 |---|---|---|---|---|---|
-| T-12 | I/E | **IDOR**: reading another user's/organisation's request, files, profile by changing an id (present in legacy) | **H** | Caller identity passed into every repository call; queries always filtered by `customer` / `organisationId` for `user`; hidden = 404; **automated IDOR tests per endpoint** in CI | ✅ design · 🛠 tests |
+| T-12 | I/E | **IDOR**: reading another user's/organisation's request, files, profile by changing an id (present in legacy) | **H** | Caller identity passed into every repository call; queries always filtered by `customer` / `organisationId` for `user`; hidden = 404; **automated IDOR tests per endpoint** in CI | ✅ (generated matrix in CI; pen test 2026-11) |
 | T-13 | E | Customer calls staff endpoints | H | Role declared per route (decorator), deny by default; contract tests assert 403 for each role | ✅ |
 | T-14 | I | Over-exposure of fields (cost, supplier, serials) to customers | H | Separate response models (`ProductPublic` vs `ProductStaff`); `xuser` view projects public fields only; snapshot tests on customer responses | ✅ |
 | T-15 | E | Mass assignment (setting `role`, `status`, `version`, `cost` via PATCH) | H | Pydantic `extra="forbid"`; separate input models without privileged fields | ✅ |
@@ -210,6 +210,8 @@ Authoritative matrix: [API README §3](api/README.md#3-roles-and-access). Summar
 | Penetration test | Before go-live, then yearly | **Performed by Claude (Claude Code)** against **staging**, under a written scope/authorisation from the owner (no production, no DoS): OWASP ASVS L2, authenticated ZAP full scan, manual exploitation attempts for every T-xx threat; tech lead reviews findings; scope = SHOP, SIA, API, Mobile |
 | Patch windows | Monthly (OS, Docker, images); critical within 72 h | Ops |
 | Security review gate | Pre-launch | Checklist = every T-xx row ✅ or accepted ⚠ with sign-off |
+
+**Pen test 2026-11 (local dev stack, owner-approved scope):** [security/PENTEST-2026-11.md](security/PENTEST-2026-11.md), findings in [security/PENTEST-2026-11-findings.md](security/PENTEST-2026-11-findings.md). 8 findings; all fixed except **F-01: production has no nginx/certbot yet** (go-live gate) and F-05 (accepted). Repeatable probes: `tools/security/probes.py`. A rerun against staging-sized infrastructure and a fresh-context review (R7) remain.
 
 ## 12. Residual risks and decisions
 
