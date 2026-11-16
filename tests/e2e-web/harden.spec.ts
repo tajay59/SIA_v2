@@ -91,7 +91,7 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     const dept = `E2E dept ${run}`
     await page.getByRole('combobox', { name: 'Departments' }).fill(dept)
     await page.getByRole('combobox', { name: 'Departments' }).press('Enter')
-    await expect(page.getByText('Unsaved changes')).toBeVisible()
+    await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
 
     // Leaving asks; Stay keeps the page and the edit.
     await siaGo(page, 'Products')
