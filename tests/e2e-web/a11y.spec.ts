@@ -31,6 +31,10 @@ async function audit(page: Page, url: string, found: string[]) {
     }, theme)
     await page.goto(url)
     await page.waitForLoadState('networkidle')
+    // Entrance motion (e.g. catalogue cards rising in) must finish first: axe reads a half-faded card as low contrast.
+    await page.waitForFunction(() =>
+      document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+    )
     const result = await new AxeBuilder({ page })
       .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
       .analyze()

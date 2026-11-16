@@ -158,3 +158,13 @@ p, li, .t-body, .t-body-lg {
   white-space: normal;
   overflow-wrap: anywhere;
 }
+
+/* Toasts never block what is under them (e2e 2026-11-16: on phones the "created" toast sat over the Images
+   tab's buttons, and hovering it paused its timer, so it never left). Text lets taps through; actions stay. */
+.v-snackbar .v-snackbar__wrapper,
+.v-snackbar .v-snackbar__content {
+  pointer-events: none;
+}
+.v-snackbar .v-snackbar__actions {
+  pointer-events: auto;
+}
