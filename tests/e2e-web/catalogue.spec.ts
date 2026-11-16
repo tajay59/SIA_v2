@@ -85,7 +85,7 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await expect(page.getByText('Pro Bono · max 2 per request')).toBeVisible()
     if (shopCompact(page)) await expect(page.getByText(/^[12] \/ 2$/)).toBeVisible() // phones: carousel only (the primary photo may be either)
     else await expect(page.getByRole('button', { name: /Photo 1 of 2/ })).toBeVisible()
-    const img = page.locator('.stage-img')
+    const img = page.locator('.plate-img')
     await expect(img).toHaveJSProperty('complete', true)
     expect(await img.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0)
     await expect(page.getByText(/BBD|125\.00/)).toHaveCount(0) // customers never see cost

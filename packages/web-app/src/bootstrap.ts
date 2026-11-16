@@ -102,7 +102,7 @@ export function boot(opts: BootOptions) {
   app.directive('scroll-region', vScrollRegion)
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
-  installAuthMotion(router)
+  installAuthMotion(router, opts.app)
   router
     .isReady()
     .then(() => app.mount(opts.mount ?? '#app'))

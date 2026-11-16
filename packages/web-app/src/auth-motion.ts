@@ -5,7 +5,7 @@
  * `assets/auth/` as `shop.webp` / `sia.webp` (still, 3:4 portrait) and optionally `shop.mp4` / `sia.mp4`
  * (silent loop, poster = the still). Until a still exists the legacy enclosure photo stands in.
  */
-import { nextTick } from 'vue'
+import { nextTick, ref } from 'vue'
 import { type Router, START_LOCATION } from 'vue-router'
 import fallback from './assets/legacy/met-enclosure.webp'
 
@@ -45,7 +45,25 @@ const webkit = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.
  * column's words lift out and settle in (`auth-words`), the form morphs to its new height (`auth-form`).
  * Skipped on first load, reduced motion, browsers without View Transitions, and WebKit.
  */
-export function installAuthMotion(router: Router): void {
+// SHOP pages in the order of its navigation: moving right slides forward, left slides back; deeper = forward.
+const SHOP_ORDER = ['/', '/catalogue', '/pro-bono', '/search', '/requests', '/cart', '/account']
+function shopRank(path: string): [number, number] {
+  const depth = path.split('/').filter(Boolean).length
+  const top = '/' + (path.split('/')[1] ?? '')
+  const i = SHOP_ORDER.indexOf(top === '/' ? '/' : top)
+  return [i < 0 ? SHOP_ORDER.length : i, depth]
+}
+function shopDirection(to: string, from: string): 'fwd' | 'back' {
+  const [a, ad] = shopRank(from)
+  const [b, bd] = shopRank(to)
+  if (a === b) return bd >= ad ? 'fwd' : 'back'
+  return b > a ? 'fwd' : 'back'
+}
+
+/** Direction of the last SHOP page change, for App.vue's page transition. */
+export const shopDir = ref<'fwd' | 'back'>('fwd')
+
+export function installAuthMotion(router: Router, app?: 'shop' | 'sia'): void {
   let first = router.currentRoute.value === START_LOCATION
   let pendingAfter: (() => void) | null = null
   router.afterEach(() => {
@@ -55,19 +73,31 @@ export function installAuthMotion(router: Router): void {
   })
   router.beforeResolve((to, from) => {
     const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown }
-    if (first || to.meta.layout !== 'bare' || from.meta.layout !== 'bare' || to.path === from.path) return
+    if (first || to.path === from.path) return
+    // SHOP app pages (catalogue, Pro Bono, requests, cart, ...): no View Transition (a whole-page snapshot
+    // stretched to the new page's height and held while the page loaded read as jerky). App.vue animates the
+    // page itself with a Vue <Transition>; here only the direction of travel is recorded for it.
+    if (app === 'shop' && to.meta.layout !== 'bare' && from.meta.layout !== 'bare') {
+      shopDir.value = shopDirection(to.path, from.path)
+      return
+    }
+    if (to.meta.layout !== 'bare' || from.meta.layout !== 'bare') return
     if (webkit || !doc.startViewTransition || reduced()) {
       arrival = 'plain'
       return
     }
     arrival = 'vt'
     return new Promise<void>((resolve) => {
-      doc.startViewTransition!(async () => {
+      const t = doc.startViewTransition!(async () => {
         const rendered = new Promise<void>((done) => (pendingAfter = done))
         resolve()
         await Promise.race([rendered, new Promise((t) => setTimeout(t, 600))])
         await nextTick()
-      })
+      }) as { ready?: Promise<void>; finished?: Promise<void> } | undefined
+      // The browser aborts a transition when the viewport resizes or another one starts: the page has already
+      // changed, only the animation is skipped, so a rejection here is not an error.
+      t?.ready?.catch(() => undefined)
+      t?.finished?.catch(() => undefined)
     })
   })
 }

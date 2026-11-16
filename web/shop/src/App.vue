@@ -7,7 +7,7 @@
  * footer; the logo links home. Customers and visitors get the cart (with a count; visitors log in first)
  * in both bars, as in legacy.
  */
-import { AppNotifier, useCart, useSession, useThemeMode } from '@cimh/web-app'
+import { AppNotifier, shopDir, useCart, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/brand/stores-wordmark.svg'
 import logoWhite from '@cimh/web-app/assets/brand/stores-wordmark-dark.svg'
 import {
@@ -76,7 +76,7 @@ async function logout() {
           <router-link v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link">{{ n.title }}</router-link>
         </nav>
         <div class="right">
-          <v-btn v-if="showCart" :to="cartTo" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
+          <v-btn v-if="showCart" :to="cartTo" variant="text" icon data-cart-target :aria-label="`Cart, ${cart.count} items`">
             <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary">
               <v-icon :icon="mdiCartOutline" />
             </v-badge>
@@ -106,7 +106,12 @@ async function logout() {
 
     <v-main id="main">
       <AppNotifier />
-      <router-view />
+      <router-view v-slot="{ Component, route: r }">
+        <!-- Sign-in pages have their own transition (AuthCard); a fade here kept the old form on screen while the next page arrived. -->
+        <Transition :name="r.meta.layout === 'bare' ? 'page-none' : `page-${shopDir}`" mode="out-in">
+          <component :is="Component" :key="r.path" />
+        </Transition>
+      </router-view>
       <ShopFooter v-if="!signInPage" :slim="flowPage" />
     </v-main>
 
@@ -131,7 +136,7 @@ async function logout() {
       </v-menu>
       <!-- Accessible names match the desktop bar (the visible short label is part of each name, WCAG 2.5.3). -->
       <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" :aria-label="n.title" stacked>{{ n.short ?? n.title }}</v-btn>
-      <v-btn v-if="showCart" :to="cartTo" :aria-label="`Cart, ${cart.count} items`" stacked>
+      <v-btn v-if="showCart" :to="cartTo" data-cart-target :aria-label="`Cart, ${cart.count} items`" stacked>
         <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary"><v-icon :icon="mdiCartOutline" /></v-badge>
         Cart
       </v-btn>
@@ -217,6 +222,46 @@ async function logout() {
 </style>
 
 <style>
+/* Cart buttons: Vuetify clips a round button's overflow, which cut the count badge off (11+ items). */
+.v-btn[data-cart-target] {
+  overflow: visible;
+}
+/* ...so its hover/press layers keep the button's own shape. */
+.v-btn[data-cart-target] > .v-btn__overlay,
+.v-btn[data-cart-target] > .v-btn__underlay,
+.v-btn[data-cart-target] .v-ripple__container {
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+/* Page motion between SHOP pages (direction from web-app auth-motion.ts `shopDir`): the old page fades out
+   fast, the new one slides in a short way and settles. Only opacity and transform; bars and footer stay. */
+.page-fwd-leave-active,
+.page-back-leave-active {
+  transition: opacity 90ms ease-in;
+}
+.page-fwd-leave-to,
+.page-back-leave-to {
+  opacity: 0;
+}
+.page-fwd-enter-active,
+.page-back-enter-active {
+  transition: opacity 220ms ease-out, transform 280ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.page-fwd-enter-from {
+  opacity: 0;
+  transform: translate3d(16px, 0, 0);
+}
+.page-back-enter-from {
+  opacity: 0;
+  transform: translate3d(-16px, 0, 0);
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-fwd-enter-from,
+  .page-back-enter-from {
+    transform: none;
+  }
+}
 /* Phones: five bottom-nav items at Vuetify's 80 px minimum overflowed 360 px ("Menu" cut, "Pro Bono" on two lines). */
 .v-bottom-navigation .v-btn {
   min-width: 0;
