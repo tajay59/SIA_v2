@@ -111,6 +111,10 @@ def test_shop_shows_only_met_and_radar_plus_pro_bono_of_any_type(ctx: Ctx, who: 
     assert names == ["Free kit", "Free logger", "Radar part", "Rain gauge"]
     r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "EQUIP"}).json()["items"]
     assert [i["name"] for i in r] == ["Free logger"]
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "EQUIP", "probono": False}).json()
+    assert r["items"] == []  # another type is only ever visible as Pro Bono
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "MET"}).json()["items"]
+    assert [i["name"] for i in r] == ["Rain gauge"]
     assert ctx.client.get(ctx.url(f"/products/{equip['id']}"), headers=headers).status_code == 404
     assert ctx.client.get(ctx.url(f"/products/{met['id']}"), headers=headers).status_code == 200
     # Search starts from the same PUBLIC_FILTER (mongomock has no $text; covered by the real-Mongo integration test).

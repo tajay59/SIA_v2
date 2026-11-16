@@ -61,7 +61,9 @@ async def collect(db: Any) -> list[Query]:
         await call(f"{who} search item", svc.search(p, "anemometer", {}, None, 25))
         await call(f"{who} search 2 words", svc.search(p, "rain gauge", {}, None, 25))
         await call(f"{who} search model", svc.search(p, model, {}, None, 25))
-        await call(f"{who} search +type", svc.search(p, "cable", {"type": "SUPP"}, None, 25))
+        # Customers only see MET/RAD (+ Pro Bono of any type, catalog-svc SHOP_TYPES), so their typed search is MET.
+        typed = ("cable", "SUPP") if who == "staff" else ("sensor", "MET")
+        await call(f"{who} search +type", svc.search(p, typed[0], {"type": typed[1]}, None, 25))
         _, nxt = await call(f"{who} search p1", svc.search(p, "sensor", {}, None, 25))
         if nxt:
             await call(f"{who} search p2", svc.search(p, "sensor", {}, nxt, 25))

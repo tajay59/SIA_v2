@@ -95,8 +95,9 @@
 
 /* ---- Material 3 buttons: full pill, 40 px, label-large, state layer 8% hover / 12% press-focus,
    level-1 elevation on hover (filled); outlined = 1 px outline, primary label, no elevation. */
-.v-btn.m3 {
-  height: 40px;
+.v-btn.m3:not(.v-btn--icon):not(.v-tab) {
+  min-height: 40px;
+  height: auto;
   padding: 0 24px 0 16px;
   border-radius: 999px;
   font-size: 14px;
@@ -107,13 +108,13 @@
   box-shadow: none;
   transition: box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
 }
-.v-btn.m3:not(:has(.v-btn__prepend)) {
+.v-btn.m3:not(.v-btn--icon):not(.v-tab):not(:has(.v-btn__prepend)) {
   padding: 0 24px;
 }
 .v-btn.m3 .v-btn__prepend {
   margin-inline: 0 8px;
 }
-.v-btn.m3 .v-btn__overlay {
+.v-btn.m3.bg-primary .v-btn__overlay {
   background: rgb(var(--v-theme-on-primary));
 }
 .v-btn.m3:hover {
@@ -126,11 +127,11 @@
 .v-btn.m3:focus-visible .v-btn__overlay {
   opacity: 0.12;
 }
-.v-btn.m3.v-btn--variant-outlined,
-.v-btn.m3.v-btn--variant-text {
+.v-btn.m3.v-btn--variant-outlined:not([class*=' text-']),
+.v-btn.m3.v-btn--variant-text:not([class*=' text-']):not(.v-tab) {
   color: rgb(var(--v-theme-primary));
 }
-.v-btn.m3.v-btn--variant-outlined {
+.v-btn.m3.v-btn--variant-outlined:not([class*=' text-']) {
   border: 1px solid rgb(var(--v-theme-seam));
 }
 .v-btn.m3.v-btn--variant-outlined:hover,
@@ -140,6 +141,11 @@
 .v-btn.m3.v-btn--variant-outlined .v-btn__overlay,
 .v-btn.m3.v-btn--variant-text .v-btn__overlay {
   background: rgb(var(--v-theme-primary));
+}
+.v-btn.m3.v-btn--size-small:not(.v-btn--icon),
+.v-btn.m3.v-btn--size-x-small:not(.v-btn--icon) {
+  min-height: 32px;
+  padding: 0 12px;
 }
 .v-btn.m3.m3-danger {
   border-color: rgba(var(--v-theme-error), 0.5);

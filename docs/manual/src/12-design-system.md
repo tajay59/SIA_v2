@@ -175,7 +175,7 @@ All components live in `packages/web-ui` (Vue, built on Vuetify 4) with matching
 
 ### 8.1 Buttons
 
-**Shape (owner, 2026-11-16):** every button except tabs is a **Material 3 button**: full pill, 40 px (large 48, small 32), label 14/20 weight 500, state layer 8% hover / 12% focus-press, level-1 elevation on hover for filled buttons. SHOP gets it from the theme defaults (`rounded: pill`, class `m3`; rule in `web/shop/src/m3.css`); SIA uses the `m3` class (`web/sia/src/console.css`).
+**Shape (owner, 2026-11-16):** every button except tabs is a **Material 3 button**: full pill, 40 px (large 48, small 32), label 14/20 weight 500, state layer 8% hover / 12% focus-press, level-1 elevation on hover for filled buttons. SHOP gets it from the theme defaults (`rounded: pill`, class `m3`; rule in `web/shop/src/m3.css`); SIA gets the same defaults (rules in `web/sia/src/console.css`: outlined/text buttons without their own colour take primary, small = 32 px).
 | Variant | Style | Use |
 |---|---|---|
 | **Primary** | Filled `primary`, `on-primary` text, `r-md`, height 40 (SIA) / 44 (SHOP), label 14/600 | **One per view**: Submit request, Accept, Send quote, Ship |

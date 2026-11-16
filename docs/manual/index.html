@@ -5612,7 +5612,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <h2 id="128-components">12.8 Components</h2>
 <p>All components live in <code>packages/web-ui</code> (Vue, built on Vuetify 4) with matching Compose versions on Android.</p>
 <h3 id="81-buttons">8.1 Buttons</h3>
-<p><strong>Shape (owner, 2026-11-16):</strong> every button except tabs is a <strong>Material 3 button</strong>: full pill, 40 px (large 48, small 32), label 14/20 weight 500, state layer 8% hover / 12% focus-press, level-1 elevation on hover for filled buttons. SHOP gets it from the theme defaults (<code>rounded: pill</code>, class <code>m3</code>; rule in <code>web/shop/src/m3.css</code>); SIA uses the <code>m3</code> class (<code>web/sia/src/console.css</code>).
+<p><strong>Shape (owner, 2026-11-16):</strong> every button except tabs is a <strong>Material 3 button</strong>: full pill, 40 px (large 48, small 32), label 14/20 weight 500, state layer 8% hover / 12% focus-press, level-1 elevation on hover for filled buttons. SHOP gets it from the theme defaults (<code>rounded: pill</code>, class <code>m3</code>; rule in <code>web/shop/src/m3.css</code>); SIA gets the same defaults (rules in <code>web/sia/src/console.css</code>: outlined/text buttons without their own colour take primary, small = 32 px).
 | Variant | Style | Use |
 |---|---|---|
 | <strong>Primary</strong> | Filled <code>primary</code>, <code>on-primary</code> text, <code>r-md</code>, height 40 (SIA) / 44 (SHOP), label 14/600 | <strong>One per view</strong>: Submit request, Accept, Send quote, Ship |

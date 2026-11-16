@@ -24,7 +24,7 @@ from cimh_common.errors import ProblemError, conflict, forbidden, not_found
 from cimh_common.outbox import new_event
 from cimh_common.paging import clamp_limit, decode_cursor, encode_cursor, page
 
-from .store import PUBLIC_FIELDS, PUBLIC_FILTER, TEXT_WEIGHTS, Store, now
+from .store import PUBLIC_FIELDS, PUBLIC_FILTER, TEXT_WEIGHTS, Store, now, public_filter
 
 PRODUCT_TYPES = ("MET", "RAD", "EQUIP", "SUPP", "MISC", "PRO")
 EVENT_FIELDS = ("name", "type", "sellable", "probono", "probonoMaxPerRequest", "active", "threshold")
@@ -199,7 +199,7 @@ class CatalogService:
         self, p: Principal | None, filters: dict[str, Any], cursor: str | None, limit: int | None
     ) -> tuple[list[dict[str, Any]], str | None]:
         staff = bool(p and p.is_staff)
-        q: dict[str, Any] = {} if staff else dict(PUBLIC_FILTER)
+        q: dict[str, Any] = {}  # customers: public_filter() is merged last
         if staff and not filters.get("includeInactive"):
             q["active"] = True
         if staff and filters.get("sellable") is not None:
@@ -210,6 +210,8 @@ class CatalogService:
         for key in ("probono", "inStock"):
             if filters.get(key) is not None:
                 q[key] = filters[key] if filters[key] else {"$ne": True}
+        if not staff:
+            q.update(public_filter(filters))
         docs, nxt = await page(self.store.product, q, sort_field="name", cursor=cursor, limit=limit)
         view = staff_view if staff else public_view
         return [view(d) for d in docs], nxt
@@ -229,12 +231,14 @@ class CatalogService:
         staff = bool(p and p.is_staff)
         n = clamp_limit(limit)
         offset = _offset_cursor(cursor)
-        base: dict[str, Any] = {"active": True} if staff else dict(PUBLIC_FILTER)
+        base: dict[str, Any] = {"active": True} if staff else {}
         for key in ("type", "department"):
             if filters.get(key):
                 base[key] = filters[key]
         if filters.get("probono") is not None:
             base["probono"] = filters["probono"] if filters["probono"] else {"$ne": True}
+        if not staff:
+            base.update(public_filter(filters))
 
         found: list[dict[str, Any]] = []
         if staff and offset == 0:

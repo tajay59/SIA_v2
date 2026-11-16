@@ -149,7 +149,9 @@ export function vuetifyOptions(app: App, defaultTheme: 'cimhLight' | 'cimhDark' 
   const defaults = componentDefaults(app)
   if (app === 'sia') {
     // Graphite Console: flatter, tighter corners; panels are cut by seams, not floated cards.
-    defaults.VBtn = { rounded: 'sm', variant: 'flat' }
+    // Every button except tabs is Material 3 (owner, 2026-11-16): pill + class m3 (rules in web/sia/src/console.css).
+    defaults.VBtn = { rounded: 'pill', variant: 'flat', class: 'm3' }
+    defaults.VTab = { rounded: 0, class: '' }
     defaults.VCard = { rounded: 'sm', variant: 'outlined' }
     for (const k of ['VTextField', 'VSelect', 'VAutocomplete', 'VCombobox', 'VTextarea', 'VFileInput', 'VNumberInput', 'VDateInput']) defaults[k] = { ...defaults[k], rounded: 'sm' }
   } else {
