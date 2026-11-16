@@ -4293,7 +4293,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/signup</code></td>
 <td>Sign up</td>
 <td>public</td>
-<td>Three steps on the visitor pass (You · Organisation (CIMH emails: Details) · Password; each Continue checks only its step, a server 422 jumps to the step of the first bad field); the wall lists the way to an approved account (pass → email code → admin approval, usually two working days → requests). Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
+<td>Three steps as tabs with a sliding indicator, panes slide in the direction of travel (You · Organisation (CIMH emails: Details) · Password; each Continue checks only its step, a server 422 jumps to the step of the first bad field); the picture lists the way to an approved account (form → email code → admin approval, usually two working days → requests). Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
 <td>Submit → S-14</td>
 </tr>
 <tr>
@@ -4542,7 +4542,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/login</code> · <code>/signup</code> · <code>/profile</code></td>
 <td>Login / Sign up / Profile</td>
 <td>public / staff</td>
-<td>As S-16 / S-19; non-staff → "staff only" message. <strong>SIA sign-up</strong> (owner, 2026-11-16): as S-13 but only @cimh.edu.bb addresses; after the email code an administrator gives the account staff access. Sign-in pages: the navy staff card on a graphite wall (whatever theme is stored), stamped with the SIA mark + "SIA · CIMH Stores staff app". Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
+<td>As S-16 / S-19; non-staff → "staff only" message. <strong>SIA sign-up</strong> (owner, 2026-11-16): as S-13 but only @cimh.edu.bb addresses; after the email code an administrator gives the account staff access. Sign-in pages: graphite form side (whatever theme is stored) with the SIA mark + "SIA · Staff app" beside the picture. Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
 <td>—</td>
 </tr>
 </tbody>
@@ -5042,7 +5042,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>Shells</td>
-<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer; sign-in pages = "Reception desk + pass" (impeccable 2026-11-16, <code>AuthCard</code>): a wall (SHOP navy, SIA graphite) with the crest, title and line, and the pass on the page ground (SHOP white visitor pass, SIA navy staff card) with a lanyard slot and an app stamp; phones: the wall is a header band. No top bar, bottom navigation or footer; the crest links home; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = the reception desk + pass layout above (the met-enclosure photo is no longer used there)</td>
+<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer; sign-in pages = split sign-in (impeccable 2026-11-16 round 2, owner chose the category standard, bar Stripe/Linear/Notion; <code>AuthCard</code>): a picture inset in a rounded frame (caption chip; optional silent looping video with Pause; owner-generated <code>assets/auth/shop|sia.webp</code>, legacy enclosure photo until then) beside the form column (SHOP white, SIA graphite) with crest + app name, heading, line, form, footer links; phones: the picture is a 200 px band on top. Moving between sign-in pages is a View Transition: the picture holds still, the column's words lift out and settle in. No top bar, bottom navigation or footer; the crest links home; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = the split sign-in above</td>
 </tr>
 <tr>
 <td>A-01</td>

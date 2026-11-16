@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Sign up (S-13; SIA sign-up for CIMH staff), in three short steps on the pass: You · Organisation (CIMH
+ * Sign up (S-13; SIA sign-up for CIMH staff), in three short steps: You · Organisation (CIMH
  * emails: Details) · Password. Each Continue checks only its own step (`checkForm`: marks every field, focuses
  * the first); nothing is ever disabled for missing input. A 422 from the server jumps to the step holding the
  * first bad field. The API answers 202 whether or not the email exists (no enumeration), then → /verify.
@@ -48,7 +48,12 @@ defineExpose({ titles })
 
 // The step pane takes the cursor when it changes (screen readers hear its heading).
 const paneHead = ref<HTMLElement | null>(null)
-watch(step, () => void nextTick(() => paneHead.value?.focus()))
+// Panes slide in the direction of travel: forward from the right, Back from the left.
+const dir = ref<'fwd' | 'back'>('fwd')
+watch(step, (n, o) => {
+  dir.value = n < o ? 'back' : 'fwd'
+  void nextTick(() => paneHead.value?.focus())
+})
 
 async function next() {
   if (!(await checkForm(forms[step.value].value))) return
@@ -99,17 +104,18 @@ async function submit() {
 
 <template>
   <div class="signup">
-    <ol class="dots" :aria-label="`Step ${step + 1} of 3`">
+    <ol class="dots" :aria-label="`Step ${step + 1} of 3`" :style="{ '--step': step }">
       <li v-for="(t, i) in titles" :key="i" :class="{ on: i === step, done: i < step }">
         <button v-if="i < step" type="button" class="dot-btn" @click="step = i">{{ i + 1 }}. {{ t }}</button>
         <span v-else :aria-current="i === step ? 'step' : undefined">{{ i + 1 }}. {{ t }}</span>
       </li>
+      <li class="ink" aria-hidden="true" />
     </ol>
 
     <div class="panes">
-      <Transition :name="'pane'" mode="out-in">
+      <Transition :name="`pane-${dir}`" mode="out-in">
         <div :key="step" class="pane">
-          <h2 ref="paneHead" tabindex="-1" class="pane-title">{{ titles[step] }}</h2>
+          <h2 ref="paneHead" tabindex="-1" class="pane-title sr-only">{{ titles[step] }}</h2>
 
           <v-form v-show="step === 0" :ref="(el) => (forms[0].value = el as unknown as FormLike)" class="stack" @submit.prevent="next">
             <div class="grid-2">
@@ -153,10 +159,8 @@ async function submit() {
               <v-autocomplete v-model="form.country" name="country" label="Country" :items="countries()" autocomplete="country" :rules="[field('country')]" :error-messages="errors.country" />
             </div>
             <v-text-field v-model="form.phone" name="phone" label="Phone (optional)" type="tel" autocomplete="tel" :error-messages="errors.phone" />
-            <div class="row-2">
-              <v-btn variant="text" @click="step = 0">Back</v-btn>
-              <v-btn type="submit" color="primary" size="large">Continue</v-btn>
-            </div>
+            <v-btn type="submit" color="primary" size="large" block>Continue</v-btn>
+            <v-btn variant="text" class="back" @click="step = 0">Back</v-btn>
           </v-form>
 
           <v-form v-show="step === 2" :ref="(el) => (forms[2].value = el as unknown as FormLike)" class="stack" @submit.prevent="submit">
@@ -166,10 +170,8 @@ async function submit() {
                 <span class="terms">I agree that CIMH stores my details to handle my requests (Barbados Data Protection Act 2019).</span>
               </template>
             </v-checkbox>
-            <div class="row-2">
-              <v-btn variant="text" @click="step = 1">Back</v-btn>
-              <v-btn type="submit" color="primary" size="large" :loading="busy">Create account</v-btn>
-            </div>
+            <v-btn type="submit" color="primary" size="large" block :loading="busy">Create account</v-btn>
+            <v-btn variant="text" class="back" @click="step = 1">Back</v-btn>
           </v-form>
         </div>
       </Transition>
@@ -179,6 +181,7 @@ async function submit() {
 
 <style scoped>
 .dots {
+  position: relative;
   list-style: none;
   margin: 0 0 var(--sp-4);
   padding: 0;
@@ -187,7 +190,7 @@ async function submit() {
   font-size: 13px;
   font-weight: 600;
 }
-.dots li {
+.dots li:not(.ink) {
   flex: 1;
   padding-top: var(--sp-2);
   border-top: 3px solid rgba(var(--v-border-color), var(--v-border-opacity));
@@ -197,8 +200,20 @@ async function submit() {
 .dots li.done {
   border-top-color: rgba(var(--v-theme-primary), 0.5);
 }
+/* One indicator slides along the track to the current step. */
+.dots .ink {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: calc((100% - 2 * var(--sp-2)) / 3);
+  height: 3px;
+  background: rgb(var(--v-theme-primary));
+  border-radius: 3px;
+  transform: translateX(calc(var(--step) * (100% + var(--sp-2))));
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
 .dots li.on {
-  border-top-color: rgb(var(--v-theme-primary));
+  border-top-color: rgba(var(--v-theme-primary), 0.18);
   color: rgb(var(--v-theme-on-surface));
 }
 .dot-btn {
@@ -209,8 +224,33 @@ async function submit() {
   padding: 0;
   min-height: 24px;
   cursor: pointer;
-  text-decoration: underline;
+  text-decoration: none;
   text-underline-offset: 3px;
+}
+.dot-btn:hover,
+.dot-btn:focus-visible {
+  text-decoration: underline;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.back {
+  align-self: center;
+}
+/* Field hints: readable, never hyphenated mid-word. */
+.signup :deep(.v-messages),
+.signup :deep(.v-messages__message) {
+  min-height: 0;
+  overflow: visible;
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: normal;
+  hyphens: manual;
 }
 .pane-title {
   font-size: 20px;
@@ -229,25 +269,40 @@ async function submit() {
   font-size: 14px;
   line-height: 20px;
 }
-/* Steps slide sideways on the pass (exit faster than entry). */
-.pane-enter-active {
-  transition: opacity 260ms ease-out, transform 320ms cubic-bezier(0.16, 1, 0.3, 1);
+/* Steps slide in the direction of travel (exit faster than entry). */
+.pane-fwd-enter-active,
+.pane-back-enter-active {
+  transition: opacity 280ms ease-out, transform 360ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.pane-leave-active {
+.pane-fwd-leave-active,
+.pane-back-leave-active {
   transition: opacity 120ms ease-in, transform 120ms ease-in;
 }
-.pane-enter-from {
+.pane-fwd-enter-from {
   opacity: 0;
-  transform: translateX(24px);
+  transform: translateX(32px);
 }
-.pane-leave-to {
+.pane-fwd-leave-to {
   opacity: 0;
-  transform: translateX(-12px);
+  transform: translateX(-16px);
+}
+.pane-back-enter-from {
+  opacity: 0;
+  transform: translateX(-32px);
+}
+.pane-back-leave-to {
+  opacity: 0;
+  transform: translateX(16px);
 }
 @media (prefers-reduced-motion: reduce) {
-  .pane-enter-from,
-  .pane-leave-to {
+  .pane-fwd-enter-from,
+  .pane-fwd-leave-to,
+  .pane-back-enter-from,
+  .pane-back-leave-to {
     transform: none;
+  }
+  .dots .ink {
+    transition: none;
   }
 }
 </style>

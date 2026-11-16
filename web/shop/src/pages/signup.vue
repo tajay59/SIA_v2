@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** S-13 sign up → S-14 verify: three steps on the visitor pass; the wall lists the way to an approved account. */
+/** S-13 sign up → S-14 verify: three steps beside the picture; the picture lists the way to an approved account. */
 import { AuthCard, SignupForm } from '@cimh/web-app'
 import { ref } from 'vue'
 
@@ -11,7 +11,7 @@ const step = ref(0)
   <AuthCard title="Create your account" subtitle="Request instruments and spares from CIMH." :width="520">
     <template #wall>
       <ol class="path">
-        <li>Fill in this pass</li>
+        <li>Fill in the form</li>
         <li>Confirm your email with a code</li>
         <li>A CIMH administrator approves the account, usually within two working days</li>
         <li>Send requests</li>
