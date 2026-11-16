@@ -78,6 +78,14 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     await expect(page.getByText('Enter a code')).toBeVisible()
     await expect(page.getByText('Enter a name')).toBeVisible()
 
+    // Saving turns an empty list (= any department) into a closed one: keep the
+    // department the other specs' products use, or every later spec gets a 422.
+    const departments = page.getByRole('combobox', { name: 'Departments' })
+    const ledger = page.getByRole('region', { name: 'Departments' })
+    if (!(await ledger.locator('.v-chip', { hasText: /^Hydrology$/ }).count())) {
+      await departments.fill('Hydrology')
+      await departments.press('Enter')
+    }
     const dept = `E2E dept ${run}`
     await page.getByRole('combobox', { name: 'Departments' }).fill(dept)
     await page.getByRole('combobox', { name: 'Departments' }).press('Enter')
