@@ -52,7 +52,7 @@ Other database users:
 |---|---|---|---|
 | Own account | Read/write (email change needs re-verification) | Read | Read/write |
 | Other accounts | ✗ | Name, email, organisation, role, status | All except secrets |
-| Product public fields | Sellable only (via `xuser`) | Read | Read |
+| Product public fields | Sellable, MET/RAD or Pro Bono (via `xuser`) | Read | Read |
 | Product `cost`, `threshold`, `sn`, `sn1` | ✗ | Read/write | Read/write |
 | Stock | "In stock / on request" only | Exact counts, units, history | Same |
 | Requests | Own **and** same organisation (read); own (act) | All | All |
@@ -110,7 +110,7 @@ Verification and reset codes: `kind`, `accountId`, **`codeHash`** (for checking)
 Search: a **text index** (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on `sn`, `sn1`, `modelnumber`. Browsing is sorted by name (indexes end in `name, id` for cursor paging); every filter combination the screens use (customer: all / type / type + department; staff: active or "show inactive", with or without type) has its own index, and CI checks with `explain` that no catalogue read scans the collection (TR-DATA-5).
 
 ### `xuser` (view)
-`product` filtered to `sellable: true, active: true`, projecting **only public fields**, so `cost` and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.
+`product` filtered to `sellable: true, active: true` and type **MET or RAD, or Pro Bono of any type** (owner, 2026-11-16), projecting **only public fields**, so `cost` and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.
 
 ### `misc` (reference data, now with a `kind` field)
 
@@ -225,4 +225,4 @@ Every collection has a `$jsonSchema` validator, written per service in `<service
 | SQLite tokens | Not migrated (everyone logs in again) |
 | `products` (empty) | Dropped |
 
-**Reference data:** the database `inventory` on **`172.16.0.203`** (MongoDB 8.0.26) holds the real data. The local `127.0.0.1` copy is test data. The current `xuser` view shows customers types `MET, RAD, PRO, EQUIP` with `sellable` `yes` or `probono`.
+**Reference data:** the database `inventory` on **`172.16.0.203`** (MongoDB 8.0.26) holds the real data. The local `127.0.0.1` copy is test data. The legacy `xuser` view showed customers types `MET, RAD, PRO, EQUIP` with `sellable` `yes` or `probono`. v2 narrows it to MET and RAD plus Pro Bono.

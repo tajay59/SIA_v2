@@ -82,8 +82,10 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     // department the other specs' products use, or every later spec gets a 422.
     const departments = page.getByRole('combobox', { name: 'Departments' })
     const ledger = page.getByRole('region', { name: 'Departments' })
-    if (!(await ledger.locator('.v-chip', { hasText: /^Hydrology$/ }).count())) {
-      await departments.fill('Hydrology')
+    // support.ts apiProduct uses Hydrology, orderableProduct Meteorology.
+    for (const name of ['Hydrology', 'Meteorology']) {
+      if (await ledger.locator('.v-chip', { hasText: new RegExp(`^${name}$`) }).count()) continue
+      await departments.fill(name)
       await departments.press('Enter')
     }
     const dept = `E2E dept ${run}`

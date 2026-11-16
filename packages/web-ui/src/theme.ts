@@ -152,6 +152,10 @@ export function vuetifyOptions(app: App, defaultTheme: 'cimhLight' | 'cimhDark' 
     defaults.VBtn = { rounded: 'sm', variant: 'flat' }
     defaults.VCard = { rounded: 'sm', variant: 'outlined' }
     for (const k of ['VTextField', 'VSelect', 'VAutocomplete', 'VCombobox', 'VTextarea', 'VFileInput', 'VNumberInput', 'VDateInput']) defaults[k] = { ...defaults[k], rounded: 'sm' }
+  } else {
+    // SHOP: every button is a Material 3 button (owner, 2026-11-16): full pill, 40 px; tabs keep their square ink.
+    defaults.VBtn = { rounded: 'pill', variant: 'flat', class: 'm3' }
+    defaults.VTab = { rounded: 0, class: '' }
   }
   return { theme: { defaultTheme, themes }, defaults }
 }

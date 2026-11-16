@@ -78,3 +78,4 @@ deploy/prometheus/blackbox-targets.rendered.yml
 /web/sia/.impeccable/
 /run_dev_server.bat
 /.mcp.json
+/web/shop/.impeccable/

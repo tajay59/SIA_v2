@@ -4,7 +4,7 @@
  * desktop = top bar (brand left, main navigation centred, account + theme right); phones = no top bar,
  * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page but the sign-in pages.
  * The sign-in pages (login, sign-up, verify, password) show only their card: no top bar, bottom bar or
- * footer; the logo links home. Customers get the cart (with a count)
+ * footer; the logo links home. Customers and visitors get the cart (with a count; visitors log in first)
  * in both bars, as in legacy.
  */
 import { AppNotifier, useCart, useSession, useThemeMode } from '@cimh/web-app'
@@ -47,6 +47,10 @@ watch(
   { immediate: true },
 )
 
+// Cart for customers and for visitors (it asks them to log in first, then opens); CIMH accounts cannot request.
+const showCart = computed(() => session.isCustomer || !session.isLoggedIn)
+const cartTo = computed(() => (session.isLoggedIn ? '/cart' : { path: '/login', query: { returnTo: '/cart' } }))
+
 const nav = computed(() => [
   { to: '/catalogue', title: 'Catalogue', icon: mdiViewGridOutline, show: true },
   { to: '/pro-bono', title: 'Pro Bono', icon: mdiGiftOutline, show: true },
@@ -72,7 +76,7 @@ async function logout() {
           <router-link v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link">{{ n.title }}</router-link>
         </nav>
         <div class="right">
-          <v-btn v-if="session.isCustomer" to="/cart" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
+          <v-btn v-if="showCart" :to="cartTo" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
             <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary">
               <v-icon :icon="mdiCartOutline" />
             </v-badge>
@@ -127,7 +131,7 @@ async function logout() {
       </v-menu>
       <!-- Accessible names match the desktop bar (the visible short label is part of each name, WCAG 2.5.3). -->
       <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" :aria-label="n.title" stacked>{{ n.short ?? n.title }}</v-btn>
-      <v-btn v-if="session.isCustomer" to="/cart" :aria-label="`Cart, ${cart.count} items`" stacked>
+      <v-btn v-if="showCart" :to="cartTo" :aria-label="`Cart, ${cart.count} items`" stacked>
         <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary"><v-icon :icon="mdiCartOutline" /></v-badge>
         Cart
       </v-btn>

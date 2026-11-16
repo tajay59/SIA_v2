@@ -29,7 +29,14 @@ PUBLIC_FIELDS: tuple[str, ...] = (
     "images",
     "inStock",
 )
-PUBLIC_FILTER: dict[str, Any] = {"sellable": True, "active": True}
+# SHOP shows only meteorological and radar items, plus Pro Bono items of any type (owner, 2026-11-16).
+# Staff views ignore this; it binds every customer/anonymous answer and the `xuser` view.
+SHOP_TYPES = ("MET", "RAD")
+PUBLIC_FILTER: dict[str, Any] = {
+    "sellable": True,
+    "active": True,
+    "$or": [{"type": {"$in": list(SHOP_TYPES)}}, {"probono": True}],
+}
 XUSER_PIPELINE: list[dict[str, Any]] = [
     {"$match": PUBLIC_FILTER},
     {"$project": {"_id": 0, **dict.fromkeys(PUBLIC_FIELDS, 1)}},

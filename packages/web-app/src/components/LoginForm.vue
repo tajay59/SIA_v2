@@ -3,7 +3,7 @@
  * S-16 / A-21 login (APD §2): email + password, then a 6-digit code for admins with MFA.
  * Account-state errors route or explain: unverified → verify screen, awaiting approval → pending screen,
  * rejected/suspended/locked → message.
- * Buttons: `m3` = Material 3 pill in SIA (web/sia/src/console.css); the class has no rule in SHOP.
+ * Buttons: `m3` = Material 3 pill (SIA: web/sia/src/console.css; SHOP: web/shop/src/m3.css, where every v-btn gets it by default).
  */
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'

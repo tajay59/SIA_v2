@@ -97,6 +97,28 @@ def test_customers_only_ever_get_public_fields(ctx: Ctx, who: dict[str, str] | N
     assert len(hidden["items"]) == 1
 
 
+@pytest.mark.parametrize("who", [None, USER], ids=["anonymous", "customer"])
+def test_shop_shows_only_met_and_radar_plus_pro_bono_of_any_type(ctx: Ctx, who: dict[str, str] | None) -> None:
+    met = ctx.create(name="Rain gauge", type="MET")
+    ctx.create(name="Radar part", type="RAD")
+    equip = ctx.create(name="Logger", type="EQUIP")
+    ctx.create(name="Cable", type="SUPP")
+    ctx.create(name="Free kit", type="PRO", probono=True)
+    ctx.create(name="Free logger", type="EQUIP", probono=True)
+    headers = who or {}
+
+    names = sorted(i["name"] for i in ctx.client.get(ctx.url("/products"), headers=headers).json()["items"])
+    assert names == ["Free kit", "Free logger", "Radar part", "Rain gauge"]
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "EQUIP"}).json()["items"]
+    assert [i["name"] for i in r] == ["Free logger"]
+    assert ctx.client.get(ctx.url(f"/products/{equip['id']}"), headers=headers).status_code == 404
+    assert ctx.client.get(ctx.url(f"/products/{met['id']}"), headers=headers).status_code == 200
+    # Search starts from the same PUBLIC_FILTER (mongomock has no $text; covered by the real-Mongo integration test).
+    # Staff still see every type.
+    staff = ctx.client.get(ctx.url("/products"), headers=STAFF).json()["items"]
+    assert len(staff) == 6
+
+
 def test_staff_see_everything_including_inactive_on_request(ctx: Ctx) -> None:
     ctx.create()
     ctx.create(name="Hidden", sellable=False)

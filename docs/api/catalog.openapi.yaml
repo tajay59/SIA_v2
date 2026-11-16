@@ -27,7 +27,7 @@ paths:
       tags: [products]
       summary: Browse products
       description: |
-        Anonymous and customers: sellable, active products only (from the `xuser` view; today types MET, RAD, PRO, EQUIP).
+        Anonymous and customers: sellable, active products of type MET or RAD, plus Pro Bono items of any type (the `xuser` view filter; owner 2026-11-16).
         Staff/admin: all products, including `sellable=false` and inactive with `includeInactive=true`.
       security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
       parameters:

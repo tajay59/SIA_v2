@@ -1183,7 +1183,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td>Product public fields</td>
-<td>Sellable only (via <code>xuser</code>)</td>
+<td>Sellable, MET/RAD or Pro Bono (via <code>xuser</code>)</td>
 <td>Read</td>
 <td>Read</td>
 </tr>
@@ -1324,7 +1324,7 @@ Rule: an <code>ACTIVE</code> non-CIMH account must have an <code>organisationId<
 <p><code>id</code> (unique) · <code>name</code>, <code>description</code>, <code>details</code>, <code>make</code>, <code>modelname</code>, <code>modelnumber</code> · <strong><code>type</code></strong> codes <code>MET, RAD, EQUIP, SUPP, MISC, PRO</code> · <code>department</code>, <code>project</code> · <strong><code>sellable</code> → bool</strong> · <strong><code>probono</code> bool (required at creation)</strong> · <code>probonoMaxPerRequest?</code> · <code>cost</code> (Money, staff only) · <code>threshold</code>, <code>unitquantity</code>, <code>weight</code>, <code>dimension</code>, <code>sn</code>, <code>sn1</code> · <code>keywords[]</code> · <code>images[]{fileId, url, w, h, primary}</code> · <code>inStock</code>, <code>stockCount</code>, <code>stockAt</code> (derived from stock events; an older event never overwrites a newer one) · <code>active</code> (soft delete).
 Search: a <strong>text index</strong> (name 10, modelnumber 8, keywords 5, make 3, modelname 3) plus prefix indexes on <code>sn</code>, <code>sn1</code>, <code>modelnumber</code>. Browsing is sorted by name (indexes end in <code>name, id</code> for cursor paging); every filter combination the screens use (customer: all / type / type + department; staff: active or "show inactive", with or without type) has its own index, and CI checks with <code>explain</code> that no catalogue read scans the collection (TR-DATA-5).</p>
 <h3 id="xuser-view"><code>xuser</code> (view)</h3>
-<p><code>product</code> filtered to <code>sellable: true, active: true</code>, projecting <strong>only public fields</strong>, so <code>cost</code> and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.</p>
+<p><code>product</code> filtered to <code>sellable: true, active: true</code> and type <strong>MET or RAD, or Pro Bono of any type</strong> (owner, 2026-11-16), projecting <strong>only public fields</strong>, so <code>cost</code> and serials can never reach a customer. catalog-svc creates the view at start-up from the same field list its public API uses.</p>
 <h3 id="misc-reference-data-now-with-a-kind-field"><code>misc</code> (reference data, now with a <code>kind</code> field)</h3>
 <table>
 <thead>
@@ -1634,7 +1634,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 </tbody>
 </table>
-<p><strong>Reference data:</strong> the database <code>inventory</code> on <strong><code>172.16.0.203</code></strong> (MongoDB 8.0.26) holds the real data. The local <code>127.0.0.1</code> copy is test data. The current <code>xuser</code> view shows customers types <code>MET, RAD, PRO, EQUIP</code> with <code>sellable</code> <code>yes</code> or <code>probono</code>.</p></section>
+<p><strong>Reference data:</strong> the database <code>inventory</code> on <strong><code>172.16.0.203</code></strong> (MongoDB 8.0.26) holds the real data. The local <code>127.0.0.1</code> copy is test data. The legacy <code>xuser</code> view showed customers types <code>MET, RAD, PRO, EQUIP</code> with <code>sellable</code> <code>yes</code> or <code>probono</code>. v2 narrows it to MET and RAD plus Pro Bono.</p></section>
 <section class="chapter" id="05-workflows"><h1 id="5-workflows">5. Workflows</h1>
 <p>Source: <a href="../PRD.md">PRD §5</a>, <a href="../TAD.md">TAD §7</a>.</p>
 <h2 id="51-registration-and-approval">5.1 Registration and approval</h2>
@@ -4187,7 +4187,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </table>
 <h2 id="112-shop-screens">11.2 SHOP: screens</h2>
 <figure><a href="images/19-shop-sitemap.svg" target="_blank" title="Open full size"><img alt="SHOP navigation map" src="images/19-shop-sitemap.svg" loading="lazy"></a><figcaption>SHOP navigation map</figcaption></figure>
-<p><strong>Top bar:</strong> logo → S-01 · Catalogue · Pro Bono · search box → S-06 · Cart (badge; customers only) → S-07 · My requests → S-10 · Account menu (Profile, Log out) or Log in / Sign up.</p>
+<p><strong>Top bar:</strong> logo → S-01 · Catalogue · Pro Bono · search box → S-06 · Cart (badge; customers, and visitors who are sent to log in first; not CIMH accounts) → S-07 · My requests → S-10 · Account menu (Profile, Log out) or Log in / Sign up.</p>
 <table>
 <thead>
 <tr>
@@ -4205,15 +4205,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/</code></td>
 <td>Home</td>
 <td>public</td>
-<td>Hero carousel (the only large headline; no auto-advance, arrows + dots); logo band with the visitor's next step (log in / register, or My requests / catalogue); <strong>How requesting works</strong> (4 steps: approved account → request without prices → quote valid 30 days → signed agreement and delivery) with the Pro Bono entry; Radar and Met-service product rows (sliders; on phones four cards in two columns; a failed load shows <strong>Retry</strong>, not "empty")</td>
-<td>Product → S-03 · Browse → S-02 · Pro Bono → S-04 · Register → S-13 · My requests → S-10</td>
+<td>Hero carousel (the only large headline; no auto-advance, arrows + dots); <strong>institute masthead</strong> (deep navy field, white CIMH crest, one line on what the store is, the visitor's next step: Sign up / Log in, or My requests / catalogue); <strong>Find your equipment</strong>: a photo tile per equipment family that has items (radar large; two or three real item names, no counts; a failed tile shows <strong>Retry</strong>) and a yellow Pro Bono tile; <strong>How requesting works</strong> (4 steps on one path: approved account → request without prices → quote valid 30 days → signed agreement and delivery, drawn once on first view) with the Pro Bono branch (no quote); folded to one line for signed-in customers. Phones: one-column family rows with thumbnails, steps down the left edge</td>
+<td>Family → S-02 (filtered) · Whole catalogue → S-02 · Pro Bono → S-04 · Sign up → S-13 · My requests → S-10</td>
 </tr>
 <tr>
 <td>S-02</td>
 <td><code>/catalogue</code></td>
 <td>Catalogue</td>
 <td>public</td>
-<td>Filters (type, department, project, in stock), product grid, "Load more" (cursor)</td>
+<td>Search desk: navy band with title, one wide search (make, model or model number; matches marked in results), family index (All · Meteorological · Radar: SHOP shows only MET and RAD plus Pro Bono of any type), In stock only, Filters (department, project); same-height cards (photo on a white plate, or the part's nameplate), "Load more" (cursor)</td>
 <td>Product → S-03 · Search → S-06</td>
 </tr>
 <tr>
@@ -4229,7 +4229,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/pro-bono</code></td>
 <td>Pro Bono items</td>
 <td>public</td>
-<td>Same as S-02, filtered to <code>probono=true</code>, by project</td>
+<td>Same as S-02 (yellow rule and badge), filtered to <code>probono=true</code>; the index lists projects</td>
 <td>→ S-03</td>
 </tr>
 <tr>
@@ -5026,11 +5026,11 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-01</td>
-<td>Hero carousel (owner's image, radar, AWS; plain copy), logo band with the next-step card ("Request items" for visitors), <code>components/HowRequestingWorks.vue</code> (also folded on S-03), "Radar spares" and "Met-service spares" rows with Retry on a failed load. One headline only (the old band title is gone). Hero files in <code>web/shop/src/assets/hero/</code></td>
+<td>Hero carousel (owner's image, radar, AWS; plain copy) unchanged; below it (impeccable redesign 2026-11-16, "Masthead + index"): masthead, family index, request path (<code>components/HowRequestingWorks.vue</code> <code>variant="band"</code>, also folded on S-03 as <code>list</code>). Surface brief <code>web/shop/.impeccable/surfaces/src-pages-index-vue.md</code>. Footer = legacy SHOP footer content and layout (<code>ShopFooter.vue</code>). Hero files in <code>web/shop/src/assets/hero/</code></td>
 </tr>
 <tr>
 <td>S-02, S-04, S-06</td>
-<td>Legacy Inventory/NCI structure: title + search banner, type (Pro Bono: project) chips, Filters menu, product grid; search results on the same page (<code>/search</code> redirects to <code>/catalogue?q=</code>)</td>
+<td>"Search desk" (impeccable 2026-11-16; brief <code>web/shop/.impeccable/surfaces/src-components-cataloguebrowser-vue.md</code>): <code>CatalogueBrowser</code> navy band (search, sliding index ink), <code>ProductGrid</code>, <code>ProductCard</code> (4:3 tile, nameplate when no photo, one status line); search results on the same page (<code>/search</code> redirects to <code>/catalogue?q=</code>)</td>
 </tr>
 <tr>
 <td>S-03</td>
@@ -5612,37 +5612,13 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <h2 id="128-components">12.8 Components</h2>
 <p>All components live in <code>packages/web-ui</code> (Vue, built on Vuetify 4) with matching Compose versions on Android.</p>
 <h3 id="81-buttons">8.1 Buttons</h3>
-<table>
-<thead>
-<tr>
-<th>Variant</th>
-<th>Style</th>
-<th>Use</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Primary</strong></td>
-<td>Filled <code>primary</code>, <code>on-primary</code> text, <code>r-md</code>, height 40 (SIA) / 44 (SHOP), label 14/600</td>
-<td><strong>One per view</strong>: Submit request, Accept, Send quote, Ship</td>
-</tr>
-<tr>
-<td><strong>Secondary</strong></td>
-<td>Outlined, <code>hairline-strong</code> border, <code>ink</code> text</td>
-<td>Alternatives: Cancel, Download, Change choices</td>
-</tr>
-<tr>
-<td><strong>Tertiary</strong></td>
-<td>Text-only <code>primary</code></td>
-<td>Inline links, "View all"</td>
-</tr>
-<tr>
-<td><strong>Danger</strong></td>
-<td>Outlined <code>error</code> (filled only inside the confirm dialog)</td>
-<td>Decline, Reject, Cancel request, Suspend</td>
-</tr>
-</tbody>
-</table>
+<p><strong>Shape (owner, 2026-11-16):</strong> every button except tabs is a <strong>Material 3 button</strong>: full pill, 40 px (large 48, small 32), label 14/20 weight 500, state layer 8% hover / 12% focus-press, level-1 elevation on hover for filled buttons. SHOP gets it from the theme defaults (<code>rounded: pill</code>, class <code>m3</code>; rule in <code>web/shop/src/m3.css</code>); SIA uses the <code>m3</code> class (<code>web/sia/src/console.css</code>).
+| Variant | Style | Use |
+|---|---|---|
+| <strong>Primary</strong> | Filled <code>primary</code>, <code>on-primary</code> text, <code>r-md</code>, height 40 (SIA) / 44 (SHOP), label 14/600 | <strong>One per view</strong>: Submit request, Accept, Send quote, Ship |
+| <strong>Secondary</strong> | Outlined, <code>hairline-strong</code> border, <code>ink</code> text | Alternatives: Cancel, Download, Change choices |
+| <strong>Tertiary</strong> | Text-only <code>primary</code> | Inline links, "View all" |
+| <strong>Danger</strong> | Outlined <code>error</code> (filled only inside the confirm dialog) | Decline, Reject, Cancel request, Suspend |</p>
 <p>States: hover → <code>primary-hover</code>; press → <code>primary-press</code>; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.</p>
 <h3 id="82-inputs-and-forms">8.2 Inputs and forms</h3>
 <ul>
