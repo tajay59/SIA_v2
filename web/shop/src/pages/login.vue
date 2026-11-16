@@ -31,7 +31,7 @@ function done() {
     />
     <template #footer>
       <span>New to CIMH Stores? <router-link to="/signup">Create an account</router-link></span>
-      <span class="muted">Trouble logging in? Write to <a href="mailto:info@cimh.edu.bb">info@cimh.edu.bb</a>.</span>
+      <span>Trouble logging in? Write to <a href="mailto:info@cimh.edu.bb">info@cimh.edu.bb</a>.</span>
     </template>
   </AuthCard>
 </template>

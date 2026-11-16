@@ -2,6 +2,7 @@
  * One way to start SHOP and SIA: Pinia, Vuetify (CIMH theme, SVG icons, density per app), the router
  * with guards. Each app passes its file-based `routes` and options.
  */
+import { installAuthMotion } from './auth-motion'
 import { vuetifyOptions } from '@cimh/web-ui'
 import { createPinia } from 'pinia'
 import { type Component, createApp, inject } from 'vue'
@@ -101,6 +102,7 @@ export function boot(opts: BootOptions) {
   app.directive('scroll-region', vScrollRegion)
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
+  installAuthMotion(router)
   router
     .isReady()
     .then(() => app.mount(opts.mount ?? '#app'))

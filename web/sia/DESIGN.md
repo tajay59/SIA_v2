@@ -275,6 +275,7 @@ Flat by default. Depth comes from the tonal ladder (ground, panel, raised) and 1
 ### Shadow Vocabulary
 - **Button hover** (`box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15)`): filled M3 buttons on hover only; outlined and text buttons never lift.
 - **Floating tooltip** (`box-shadow: 0 6px 18px rgba(0,0,0,0.28)`): the drawer's title + description tooltip.
+- **Sign-in picture** (`box-shadow: 0 24px 48px -28px rgba(8,20,32,0.45)`): the framed picture on the sign-in pages only (outside the console; dropped on phones).
 
 ### Named Rules
 **The Seams-Not-Shadows Rule.** Panels at rest have no shadow; they are separated by a 1 px seam and a step on the tonal ladder. Shadow belongs to hover lift and floating overlays.
@@ -320,8 +321,13 @@ Status, never an action.
 - **6-digit codes:** always six OTP boxes (`v-otp-input`: verify email, MFA, password reset), never a text field.
 - **Scan field:** a form around a solo-inverted field with a barcode icon, mono input text, a persistent hint and a tonal "Enter" button inside. Enter submits one scan, the field clears and keeps focus.
 
-### Sign-in card (`AuthCard`, shared with SHOP)
-On the met-enclosure photo. In SIA the card is always the dark console panel (`v-theme-provider` `cimhDark`, 4 px corners, seam edge) whatever theme is stored, and starts with the SIA mark, "SIA" and "CIMH Stores staff app" above a seam. Buttons are M3 pills (the shared forms carry the `m3` class, which has no rule in SHOP).
+### Sign-in pages (`AuthCard`, shared with SHOP)
+Category-standard split sign-in (owner, 2026-11-16; brief `packages/web-app/.impeccable/surfaces/src-components-authcard-vue.md`). Used by log in, sign up, verify, forgot/reset password, MFA setup and staff-only.
+- **Picture side (left half, sticky, full height):** the picture sits in a frame inset 16 px on the form-side ground, 12 px corners, one soft shadow (`0 24px 48px -28px rgba(8,20,32,0.45)`; the only rest shadow, outside the console), `object-fit: cover`. A bottom scrim (transparent to 55%, then `rgba(8,20,32,0.72)`) carries the foot, 32 px in: the optional `wall` slot (sign-up: the steps to an approved account, white) above a caption chip (28 px pill, 12/600, `rgba(8,20,32,0.55)` + 6 px blur; "Meteorological enclosure" on the legacy stand-in photo, "Illustrative image" on a generated one). Media come from `assets/auth/sia.*` (`authMedia` in `auth-motion.ts`); a video (muted loop, poster = the still) plays only without reduced motion and gets a Pause/Play pill top right (WCAG 2.2.2).
+- **Form side (right half):** always the dark ground `#0d1117` under `v-theme-provider` `cimhDark`, whatever theme is stored (ink `#e6edf3`, muted `#9aa7b4`, line `#262d36`, frame `#161b22`). One column, max 400 px (or `width` − 80, at most 460), anchored at a top offset (`clamp(16px, 5vh, 56px)`) so heading, step track and fields stay put between steps; 32 px gaps. Brand row aligned to the column: white CIMH crest (176 px) left, SIA mark + "SIA · Staff app" (13/600 muted) right. Title 32/40, 700, −0.02em, balanced; one 16/24 muted line; the form (button labels 600); footer links above a 1 px line; legal line at the foot.
+- **Sign-up (`SignupForm`):** three steps (You · Details or Organisation · Password) as a track of 3 px top rules with 13/600 labels; one primary indicator slides to the current step (420 ms, transform); done steps are links back. Panes slide in the direction of travel (forward from 32 px right, Back from the left; in 280/360 ms, out 120 ms) and the pane heading takes focus.
+- **Phones and tablets (< 960 px):** one column; the picture becomes a 200 px band (12 px inset, no shadow, wall hidden); crest 144 px, title 26/32; the steps list moves under the form into a `#161b22` well (12 px corners).
+- **Motion (`auth-motion.ts`):** the arrival is `load` (direct load or from an app page: the picture settles from scale 1.04 + fade over 1.4 s, the column rises 12 px in 640 ms, staggered 0/80/160 ms), `vt` (between sign-in pages: one View Transition; the picture holds still as `auth-visual`, words, form and foot lift out in 160 ms and settle in over 440 ms, the form morphs to its new height) or `plain` (no View Transitions, reduced motion, or WebKit: only the column rises). Reduced motion: no entrance, no video, no pane slide or indicator glide.
 
 ### Profile (`ProfileView` + `ProfileSection`, shared with SHOP)
 In SIA each section is a console panel (seam, 4 px corners, 44 px head with the panel title); dividers inside are seams; actions are outlined pills, Save the filled pill, Ask to delete the danger pill. SHOP keeps cards.

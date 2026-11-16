@@ -14,7 +14,7 @@ const step = ref(0)
   <AuthCard title="Create a staff account" subtitle="For CIMH staff with a @cimh.edu.bb address." :width="520">
     <template #wall>
       <ol class="path">
-        <li>Fill in this card with your CIMH email</li>
+        <li>Fill in the form with your CIMH email</li>
         <li>Confirm the email with a code</li>
         <li>An administrator gives the account staff access</li>
       </ol>
