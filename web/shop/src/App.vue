@@ -107,7 +107,8 @@ async function logout() {
     <v-main id="main">
       <AppNotifier />
       <router-view v-slot="{ Component, route: r }">
-        <Transition :name="`page-${shopDir}`" mode="out-in">
+        <!-- Sign-in pages have their own transition (AuthCard); a fade here kept the old form on screen while the next page arrived. -->
+        <Transition :name="r.meta.layout === 'bare' ? 'page-none' : `page-${shopDir}`" mode="out-in">
           <component :is="Component" :key="r.path" />
         </Transition>
       </router-view>

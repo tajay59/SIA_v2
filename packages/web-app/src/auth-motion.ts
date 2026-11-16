@@ -88,12 +88,16 @@ export function installAuthMotion(router: Router, app?: 'shop' | 'sia'): void {
     }
     arrival = 'vt'
     return new Promise<void>((resolve) => {
-      doc.startViewTransition!(async () => {
+      const t = doc.startViewTransition!(async () => {
         const rendered = new Promise<void>((done) => (pendingAfter = done))
         resolve()
         await Promise.race([rendered, new Promise((t) => setTimeout(t, 600))])
         await nextTick()
-      })
+      }) as { ready?: Promise<void>; finished?: Promise<void> } | undefined
+      // The browser aborts a transition when the viewport resizes or another one starts: the page has already
+      // changed, only the animation is skipped, so a rejection here is not an error.
+      t?.ready?.catch(() => undefined)
+      t?.finished?.catch(() => undefined)
     })
   })
 }
