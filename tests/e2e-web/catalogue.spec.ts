@@ -30,7 +30,7 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await page.getByLabel('Email').fill(staff)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await siaGo(page, 'Products')
+    await siaGo(page, 'Inventory')
     await page.getByRole('link', { name: 'New product' }).click()
     // The button grows into the form (View Transition); the page takes no clicks until it ends.
     await page.waitForFunction(() => !document.getAnimations().some((x) => String((x.effect as KeyframeEffect | null)?.pseudoElement ?? '').startsWith('::view-transition')))

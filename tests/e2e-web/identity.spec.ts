@@ -114,7 +114,7 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
     await expect(page).toHaveURL(/\/requests$/)
-    await expect(page.getByRole('heading', { name: 'My requests' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Orders', exact: true })).toBeVisible()
   })
 
   test('customers opening SIA see "staff only" (APD §2)', async ({ page }) => {

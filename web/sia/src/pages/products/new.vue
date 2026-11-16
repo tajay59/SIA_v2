@@ -60,7 +60,7 @@ async function save(body: Record<string, unknown>) {
 
 <template>
   <div class="np">
-    <router-link to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Products</router-link>
+    <router-link to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Inventory</router-link>
     <header class="head">
       <h1 class="t-h1">New product</h1>
       <p class="t-body muted">Name, type, department, the Pro Bono choice and the alert level are required. Photos are optional; labels and stock come after the product exists.</p>

@@ -142,10 +142,16 @@ export const fileUrl = (id: string) => `${BASE.documents}/files/${encodeURICompo
 /** Lines priced from CIMH stock vs supplier, side by side (latest quote version only). */
 export function quoteRows(r: OrderRequest) {
   const qv = Math.max(0, ...(r.quotes ?? []).map((q) => q.version))
-  const supplier = new Map<string, { unitPrice: string; total: string; supplier?: string }>()
+  // source: the supplier's own USD unit price and the rate, when staff converted a USD supplier quote to BBD.
+  type SupplierCell = { unitPrice: string; total: string; supplier?: string; source: { unitPrice: string; currency: 'USD' | 'BBD'; rate: string } | null }
+  const supplier = new Map<string, SupplierCell>()
   for (const q of r.quotes ?? []) {
     if (q.version !== qv) continue
-    for (const l of q.lines) supplier.set(l.lineId, { unitPrice: l.unitPrice, total: l.total, supplier: q.supplier })
+    for (const l of q.lines) {
+      const source = q.sourceCurrency && l.sourceUnitPrice && q.exchangeRate
+        ? { unitPrice: l.sourceUnitPrice, currency: q.sourceCurrency, rate: q.exchangeRate } : null // prettier-ignore
+      supplier.set(l.lineId, { unitPrice: l.unitPrice, total: l.total, supplier: q.supplier, source })
+    }
   }
   const cimh = new Map<string, { unitPrice: string; total: string }>()
   if (r.cimhQuote && r.cimhQuote.version === qv) for (const l of r.cimhQuote.lines) cimh.set(l.lineId, l)

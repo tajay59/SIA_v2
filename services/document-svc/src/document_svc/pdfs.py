@@ -156,6 +156,13 @@ def _quote(req: dict[str, Any], version: int | None) -> dict[str, Any] | None:
     return dict(quotes[-1]) if quotes else None
 
 
+def _latest_quotes(req: dict[str, Any]) -> list[dict[str, Any]]:
+    """Every supplier quote of the agreed (else the latest) quote version."""
+    quotes = req.get("quotes") or []
+    version = (req.get("agreement") or {}).get("quoteVersion") or (quotes[-1].get("version") if quotes else None)
+    return [q for q in quotes if q.get("version") == version]
+
+
 def _chosen_prices(req: dict[str, Any]) -> list[tuple[dict[str, Any], str, str, str]]:
     """(line, source, unit price, total) for the agreed choices."""
     ag = req.get("agreement") or req.get("acceptance") or {}
@@ -214,7 +221,13 @@ def agreement(req: dict[str, Any]) -> bytes:
     if req.get("adminFee"):
         totals.append(("Administrative fee", f"{cur} {req['adminFee']}"))
     totals.append(("Agreed total", f"{cur} {ag.get('total', '0.00')}"))
-    body += [Spacer(1, 3 * mm), _totals(totals), Spacer(1, 8 * mm), _p("Agreement", H2)]
+    body += [Spacer(1, 3 * mm), _totals(totals)]
+    # Supplier quotes priced in USD were converted to BBD per supplier; name each rate so the customer can
+    # check the converted prices against the supplier's own quote attached to the request.
+    rates = sorted({str(q["exchangeRate"]) for q in _latest_quotes(req) if q.get("sourceCurrency") == "USD"})
+    for r in rates:
+        body.append(_p(f"Supplier prices quoted in USD converted at 1 USD = {r} BBD.", SMALL))
+    body += [Spacer(1, 8 * mm), _p("Agreement", H2)]
     body.append(_p(
         f"By signing, the customer agrees to pay CIMH the agreed total above for request {req.get('id', '')} "
         f"(quote version {ag.get('quoteVersion', '')}). Supplier items are shipped directly by the supplier. "

@@ -13,7 +13,7 @@ import {
   type OrderRequest,
   ReasonDialog,
   requestTitle,
-  shortRef,
+  ShortRef,
   type RequestSummary,
   StatusChip,
   useNotify,
@@ -93,7 +93,7 @@ async function submitReject(reason: string) {
           <p class="ident-sub">
             {{ [summary.organisationName, summary.customerName || summary.customer].filter(Boolean).join(' · ') }}
           </p>
-          <p class="code-full" :title="summary.id">{{ shortRef(summary.id) }}</p>
+          <p class="code-full"><ShortRef :id="summary.id" /></p>
         </div>
 
         <section class="next" :class="why(summary).tone" aria-labelledby="next-title">
@@ -248,38 +248,59 @@ async function submitReject(reason: string) {
   align-items: baseline;
   gap: var(--sp-2); /* type from .console-title */
 }
-/* Next step: the one decision on this panel; tone only recolours the sentence. */
+/* Next step: the one decision on this panel, so it is the one coloured region (impeccable colorize 2026-11-16).
+   The tone owns the well: a wash and a full edge in its hue, the label and icon in the hue, the sentence in ink.
+   Staff's move (act, fulfil) = Action Blue; urgent = amber; expiring = red. Waiting on the customer and closed
+   stay graphite, so colour here always means "staff act now". */
 .next {
+  --tone: var(--v-theme-primary);
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
-  border: 1px solid rgb(var(--v-theme-seam));
+  padding: var(--sp-4) var(--sp-4) var(--sp-4);
+  border: 1px solid rgba(var(--tone), 0.55);
   border-radius: 4px;
+  background: rgba(var(--tone), 0.12);
+  transition: background-color 240ms ease-out, border-color 240ms ease-out;
+}
+.next.urgent {
+  --tone: var(--v-theme-warning);
+}
+.next.expiring {
+  --tone: var(--v-theme-error);
+}
+.next.wait,
+.next.closed {
+  border-color: rgb(var(--v-theme-seam));
   background: rgb(var(--v-theme-surface-variant));
+}
+.next .sub-title {
+  color: rgb(var(--tone));
+}
+.next.wait .sub-title,
+.next.closed .sub-title {
+  color: inherit;
 }
 .next-text {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  font-size: 16px;
-  line-height: 22px;
-  font-weight: 600;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 700;
+  color: rgb(var(--v-theme-on-surface));
 }
 .next-text .v-icon {
-  color: rgb(var(--v-theme-primary));
+  color: rgb(var(--tone));
+}
+.next.wait .next-text,
+.next.closed .next-text {
+  font-size: 16px;
+  font-weight: 600;
 }
 .next.wait .next-text .v-icon,
 .next.closed .next-text .v-icon {
   color: rgb(var(--v-theme-secondary));
-}
-.next.urgent .next-text,
-.next.urgent .next-text .v-icon {
-  color: rgb(var(--v-theme-warning));
-}
-.next.expiring .next-text,
-.next.expiring .next-text .v-icon {
-  color: rgb(var(--v-theme-error));
 }
 .next-actions {
   display: flex;

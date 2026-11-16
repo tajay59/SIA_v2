@@ -205,7 +205,7 @@ function armPath() {
           </template>
           <template v-else>
             <h2 id="masthead-title" class="masthead-title">Welcome back, {{ session.account?.firstname }}</h2>
-            <p class="masthead-line">Quotes and agreements that wait for you are at the top of My requests.</p>
+            <p class="masthead-line">Quotes and agreements that wait for you are at the top of Orders.</p>
           </template>
         </div>
         <div class="masthead-actions">
@@ -215,7 +215,7 @@ function armPath() {
           </template>
           <v-btn v-else-if="session.isCimh" to="/catalogue" color="white" variant="flat" size="large" class="on-field">Browse the catalogue</v-btn>
           <template v-else>
-            <v-btn to="/requests" color="white" variant="flat" size="large" class="on-field">My requests</v-btn>
+            <v-btn to="/requests" color="white" variant="flat" size="large" class="on-field">Orders</v-btn>
             <v-btn to="/catalogue" color="white" variant="outlined" size="large">Browse the catalogue</v-btn>
           </template>
         </div>

@@ -4187,7 +4187,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </table>
 <h2 id="112-shop-screens">11.2 SHOP: screens</h2>
 <figure><a href="images/19-shop-sitemap.svg" target="_blank" title="Open full size"><img alt="SHOP navigation map" src="images/19-shop-sitemap.svg" loading="lazy"></a><figcaption>SHOP navigation map</figcaption></figure>
-<p><strong>Top bar:</strong> logo → S-01 · Catalogue · Pro Bono · search box → S-06 · Cart (badge; customers, and visitors who are sent to log in first; not CIMH accounts) → S-07 · My requests → S-10 · Account menu (Profile, Log out) or Log in / Sign up.</p>
+<p><strong>Top bar:</strong> logo → S-01 · Catalogue · Pro Bono · search box → S-06 · Cart (badge; customers, and visitors who are sent to log in first; not CIMH accounts) → S-07 · <strong>Orders</strong> → S-10 (page name "Orders", owner 2026-11-16) · Account menu (Profile, Log out) or Log in / Sign up.</p>
 <table>
 <thead>
 <tr>
@@ -4205,7 +4205,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/</code></td>
 <td>Home</td>
 <td>public</td>
-<td>Hero carousel (the only large headline; no auto-advance, arrows + dots); <strong>institute masthead</strong> (deep navy field, white CIMH crest, one line on what the store is, the visitor's next step: Sign up / Log in, or My requests / catalogue); <strong>Find your equipment</strong>: a photo tile per equipment family that has items (radar large; two or three real item names, no counts; a failed tile shows <strong>Retry</strong>) and a yellow Pro Bono tile; <strong>How requesting works</strong> (4 steps on one path: approved account → request without prices → quote valid 30 days → signed agreement and delivery, drawn once on first view) with the Pro Bono branch (no quote); folded to one line for signed-in customers. Phones: one-column family rows with thumbnails, steps down the left edge</td>
+<td>Hero carousel (the only large headline; no auto-advance, arrows + dots); <strong>institute masthead</strong> (deep navy field, white CIMH crest, one line on what the store is, the visitor's next step: Sign up / Log in, or Orders / catalogue); <strong>Find your equipment</strong>: a photo tile per equipment family that has items (radar large; two or three real item names, no counts; a failed tile shows <strong>Retry</strong>) and a yellow Pro Bono tile; <strong>How requesting works</strong> (4 steps on one path: approved account → request without prices → quote valid 30 days → signed agreement and delivery, drawn once on first view) with the Pro Bono branch (no quote); folded to one line for signed-in customers. Phones: one-column family rows with thumbnails, steps down the left edge</td>
 <td>Family → S-02 (filtered) · Whole catalogue → S-02 · Pro Bono → S-04 · Sign up → S-13 · My requests → S-10</td>
 </tr>
 <tr>
@@ -4245,16 +4245,16 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/cart</code></td>
 <td>Cart</td>
 <td>customer</td>
-<td>Lines (snapshot, qty stepper with a typed quantity (0 removes), remove) under "Items to be quoted"; Pro Bono lines grouped separately; notes: "Paid and Pro Bono items become two requests", "Nothing is paid here"</td>
-<td>Qty change ↺ · Remove ↺ · <strong>Continue to quote details</strong> → S-08 · Add more items / Empty → S-02</td>
+<td>Lines (snapshot, qty stepper with a typed quantity (0 removes), remove) under "Items to be quoted"; Pro Bono lines grouped separately; notes: "Paid and Pro Bono items become two requests", "Nothing is paid here". Layout "Progress rule" (2026-11-16): navy band with the request path Cart → Invoice → Delivery → Sent as four nodes on one rule that fills as the customer goes (done nodes go back), one question per screen under it; step 1 = lines beside a request slip</td>
+<td>Qty change ↺ · Remove ↺ · <strong>Continue to invoice</strong> → S-08 · Add more items / Empty → S-02</td>
 </tr>
 <tr>
 <td>S-08</td>
 <td><code>/cart</code> (steps 2–3)</td>
 <td>Submit request</td>
 <td>customer</td>
-<td>Step <strong>Quote details</strong>: quote currency <strong>BBD/USD</strong> (only if paid lines; BBD preselected) and invoice address (saved list or new). Step <strong>Delivery</strong>: deliver to the invoice address or another one, notes, "Check before you send" (items, currency, invoice to, deliver to; "not a commitment to pay")</td>
-<td><strong>Submit request</strong> → S-09 · Back → S-07 · Continue / Submit without an address → the missing address is named beside it</td>
+<td>Step <strong>Invoice</strong> ("Who is the quote made out to?"): invoice address as tiles (every saved address, or a new one). <strong>A new address is saved to the account</strong> (<code>PATCH /me</code>, max 10; an identical one is just picked; full list or a failed save = used for this request only) and is offered in later requests and in Account. <strong>No currency question</strong>: every quote is in BBD (owner, 2026-11-16). Step <strong>Delivery</strong> ("Where should it go?"): tiles "The invoice address" / "Another address" (then saved addresses + new), notes; beside it a "Check before you send" sheet (navy head with the item count; items × qty grouped quoted / Pro Bono, invoice and delivery addresses as address blocks, each part with Change back to its step; quote in BBD, the note; "not a commitment to pay"; <strong>Send request</strong> at its foot)</td>
+<td><strong>Send request</strong> → S-09 · Back → S-07 · Continue / Submit without an address → the missing address is named beside it</td>
 </tr>
 <tr>
 <td>S-09</td>
@@ -4267,17 +4267,17 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>S-10</td>
 <td><code>/requests</code></td>
-<td>My requests</td>
+<td>Orders</td>
 <td>customer</td>
-<td><strong>Waiting for you</strong> on top (own requests with a quote to review or an agreement to sign, soonest expiry first, "valid until" + days left); tabs <strong>Mine / My organisation</strong>; filters status, year; list rows titled by what was requested (first item "and n more"), id as a small reference, status chip. Empty with filters set → <strong>Clear filters</strong> Ids shown as <code>shortRef</code> (full on hover). Status and Year appear only once there is something to filter (Mine / My organisation always).</td>
-<td>Row → S-11</td>
+<td><strong>Docket</strong> (2026-11-16): navy band with the title and tabs <strong>Mine / My organisation</strong>; list grouped by whose move it is with counts: <strong>Waiting for you</strong> (own requests with a quote to review or an agreement to sign, "valid until" + days left), With CIMH, On its way, Done; rows titled by what was requested (first item "and n more"), state + sent date, <code>shortRef</code> id, Pro Bono badge. Filters status, year (only once there is something to filter). <strong>Wide screens (≥ 1100 px): the open request beside the list</strong> (<code>?open=&lt;id&gt;</code>, default = first waiting, else newest); narrower: rows open S-11. Empty with filters set → <strong>Clear filters</strong></td>
+<td>Row → S-11 (beside, or own page)</td>
 </tr>
 <tr>
 <td>S-11</td>
 <td><code>/requests/[id]</code></td>
 <td>Request detail</td>
 <td>customer (owner or same org)</td>
-<td>Title = what was requested (id as reference); banner saying where the request stands and who acts next (customer's turn = primary tone + action; waiting on CIMH = neutral; amber only when the quote expires within 7 days). <strong>Quote panel first while QUOTED / AWAITING_AGREEMENT</strong>: valid until + days left, labelled <strong>Agreement total</strong>, supplier and CIMH option per line with the <strong>chosen</strong> one marked; afterwards it follows status and items. Status timeline; items (linked to the catalogue; an empty paid list is not shown on Pro Bono requests); delivery (address, currency, carrier, tracking link); files; decline / cancel Files: CIMH-made documents named by kind ("CIMH quote · PDF"), uploads by their name. Cart and request pages use the slim footer (contact line only).</td>
+<td>Shared <code>RequestSheet</code> (also beside the S-10 list). Full id + sent date, title = what was requested, status chip; <strong>request path</strong> (Sent · Quote · Agreement · Ordered · Shipped · Delivered; Pro Bono: Sent · Approved · Picking · Shipped · Delivered) filled to where it stands (hidden once closed); <strong>whose-move well</strong> (customer's turn = primary tone + action and quote expiry; waiting on CIMH = neutral; amber when the quote expires within 7 days; green accepted/delivered; red closed). <strong>Quote first while QUOTED / AWAITING_AGREEMENT</strong> (labelled <strong>Agreement total</strong>, chosen option marked); then Status timeline, Items (Pro Bono marked Free), Delivery (address, currency, carrier, tracking link), Files (CIMH documents by kind) as ruled sections; decline / cancel at the foot. Own page: navy band with "← Orders". Slim footer</td>
 <td><strong>Choose options</strong> (QUOTED) → S-12 · <strong>Decline</strong> ⧉ reason → ↺ · <strong>Cancel</strong> ⧉ reason → ↺ · Tracking link → carrier site (new tab) · Document → download</td>
 </tr>
 <tr>
@@ -4349,14 +4349,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/[...notFound]</code></td>
 <td>Not found</td>
 <td>public</td>
-<td>Message, catalogue search field, links (catalogue, My requests for customers, home); signed out: "log in to see it" with <code>returnTo</code></td>
+<td>Message, catalogue search field, links (catalogue, Orders for customers, home); signed out: "log in to see it" with <code>returnTo</code></td>
 <td>→ S-02 · S-10 · S-01 · S-16</td>
 </tr>
 </tbody>
 </table>
 <h2 id="113-sia-screens-staff-and-admin">11.3 SIA: screens (staff and admin)</h2>
 <figure><a href="images/20-sia-sitemap.svg" target="_blank" title="Open full size"><img alt="SIA navigation map" src="images/20-sia-sitemap.svg" loading="lazy"></a><figcaption>SIA navigation map</figcaption></figure>
-<p><strong>Navigation</strong> (legacy SIA top header; drawer below 1280 px): Dashboard · Products · Inventory (Labels, Location, Lookup) · Pick · Stow · Request desk (P5) · Reports ▾ · Admin ▾ · Profile. The <strong>scan box</strong> in the header takes a unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory → Lookup on it; request codes open the request desk once it exists (P5).</p>
+<p><strong>Navigation</strong> (legacy SIA top header; drawer below 1280 px): Dashboard · <strong>Inventory</strong> (<code>/products</code>, the product list with the low-stock count; was "Products") · <strong>Locations</strong> (<code>/inventory</code>: sites, locations, shelves, labels, lookup; was "Inventory", owner 2026-11-16) · Pick · Stow · <strong>Orders</strong> (request desk, <code>/requests</code>; owner 2026-11-16) · Reports ▾ · Admin ▾ · Profile. The <strong>scan box</strong> in the header takes a unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory → Lookup on it; request codes open the request desk once it exists (P5).</p>
 <table>
 <thead>
 <tr>
@@ -4382,7 +4382,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests</code></td>
 <td>Request desk (queue)</td>
 <td>staff</td>
-<td>Stage tabs with counts (Open, New, Quoting, Quoted, Awaiting signature, To verify, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>waiting time</strong>); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows titled by what was requested (<code>requestTitle</code>), customer/organisation as the second line, <code>shortRef</code> as the reference.</td>
+<td>Stage tabs with counts (Open, New, Quoting, Quoted, Awaiting signature, To verify, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>newest first</strong> by date sent, owner 2026-11-16; also waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
 <td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03</td>
 </tr>
 <tr>
@@ -4398,7 +4398,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]/quote</code></td>
 <td>Quote builder</td>
 <td>staff</td>
-<td>Per line: CIMH option (if fully in stock: cost + admin fee, auto-priced), supplier price inputs per supplier, upload supplier PDFs; <strong>exchange rate</strong> (USD requests with a CIMH option); totals; draft autosave (<code>quote-draft</code>) Summary: admin fee 0 reads "None set"; a range shows two rows (Agreement total, lowest / highest). Header shows <code>shortRef</code>.</td>
+<td>Per line: CIMH option (if fully in stock: cost + admin fee, auto-priced), supplier price inputs per supplier, upload supplier PDFs; each supplier quote is <strong>BBD or USD</strong> (USD: staff type the supplier's USD prices + a BBD-per-USD rate; the customer sees BBD with "Supplier quote: USD x each at r BBD per USD" and the supplier's file); <strong>exchange rate</strong> only on legacy USD requests with a CIMH option; totals; draft autosave (<code>quote-draft</code>) Summary: admin fee 0 reads "None set"; a range shows two rows (Agreement total, lowest / highest). Header shows <code>shortRef</code>.</td>
 <td><strong>Send quote…</strong> ⧉ confirm (recipient, quote version, lines priced, totals, "can't be recalled") → <strong>Email the customer</strong> → A-03 (QUOTED; customer emailed) · Incomplete → inline errors</td>
 </tr>
 <tr>
@@ -4731,7 +4731,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>4</td>
 <td>S-08</td>
-<td>Address, currency (paid lines), notes → Submit</td>
+<td>Invoice address, delivery address, notes → Send</td>
 <td>S-09 (1 or 2 requests)</td>
 </tr>
 </tbody>
@@ -4821,7 +4821,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>2</td>
 <td>A-04</td>
-<td>Upload supplier PDFs, enter prices, (exchange rate)</td>
+<td>Upload supplier PDFs, enter prices (supplier currency; rate for USD)</td>
 <td>Draft autosaved</td>
 </tr>
 <tr>

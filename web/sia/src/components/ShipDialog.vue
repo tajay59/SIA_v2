@@ -3,7 +3,7 @@
  * Record shipment (A-03, J-05 / J-06): carrier, tracking (not for hand delivery), date, optional cost and
  * note, and whether to email the customer. Emits the request body; the parent sends it and closes on success.
  */
-import { CARRIERS, type Carrier, DateField, shortRef } from '@cimh/web-app'
+import { CARRIERS, type Carrier, DateField, ShortRef } from '@cimh/web-app'
 import { mdiAirplane, mdiHandExtendedOutline, mdiTruckDeliveryOutline } from '@mdi/js'
 import { computed, reactive, watch } from 'vue'
 
@@ -44,7 +44,7 @@ function submit() {
       <v-card-item>
         <v-card-title class="t-h3">Record shipment</v-card-title>
         <v-card-subtitle class="sub">
-          <span class="console-mono" :title="requestId">{{ shortRef(requestId) }}</span><template v-if="customer"> · {{ customer }}</template>
+          <span class="console-mono"><ShortRef :id="requestId" /></span><template v-if="customer"> · {{ customer }}</template>
         </v-card-subtitle>
       </v-card-item>
       <v-divider />

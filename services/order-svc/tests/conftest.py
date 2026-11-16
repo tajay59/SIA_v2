@@ -187,9 +187,11 @@ class Ctx:
     def paid_request(self, *pids: str, qty: int = 2, currency: str = "BBD") -> str:
         for pid in pids or ("MET1",):
             assert self.cart_add(pid, qty).status_code == 200
-        reqs = self.submit(currency)
+        reqs = self.submit()
         assert len(reqs) == 1
         assert reqs[0]["type"] == "PAID"
+        if currency != "BBD":  # a legacy (migrated) USD request: new ones are always BBD
+            self.run(self.svc.store.orders.update_one({"id": reqs[0]["id"]}, {"$set": {"currency": currency}}))
         return str(reqs[0]["id"])
 
     def attach(self, rid: str, kind: str, fid: str | None = None) -> str:

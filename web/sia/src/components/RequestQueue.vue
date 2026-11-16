@@ -5,7 +5,7 @@
  * expiring), optional status, time in this status. Arrow keys / Home / End move the selection, Enter opens.
  * Phones have no detail panel, so a tap opens the request. Rows enter, leave and re-order with motion.
  */
-import { requestTitle, type RequestSummary, shortRef, StatusChip } from '@cimh/web-app'
+import { type RequestSummary, ShortRef, StatusChip } from '@cimh/web-app'
 import IOverdue from '~icons/material-symbols/schedule-rounded'
 import { type RouteLocationRaw, useRouter } from 'vue-router'
 import { BTN, TONE_ICON, waited, why } from '../request-queue'
@@ -96,11 +96,11 @@ function onRowKey(e: KeyboardEvent, i: number) {
           @click="pick(r.id)"
           @keydown="onRowKey($event, i)"
         >
-          <span class="code">{{ shortRef(r.id) }}</span>
+          <span class="code"><ShortRef :id="r.id" /></span>
           <span class="who">
-            <span class="who-name">{{ requestTitle(r.firstItemName, r.lineCount, r.type) }}</span>
+            <span class="who-name">{{ r.customerName || r.customer }}</span>
             <span v-if="r.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
-            <span class="who-sub">{{ r.organisationName || r.customerName || r.customer }}</span>
+            <span v-if="r.organisationName" class="who-sub">{{ r.organisationName }}</span>
           </span>
           <span class="why">
             <span class="pill" :class="why(r).tone"><v-icon :icon="TONE_ICON[why(r).tone]" size="14" /><span>{{ why(r).text }}</span></span>
@@ -147,7 +147,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row.with-status {
   /* The reason is why the queue exists: it gets the widest column (critique: cut to "Approve or re" at 1440 px). */
-  grid-template-columns: minmax(96px, 0.7fr) minmax(0, 1fr) minmax(0, 1.5fr) 168px 96px;
+  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1.5fr) minmax(0, 1fr) 168px 96px;
 }
 .row:hover {
   background: rgb(var(--v-theme-surface-variant));

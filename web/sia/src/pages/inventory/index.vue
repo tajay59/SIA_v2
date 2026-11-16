@@ -20,7 +20,7 @@ import ProductPicker from '../../components/ProductPicker.vue'
 import ScanField from '../../components/ScanField.vue'
 import { usePlaces } from '../../places'
 
-definePage({ meta: { guard: 'staff', title: 'Inventory' } })
+definePage({ meta: { guard: 'staff', title: 'Locations' } })
 const route = useRoute()
 const router = useRouter()
 const notify = useNotify()

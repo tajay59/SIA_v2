@@ -2,7 +2,7 @@
 /**
  * S-20 not found (hidden resources look the same as missing ones). Most broken links here are old product
  * links, so the way out is a catalogue search and the catalogue; signed-out visitors are told that logging
- * in may show the page; customers get My requests.
+ * in may show the page; customers get Requests.
  */
 import { useSession } from '@cimh/web-app'
 import { mdiMagnify } from '@mdi/js'
@@ -36,7 +36,7 @@ function search() {
       </form>
       <div class="row">
         <v-btn to="/catalogue" variant="outlined">Browse the catalogue</v-btn>
-        <v-btn v-if="session.isCustomer" to="/requests" variant="outlined">My requests</v-btn>
+        <v-btn v-if="session.isCustomer" to="/requests" variant="outlined">Orders</v-btn>
         <v-btn to="/" variant="text">Home page</v-btn>
       </div>
     </div>

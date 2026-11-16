@@ -22,7 +22,7 @@ import {
   RequestFiles,
   RequestTimeline,
   requestTitle,
-  shortRef,
+  ShortRef,
   StatusChip,
   useNotify,
 } from '@cimh/web-app'
@@ -248,7 +248,7 @@ async function submitDeliver() {
           <p class="id-line">
             <span class="customer">{{ [r.organisationName, r.customerName].filter(Boolean).join(' · ') }}</span>
             <span aria-hidden="true">·</span>
-            <span class="console-mono" :title="r.id">{{ shortRef(r.id) }}</span>
+            <span class="console-mono"><ShortRef :id="r.id" /></span>
             <v-btn variant="text" size="x-small" :icon="ICopy" aria-label="Copy request id" @click="copyId" />
           </p>
         </div>

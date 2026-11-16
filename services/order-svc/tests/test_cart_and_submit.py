@@ -83,7 +83,7 @@ def test_mixed_cart_is_split_and_emptied(ctx: Ctx) -> None:
     assert sorted(r["type"] for r in reqs) == ["PAID", "PROBONO"]
     paid = next(r for r in reqs if r["type"] == "PAID")
     probono = next(r for r in reqs if r["type"] == "PROBONO")
-    assert paid["currency"] == "USD"
+    assert paid["currency"] == "BBD"  # a currency sent by an older client is ignored
     assert probono["currency"] is None
     assert paid["splitFrom"] == probono["id"]
     assert probono["splitFrom"] == paid["id"]
@@ -103,15 +103,13 @@ def test_mixed_cart_is_split_and_emptied(ctx: Ctx) -> None:
         assert evt["payload"]["organisationId"] == "ORGMET"
 
 
-def test_submit_needs_currency_for_paid_lines_only(ctx: Ctx) -> None:
+def test_paid_requests_are_always_bbd(ctx: Ctx) -> None:
     ctx.cart_add("MET1")
-    r = ctx.client.post(ctx.url("/requests"), headers=USER, json={"shipTo": ADDRESS})
-    assert r.status_code == 422
-    assert r.json()["code"] == "CURRENCY_REQUIRED"
-    ctx.client.delete(ctx.url("/cart"), headers=USER)
+    (req,) = ctx.submit(currency=None)
+    assert (req["type"], req["currency"]) == ("PAID", "BBD")
     ctx.cart_add("PRO1")
     (req,) = ctx.submit(currency=None)
-    assert req["type"] == "PROBONO"
+    assert (req["type"], req["currency"]) == ("PROBONO", None)
 
 
 def test_submit_rechecks_the_catalogue(ctx: Ctx) -> None:

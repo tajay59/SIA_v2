@@ -193,6 +193,38 @@ def test_zero_exchange_rate_is_refused_not_a_500(ctx: Ctx) -> None:
     assert r.json()["code"] == "EXCHANGE_RATE_REQUIRED"
 
 
+@pytest.mark.req("O15")
+def test_usd_supplier_quote_is_converted_to_bbd(ctx: Ctx) -> None:
+    rid = to_quoted(ctx)
+    usd = {"supplier": "Vaisala", "currency": "USD", "fileIds": [], "lines": [
+        {"lineId": "L1", "unitPrice": "10.25"}, {"lineId": "L2", "unitPrice": "3.33"}]}  # fmt: skip
+    saved = ctx.ok(rid, "quote-draft", {"supplierQuotes": [usd]}, method="PUT")
+    assert saved["quoteDraft"]["supplierQuotes"][0]["currency"] == "USD"
+    r = ctx.act(rid, "send-quote")
+    assert r.status_code == 422
+    assert r.json()["code"] == "EXCHANGE_RATE_REQUIRED"
+    zero = ctx.act(rid, "quote-draft", {"supplierQuotes": [{**usd, "exchangeRate": "0"}]}, method="PUT")
+    assert zero.json()["code"] == "EXCHANGE_RATE_REQUIRED"
+    saved = ctx.ok(rid, "quote-draft", {"supplierQuotes": [{**usd, "exchangeRate": "2.0225"}]}, method="PUT")
+    assert saved["quoteDraft"]["supplierQuotes"][0]["exchangeRate"] == "2.0225"
+    q = ctx.ok(rid, "send-quote")
+    (sq,) = q["quotes"]
+    assert (sq["sourceCurrency"], sq["exchangeRate"]) == ("USD", "2.0225")
+    # unit price rounded first (10.25 x 2.0225 = 20.730625 -> 20.73), then x qty 2
+    assert sq["lines"][0] == {"lineId": "L1", "unitPrice": "20.73", "total": "41.46", "sourceUnitPrice": "10.25"}
+    assert sq["lines"][1]["unitPrice"] == "6.73"  # 3.33 x 2.0225 = 6.734925
+    assert sq["total"] == "54.92"
+    assert q["currency"] == "BBD"
+
+
+@pytest.mark.req("O15")
+def test_bbd_supplier_quote_is_not_converted(ctx: Ctx) -> None:
+    rid = to_quoted(ctx)
+    q = quote(ctx, rid)
+    assert q["quotes"][0]["sourceCurrency"] is None
+    assert q["quotes"][0]["lines"][0]["sourceUnitPrice"] is None
+
+
 def test_quote_must_cover_every_line(ctx: Ctx) -> None:
     rid = to_quoted(ctx)
     only_l1 = [{"supplier": "S", "fileIds": [], "lines": [{"lineId": "L1", "unitPrice": "1.00"}]}]

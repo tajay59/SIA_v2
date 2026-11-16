@@ -60,7 +60,7 @@ async function show(raw: string) {
       unit.value = await call(() => inventory.GET('/units/{barcode}', { params: { path: { barcode: c } } }))
       emit('place', unit.value.stowed ? { site: unit.value.site, location: unit.value.location } : null)
     } else if (kind === 'request') {
-      message.value = 'That is a request code. Requests open on the request desk.'
+      message.value = 'That is a request code. Requests open on the Orders desk.'
     } else {
       product.value = (await call(() => catalog.GET('/products/{productId}', { params: { path: { productId: c } } }))) as ProductStaff
       stock.value = await call(() => inventory.GET('/products/{productId}/stock', { params: { path: { productId: c } } }))

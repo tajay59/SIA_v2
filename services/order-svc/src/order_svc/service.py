@@ -368,8 +368,6 @@ class OrderService:
                 raise invalid(ln["productId"], msg, "PRODUCT_UNAVAILABLE")
             self._check_limit(prod, ln["qty"])
             (probono if prod.get("probono") else paid).append({**ln, "product": snapshot(prod)})
-        if paid and not body.get("currency"):
-            raise invalid("currency", "Choose BBD or USD for the items that need a quote", "CURRENCY_REQUIRED")
 
         account = await self.deps.account(p.sub) or {}
         first, last = account.get("firstname") or "", account.get("lastname") or ""
@@ -406,7 +404,7 @@ class OrderService:
                 "organisationId": account.get("organisationId", p.org_id),
                 "organisationName": account.get("organisationName"),
                 "lines": req_lines,
-                "currency": body.get("currency") if kind == d.PAID else None,
+                "currency": "BBD" if kind == d.PAID else None,  # every new quote is in BBD (owner, 2026-11-16)
                 "shipTo": body["shipTo"],
                 "billTo": body.get("billTo") or body["shipTo"],
                 "notes": body.get("notes"),
@@ -552,10 +550,17 @@ class OrderService:
                 "id": qt["id"],
                 "version": qt["version"],
                 "lines": [
-                    {"lineId": x["lineId"], "unitPrice": d.money_str(x["unitPrice"]), "total": d.money_str(x["total"])}
+                    {
+                        "lineId": x["lineId"],
+                        "unitPrice": d.money_str(x["unitPrice"]),
+                        "total": d.money_str(x["total"]),
+                        "sourceUnitPrice": d.money_str(x.get("sourceUnitPrice")),
+                    }
                     for x in qt["lines"]
                 ],
                 "total": d.money_str(qt["total"]),
+                "sourceCurrency": qt.get("sourceCurrency"),
+                "exchangeRate": qt.get("exchangeRate"),
                 "fileIds": list(qt.get("fileIds") or []),
                 "expiresAt": iso(qt["expiresAt"]),
                 "sentAt": iso(qt.get("sentAt")),
@@ -648,6 +653,8 @@ class OrderService:
                     "supplierQuotes": [
                         {
                             "supplier": s["supplier"],
+                            "currency": s.get("currency") or "BBD",
+                            "exchangeRate": s.get("exchangeRate"),
                             "fileIds": s.get("fileIds", []),
                             "lines": [
                                 {"lineId": x["lineId"], "unitPrice": d.money_str(x["unitPrice"])} for x in s["lines"]
@@ -795,7 +802,25 @@ class OrderService:
                     raise invalid(f"supplierQuotes[{i}]", f"Line {x['lineId']} has a price from two suppliers")
                 seen.add(x["lineId"])
                 rows.append({"lineId": x["lineId"], "unitPrice": d.to_db(d.money(x["unitPrice"]))})
-            quotes.append({"supplier": sq["supplier"], "lines": rows, "fileIds": list(sq.get("fileIds") or [])})
+            cur_s = sq.get("currency") or "BBD"
+            rate_s = sq.get("exchangeRate") if cur_s == "USD" else None
+            if rate_s is not None:
+                try:
+                    d.rate(rate_s)
+                except ValueError:
+                    raise invalid(
+                        f"supplierQuotes[{i}].exchangeRate", "The exchange rate must be more than 0",
+                        "EXCHANGE_RATE_REQUIRED",
+                    ) from None
+            quotes.append(
+                {
+                    "supplier": sq["supplier"],
+                    "currency": cur_s,
+                    "exchangeRate": rate_s,
+                    "lines": rows,
+                    "fileIds": list(sq.get("fileIds") or []),
+                }
+            )
         cimh = body.get("cimh")
         if cimh:
             for lid in cimh.get("lineIds") or []:
@@ -836,19 +861,41 @@ class OrderService:
             qv = int(doc.get("quoteVersion") or 0) + 1
             expires = t + timedelta(days=self.quote_days)
             quotes = []
-            for sq in draft.get("supplierQuotes") or []:
+            for i, sq in enumerate(draft.get("supplierQuotes") or []):
+                # A USD supplier quote on a BBD request is converted line by line (unit price first, then qty).
+                # Legacy USD requests keep the old rule: supplier prices are already in the request currency.
+                src_cur = sq.get("currency") or "BBD"
+                convert = cur == "BBD" and src_cur == "USD"
+                sq_rate = None
+                if convert:
+                    try:
+                        sq_rate = d.rate(sq.get("exchangeRate")) if sq.get("exchangeRate") else None
+                    except ValueError:
+                        sq_rate = None
+                    if sq_rate is None:
+                        raise invalid(
+                            f"supplierQuotes[{i}].exchangeRate",
+                            f"Enter the BBD-per-USD exchange rate for {sq['supplier']}",
+                            "EXCHANGE_RATE_REQUIRED",
+                        )
                 rows, total = [], Decimal("0")
                 qty = {ln["lineId"]: ln["qty"] for ln in doc["lines"]}
                 for x in sq["lines"]:
-                    unit = d.money(x["unitPrice"])
+                    src = d.money(x["unitPrice"])
+                    unit = d.usd_to_bbd(src, sq_rate) if sq_rate is not None else src
                     line_total = d.money(unit * qty[x["lineId"]])
                     total += line_total
-                    rows.append({"lineId": x["lineId"], "unitPrice": d.to_db(unit), "total": d.to_db(line_total)})
+                    row = {"lineId": x["lineId"], "unitPrice": d.to_db(unit), "total": d.to_db(line_total)}
+                    if convert:
+                        row["sourceUnitPrice"] = d.to_db(src)
+                    rows.append(row)
                 quotes.append(
                     {
                         "id": "QTE" + uuid.uuid4().hex,
                         "version": qv,
                         "supplier": sq["supplier"],
+                        "sourceCurrency": src_cur if convert else None,
+                        "exchangeRate": str(sq_rate) if sq_rate is not None else None,
                         "lines": rows,
                         "total": d.to_db(total),
                         "fileIds": sq.get("fileIds", []),

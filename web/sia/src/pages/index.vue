@@ -159,7 +159,7 @@ watch(updatedAt, (_now, before) => {
         @retry="loadQueue"
       >
         <template v-if="queueCut && display.width.value < 600" #foot>
-          <router-link to="/requests" class="all-link t-label">All {{ queue!.length }}{{ queueMore ? '+' : '' }} on the Requests desk</router-link>
+          <router-link to="/requests" class="all-link t-label">All {{ queue!.length }}{{ queueMore ? '+' : '' }} on the Orders desk</router-link>
         </template>
       </RequestQueue>
       <RequestDetail :summary="selected" @changed="refreshAll" />

@@ -17,7 +17,7 @@ import RequestQueue from '../../components/RequestQueue.vue'
 import { ALL_STATUS, BTN, CLOSED_STATUS, OPEN_STATUS } from '../../request-queue'
 import { type CountKey, countLabel, useWorkCounts } from '../../work-counts'
 
-definePage({ meta: { guard: 'staff', title: 'Requests' } })
+definePage({ meta: { guard: 'staff', title: 'Orders' } })
 const route = useRoute()
 const router = useRouter()
 const { counts, refresh: refreshCounts } = useWorkCounts()
@@ -50,7 +50,7 @@ function parse(q: LocationQuery): Filters {
     org: str(q, 'org') || null,
     orgName: str(q, 'orgName'),
     q: str(q, 'q').slice(0, 100),
-    sort: sort === 'newest' || sort === 'oldest' ? sort : 'waiting',
+    sort: sort === 'waiting' || sort === 'oldest' ? sort : 'newest',
   }
 }
 const same = (a: RequestStatus[], b: RequestStatus[]) => a.length === b.length && a.every((s) => b.includes(s))
@@ -65,7 +65,7 @@ function serialize(f: Filters): Record<string, string> {
     if (f.orgName) out.orgName = f.orgName
   }
   if (f.q.trim()) out.q = f.q.trim()
-  if (f.sort !== 'waiting') out.sort = f.sort
+  if (f.sort !== 'newest') out.sort = f.sort
   return out
 }
 const onDesk = () => route.path === '/requests' || route.path === '/requests/'
@@ -112,7 +112,7 @@ watch(
 const moreOpen = ref(false)
 const extraCount = computed(
   () =>
-    [filters.value.type, filters.value.year, filters.value.org, filters.value.sort !== 'waiting' || null, activeTab.value ? null : 1].filter(
+    [filters.value.type, filters.value.year, filters.value.org, filters.value.sort !== 'newest' || null, activeTab.value ? null : 1].filter(
       Boolean,
     ).length,
 )
@@ -275,7 +275,7 @@ const time = computed(() =>
         <OrganisationPicker v-model="orgModel" :initial-query="filters.orgName" class="f-org" />
         <v-select
           :model-value="filters.sort"
-          :items="[{ title: 'Waiting longest', value: 'waiting' }, { title: 'Newest', value: 'newest' }, { title: 'Oldest', value: 'oldest' }]"
+          :items="[{ title: 'Newest', value: 'newest' }, { title: 'Waiting longest', value: 'waiting' }, { title: 'Oldest', value: 'oldest' }]"
           label="Sort"
           hide-details
           density="compact"

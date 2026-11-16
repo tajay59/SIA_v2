@@ -18,6 +18,9 @@ const choices = defineModel<Record<string, LineChoice>>({ default: () => ({}) })
 const cur = computed(() => props.request.currency ?? 'BBD')
 const table = computed(() => quoteRows(props.request))
 const money = (v: string | null | undefined) => (v ? formatMoney(v, cur.value) : '—')
+/** "120.00 USD at 2.0 BBD per USD" for a supplier price staff converted from the supplier's USD quote. */
+const sourceNote = (s: { source: { unitPrice: string; currency: string; rate: string } | null } | null) =>
+  s?.source ? `Supplier quote: ${formatMoney(s.source.unitPrice, s.source.currency as 'BBD' | 'USD')} each at ${s.source.rate} BBD per USD` : ''
 
 function chosen(lineId: string, hasCimh: boolean, hasSupplier: boolean): LineChoice | null {
   if (hasCimh && hasSupplier) return choices.value[lineId] ?? null
@@ -78,6 +81,7 @@ function pick(lineId: string, c: LineChoice) {
               <span class="opt"><span>{{ staff ? 'Supplier' : 'Supplier (ordered for you)' }}</span>
                 <strong class="tnum">{{ money(supplier.total) }}</strong>
                 <span class="t-caption muted tnum">{{ money(supplier.unitPrice) }} each</span></span>
+                <span v-if="sourceNote(supplier)" class="t-caption muted d-block tnum src">{{ sourceNote(supplier) }}</span>
             </template>
           </v-radio>
           <v-radio value="CIMH" class="tile" :class="{ on: choices[line.lineId] === 'CIMH' }">
@@ -94,7 +98,7 @@ function pick(lineId: string, c: LineChoice) {
               {{ staff ? 'Supplier' : 'Supplier (ordered for you)' }}
               <span v-if="marks[line.lineId] === 'SUPPLIER'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
             </dt>
-            <dd v-if="supplier" class="tnum"><span class="price">{{ money(supplier.total) }}</span> <span class="t-caption muted">({{ money(supplier.unitPrice) }} each)</span></dd>
+            <dd v-if="supplier" class="tnum"><span class="price">{{ money(supplier.total) }}</span> <span class="t-caption muted">({{ money(supplier.unitPrice) }} each)</span><span v-if="sourceNote(supplier)" class="t-caption muted d-block src">{{ sourceNote(supplier) }}</span></dd>
             <dd v-else class="muted">Not offered</dd>
           </div>
           <div :class="cell(line.lineId, 'CIMH')">
@@ -155,6 +159,7 @@ function pick(lineId: string, c: LineChoice) {
               </v-radio-group>
               <span v-else class="tnum price">{{ money(supplier.total) }}</span>
               <span class="t-caption muted d-block tnum">{{ money(supplier.unitPrice) }} each</span>
+              <span v-if="sourceNote(supplier)" class="t-caption muted d-block tnum src">{{ sourceNote(supplier) }}</span>
               <span v-if="marks[line.lineId] === 'SUPPLIER'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
             </template>
             <span v-else class="muted">Not offered</span>

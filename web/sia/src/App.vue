@@ -107,15 +107,15 @@ const groups = computed<{ title: string; links: Link[] }[]>(() => [
     title: 'Work',
     links: [
       { title: 'Dashboard', to: '/', icon: i.dashboard, desc: 'What needs staff now, and requests counted by status.' },
-      { title: 'Requests', to: '/requests', icon: i.requests, desc: 'The request desk: filter, quote, approve and track every request.', count: 'new' },
+      { title: 'Orders', to: '/requests', icon: i.requests, desc: 'The order desk: filter, quote, approve and track every request.', count: 'new' },
       { title: 'Pick', to: '/pick', icon: i.pick, desc: 'Pick units for requests; stow and relocate, issue and return items.', count: 'fulfil' },
     ],
   },
   {
     title: 'Stock',
     links: [
-      { title: 'Products', to: '/products', icon: i.products, desc: 'The catalogue: products, photos and Pro Bono limits.' },
-      { title: 'Inventory', to: '/inventory', icon: i.inventory, desc: 'Labels, locations and a lookup for any unit or shelf.', count: 'low' },
+      { title: 'Inventory', to: '/products', icon: i.products, desc: 'Every product: details, photos, stock and Pro Bono limits.', count: 'low' },
+      { title: 'Locations', to: '/inventory', icon: i.inventory, desc: 'Sites, locations and shelves, labels, and a lookup for any unit or shelf.' },
     ],
   },
   {

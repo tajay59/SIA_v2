@@ -457,7 +457,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `splitFrom` | Id? | | ✚ | The sibling request when a mixed cart was split |
 | `statusAt` | Timestamp | | ✚ | When the current status began (staff queue "waiting" sort) |
 | `lines` | Line[] | R | ⟲ (`cart`, `ncicart`) | See below |
-| `currency` | Currency? | | ✚ | Chosen at submission; `null` for Pro Bono and carts |
+| `currency` | Currency? | | ✚ | `BBD` for every new paid request (set by the server since 2026-11-16); legacy requests may be `USD`; `null` for Pro Bono and carts |
 | `shipTo` | Address & `{ firstname, lastname, email, tel }` | | ⟲ (`shipto`) | PII |
 | `billTo` | Address & `{ firstname, lastname, email, tel, office? }`? | | ⟲ (`billedto`) | PII; defaults to `shipTo` |
 | `notes` | string? | | ✚ | Customer notes |
@@ -489,7 +489,8 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `quotes[].id` | Id (`QTE…`) | |
 | `quotes[].version` | int | Increases with each revision; only the latest can be accepted |
 | `quotes[].supplier` | string | Staff only |
-| `quotes[].lines` | `{ lineId, unitPrice: Money, total: Money }[]` | |
+| `quotes[].lines` | `{ lineId, unitPrice: Money, total: Money, sourceUnitPrice?: Money }[]` | `sourceUnitPrice` = the supplier's USD price when converted; `unitPrice` = round(USD × rate), total = unitPrice × qty |
+| `quotes[].sourceCurrency`, `exchangeRate` | Currency?, string? | Set when a USD supplier quote was converted to BBD (rate = BBD per 1 USD) |
 | `quotes[].total` | Money | In the request `currency` |
 | `quotes[].fileIds` | Id[] | Uploaded supplier PDFs |
 | `quotes[].expiresAt` | Timestamp | `sentAt` + 30 days |

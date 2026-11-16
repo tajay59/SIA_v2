@@ -68,7 +68,7 @@ test.describe('accessibility (axe)', () => {
     await page.getByLabel('Email').fill(customer)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await expect(page.getByRole('link', { name: 'My requests' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Orders', exact: true }).first()).toBeVisible()
     const found: string[] = []
     await audit(page, `${SHOP}/catalogue/${pid}`, found)
     await page.getByRole('button', { name: 'Add to cart' }).click()

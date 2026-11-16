@@ -54,7 +54,7 @@ const cartTo = computed(() => (session.isLoggedIn ? '/cart' : { path: '/login', 
 const nav = computed(() => [
   { to: '/catalogue', title: 'Catalogue', icon: mdiViewGridOutline, show: true },
   { to: '/pro-bono', title: 'Pro Bono', icon: mdiGiftOutline, show: true },
-  { to: '/requests', title: 'My requests', short: 'Requests', icon: mdiClipboardTextOutline, show: session.isCustomer },
+  { to: '/requests', title: 'Orders', short: 'Orders', icon: mdiClipboardTextOutline, show: session.isCustomer },
 ])
 
 async function logout() {
