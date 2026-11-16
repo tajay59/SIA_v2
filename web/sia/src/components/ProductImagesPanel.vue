@@ -5,9 +5,10 @@
  */
 import { ApiError, call, catalog, type ProductStaff, ProductImage, useNotify } from '@cimh/web-app'
 import { mdiDeleteOutline, mdiStar, mdiStarOutline, mdiUpload } from '@mdi/js'
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 
-const props = defineProps<{ product: ProductStaff }>()
+/** expect: total photos once uploads made elsewhere (the new-product page) finish processing. */
+const props = defineProps<{ product: ProductStaff; expect?: number }>()
 const emit = defineEmits<{ updated: [p: ProductStaff] }>()
 const notify = useNotify()
 
@@ -20,6 +21,13 @@ const busy = ref<string | null>(null)
 const picker = ref<HTMLInputElement | null>(null)
 let poll: ReturnType<typeof setTimeout> | undefined
 onBeforeUnmount(() => clearTimeout(poll))
+onMounted(() => {
+  const left = (props.expect ?? 0) - props.product.images.length
+  if (left > 0) {
+    processing.value = left
+    watchJobs(props.expect!, Date.now() + 90_000)
+  }
+})
 
 async function refresh(): Promise<ProductStaff> {
   const p = (await call(() => catalog.GET('/products/{productId}', { params: { path: { productId: props.product.id } } }))) as ProductStaff
@@ -106,21 +114,21 @@ async function remove(fileId: string) {
 
 <template>
   <div class="stack">
-    <v-card class="pa-4 stack-sm">
+    <section class="upload stack-sm" aria-label="Add photos">
       <div class="row">
         <div class="stack-sm">
           <span class="t-label">Add photos</span>
           <span class="t-body muted">JPEG, PNG or WebP, up to 20 MB each and 10 at a time. Real photos on a plain background work best.</span>
         </div>
         <span class="spacer" />
-        <v-btn color="primary" :prepend-icon="mdiUpload" :loading="uploading" @click="picker?.click()">Choose photos</v-btn>
+        <v-btn class="m3" color="primary" :prepend-icon="mdiUpload" :loading="uploading" @click="picker?.click()">Choose photos</v-btn>
         <input ref="picker" type="file" :accept="ACCEPT.join(',')" multiple hidden aria-label="Photos to upload" @change="upload(($event.target as HTMLInputElement).files)" />
       </div>
       <v-checkbox v-model="removeBackground" label="Remove the background (where the photo service supports it)" hide-details density="compact" />
-    </v-card>
+    </section>
 
     <p v-if="!product.images.length && !processing" class="t-body muted">No photos yet. Customers see a placeholder until one is added.</p>
-    <ul class="grid" aria-live="polite">
+    <TransitionGroup tag="ul" name="tile" class="grid" aria-live="polite">
       <li v-for="img in product.images" :key="img.fileId" class="tile">
         <ProductImage :image="img" :alt="product.name" small sizes="200px" />
         <div class="row tile-bar">
@@ -133,7 +141,7 @@ async function remove(fileId: string) {
       <li v-for="i in processing" :key="`p${i}`" class="tile">
         <div class="processing"><v-progress-circular indeterminate size="28" color="primary" /><span class="t-caption muted">Processing…</span></div>
       </li>
-    </ul>
+    </TransitionGroup>
   </div>
 </template>
 
@@ -148,7 +156,8 @@ async function remove(fileId: string) {
 }
 .tile {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 12px;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
   padding: var(--sp-2);
 }
 .tile-bar {
@@ -162,5 +171,50 @@ async function remove(fileId: string) {
   gap: var(--sp-2);
   align-items: center;
   justify-content: center;
+}
+</style>
+<style scoped>
+.upload {
+  padding: var(--sp-4);
+  border: 1px dashed rgb(var(--v-theme-seam));
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
+}
+.tile {
+  border-color: rgb(var(--v-theme-seam));
+}
+.tile :deep(.frame) {
+  border-radius: 3px;
+  overflow: hidden;
+}
+</style>
+<style scoped>
+/* Photos arrive (processing tile → photo) and leave in place; the rest close the gap. */
+.grid {
+  position: relative;
+}
+.tile-enter-active {
+  transition: opacity 240ms var(--ease-out), transform 240ms var(--ease-out);
+}
+.tile-enter-from {
+  opacity: 0;
+  transform: scale(0.96);
+}
+.tile-leave-active {
+  position: absolute;
+  transition: opacity 140ms ease-in, transform 140ms ease-in;
+}
+.tile-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+.tile-move {
+  transition: transform 280ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile-enter-from,
+  .tile-leave-to {
+    transform: none;
+  }
 }
 </style>

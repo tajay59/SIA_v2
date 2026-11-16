@@ -94,6 +94,9 @@ def test_mixed_cart_is_split_and_emptied(ctx: Ctx) -> None:
     assert paid["lines"][0]["product"]["name"] == "Product MET1"
     assert paid["lines"][0]["lineId"] == "L1"
     assert ctx.client.get(ctx.url("/cart"), headers=USER).json()["lines"] == []
+    # Lists name a request by what was asked for (S-10), so the summary carries the first line's name.
+    listed = ctx.client.get(ctx.url("/requests"), headers=USER).json()["items"]
+    assert {x["id"]: x["firstItemName"] for x in listed} == {r["id"]: r["lines"][0]["product"]["name"] for r in reqs}
     for r in reqs:
         (evt,) = ctx.events(r["id"], "order.submitted")
         assert evt["payload"]["splitFrom"] is not None

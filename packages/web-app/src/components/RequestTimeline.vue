@@ -31,10 +31,12 @@ const closingReason = computed(() => {
   const r = props.request
   return (r.cancellation as { reason?: string } | null)?.reason ?? (r.rejection as { reason?: string } | null)?.reason ?? null
 })
+/** Actors without a stored name come through as their email; show the part before @ (full email on hover) so the column never breaks mid-word. */
+const byName = (n: string) => (n.includes('@') ? n.slice(0, n.indexOf('@')) : n)
 </script>
 
 <template>
-  <div>
+  <div class="rt">
     <ol class="timeline" aria-label="Request status">
       <li v-for="s in steps" :key="s.status" :class="s.state" :aria-current="s.state === 'current' ? 'step' : undefined">
         <v-icon
@@ -52,10 +54,11 @@ const closingReason = computed(() => {
       </thead>
       <tbody>
         <tr v-for="(h, i) in request.history" :key="i">
-          <td class="tnum">{{ formatDateTime(h.at) }}</td>
-          <td>{{ h.from ? `${statusLabel(h.from)} → ` : '' }}{{ statusLabel(h.to) }}</td>
-          <td>{{ h.by.name }} <span class="muted">({{ h.by.role }})</span></td>
-          <td>{{ h.reason ?? '' }}</td>
+          <td class="tnum when">{{ formatDateTime(h.at) }}</td>
+          <td class="what">{{ h.from ? `${statusLabel(h.from)} → ` : '' }}{{ statusLabel(h.to) }}</td>
+          <td class="by" :title="h.by.name">{{ byName(h.by.name) }} <span class="muted">({{ h.by.role }})</span></td>
+          <td v-if="h.reason" class="why">{{ h.reason }}</td>
+          <td v-else class="why empty" />
         </tr>
       </tbody>
     </v-table>
@@ -98,5 +101,50 @@ const closingReason = computed(() => {
 }
 .history {
   margin-top: var(--sp-4);
+}
+.rt {
+  container: rtimeline / inline-size;
+}
+.history td {
+  overflow-wrap: anywhere;
+}
+.history .when {
+  white-space: nowrap;
+}
+/* Narrow panels (phones, the request beside the queue): each entry stacks (when, then what, then who and why)
+   instead of a four-column table whose dates wrapped to four lines and whose names were cut. */
+@container rtimeline (max-width: 559.98px) {
+  .history thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .history :deep(table),
+  .history tbody,
+  .history tr,
+  .history td {
+    display: block;
+  }
+  .history tr {
+    padding: var(--sp-2) 0;
+    border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  }
+  .history :deep(tbody tr > td) {
+    height: auto !important;
+    padding: 0 !important;
+    border: 0 !important;
+  }
+  .history .when {
+    font-size: 12px;
+    color: rgb(var(--v-theme-secondary));
+  }
+  .history .what {
+    font-weight: 600;
+  }
+  .history .why.empty {
+    display: none;
+  }
 }
 </style>

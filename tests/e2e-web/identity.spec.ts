@@ -39,6 +39,12 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
 
   test('visitor signs up and verifies the email (S-13 → S-14 → S-15)', async ({ page }) => {
     await page.goto(`${SHOP}/signup`)
+    // Create account is never disabled: an empty form is marked field by field, the first one focused.
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByText('Enter your organisation')).toBeVisible()
+    await expect(page.getByText('Please accept the terms')).toBeVisible()
+    await expect(page.getByLabel('First name')).toBeFocused()
+    await expect(page).toHaveURL(/\/signup/)
     await page.getByLabel('First name').fill('Mem')
     await page.getByLabel('Last name').fill('Ber')
     await page.getByLabel('Work email').fill(member)
@@ -78,10 +84,10 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await siaLogin(page, adminEmail)
     await expect(page.getByText('Enter the code from your authenticator app')).toBeVisible()
     await typeCode(page, totp(mfaKey))
-    await expect(page.getByText(/Good to see you/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible()
 
     await siaGo(page, 'Pending accounts', 'Admin') // SIA header: account pages sit in the Admin menu
-    const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\\.')) })
+    const row = page.getByRole('listitem', { name: new RegExp(member.replace(/\./g, '\\.')) })
     await expect(row).toBeVisible()
     await row.getByRole('button', { name: 'Approve' }).click()
 
@@ -123,7 +129,7 @@ test.describe('J-11 password reset', () => {
     await page.getByRole('button', { name: 'Send reset code' }).click()
     await expect(page).toHaveURL(/\/reset-password\?email=/)
 
-    await page.getByLabel('6-digit code').fill(await claimCode(email, 'reset_password'))
+    await page.getByRole('textbox', { name: '6-digit code' }).fill(await claimCode(email, 'reset_password'))
     await page.getByLabel('New password', { exact: true }).fill(newPassword)
     await page.getByLabel('Repeat new password', { exact: true }).fill(newPassword)
     await page.getByRole('button', { name: 'Change password' }).click()

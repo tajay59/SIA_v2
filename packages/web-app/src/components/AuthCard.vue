@@ -4,14 +4,21 @@
  * full-screen photo of a meteorological enclosure (dimmed), the CIMH logo and the page heading on the
  * left, the form in a card on the right. On phones the logo and heading sit on top of the card.
  * There is no top bar on these pages (legacy), so the logo links home.
+ *
+ * SIA: the card is always the dark Graphite Console panel, whatever theme is stored (the photo behind it is
+ * dark, and a card that changed colour with the stored theme looked like two different apps), and it
+ * starts with the SIA mark and name so staff can tell it from the SHOP sign-in.
  */
 import { useDisplay } from 'vuetify'
 import photo from '../assets/legacy/met-enclosure.webp'
 import photoSmall from '../assets/legacy/met-enclosure-800.webp'
 import logoWhite from '../assets/cimh-logo-white.webp'
+import siaMark from '../assets/brand/sia-mark.svg'
+import { useAppName } from '../bootstrap'
 
 defineProps<{ title: string; subtitle?: string; width?: number }>()
 const { mdAndUp } = useDisplay()
+const sia = useAppName() === 'sia'
 </script>
 
 <template>
@@ -24,15 +31,22 @@ const { mdAndUp } = useDisplay()
         <h1 class="auth-title">{{ title }}</h1>
         <p v-if="subtitle && mdAndUp" class="auth-sub">{{ subtitle }}</p>
       </div>
-      <v-card class="auth-card" :style="{ maxWidth: `${width ?? 440}px` }" variant="flat" color="surface" elevation="8">
-        <p v-if="subtitle && !mdAndUp" class="t-body muted mb-4">{{ subtitle }}</p>
-        <div class="auth-body">
-          <slot />
-        </div>
-        <div v-if="$slots.footer" class="auth-foot t-body">
-          <slot name="footer" />
-        </div>
-      </v-card>
+      <v-theme-provider :theme="sia ? 'cimhDark' : undefined">
+        <v-card class="auth-card" :class="{ sia }" :style="{ maxWidth: `${width ?? 440}px` }" variant="flat" color="surface" elevation="8">
+          <div v-if="sia" class="auth-app">
+            <img :src="siaMark" alt="" width="32" height="32" />
+            <span class="auth-app-name">SIA</span>
+            <span class="auth-app-what">CIMH Stores staff app</span>
+          </div>
+          <p v-if="subtitle && !mdAndUp" class="t-body muted mb-4">{{ subtitle }}</p>
+          <div class="auth-body">
+            <slot />
+          </div>
+          <div v-if="$slots.footer" class="auth-foot t-body">
+            <slot name="footer" />
+          </div>
+        </v-card>
+      </v-theme-provider>
     </div>
   </div>
 </template>
@@ -117,6 +131,34 @@ const { mdAndUp } = useDisplay()
   .auth-card {
     justify-self: center;
   }
+}
+/* SIA: a console panel (4 px corners, seam edge), headed by the app's mark and name. */
+.auth-card.sia {
+  border-radius: 4px;
+  border: 1px solid rgb(var(--v-theme-seam));
+  padding: var(--sp-6);
+}
+.auth-app {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-6);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.auth-app img {
+  flex: none;
+}
+.auth-app-name {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.auth-app-what {
+  font-size: 13px;
+  line-height: 18px;
+  color: rgb(var(--v-theme-secondary));
 }
 .auth-foot {
   margin-top: var(--sp-6);

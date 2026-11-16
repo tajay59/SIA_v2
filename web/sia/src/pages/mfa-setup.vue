@@ -19,7 +19,7 @@ async function enabled() {
   <AuthCard title="Turn on two-step verification" subtitle="Administrators sign in with a password and a code from an authenticator app." :width="520">
     <MfaSetup @enabled="enabled" />
     <template #footer>
-      <v-btn variant="text" class="align-self-start" @click="session.logout().then(() => router.replace('/login'))">Log out</v-btn>
+      <v-btn variant="text" class="m3 align-self-start" @click="session.logout().then(() => router.replace('/login'))">Log out</v-btn>
     </template>
   </AuthCard>
 </template>

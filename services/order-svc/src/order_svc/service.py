@@ -510,6 +510,7 @@ class OrderService:
     @staticmethod
     def summary(doc: dict[str, Any]) -> dict[str, Any]:
         since = aware(doc.get("statusAt")) or aware(doc.get("updatedAt")) or now()
+        names = (ln["product"].get("name") for ln in doc.get("lines") or [] if ln.get("product"))
         return {
             "id": doc["id"],
             "type": doc["type"],
@@ -520,6 +521,7 @@ class OrderService:
             "organisationName": doc.get("organisationName"),
             "currency": doc.get("currency"),
             "lineCount": len(doc.get("lines") or []),
+            "firstItemName": next(names, None),
             "quoteExpiresAt": iso(doc.get("quoteExpiresAt")) if doc["status"] in d.QUOTE_LIVE else None,
             "submittedAt": iso(doc.get("submittedAt")) or iso(doc.get("createdAt")) or "",
             "updatedAt": iso(doc.get("updatedAt")),
@@ -822,7 +824,12 @@ class OrderService:
                 raise invalid("lines", f"No price yet for {', '.join(missing)}", "QUOTE_INCOMPLETE")
             fee_bbd = await self.deps.admin_fee()
             raw_rate = cimh_cfg.get("exchangeRate")
-            ex = d.rate(raw_rate) if raw_rate else None
+            try:
+                ex = d.rate(raw_rate) if raw_rate else None
+            except ValueError:  # "0" passes the draft pattern; refuse it here instead of failing with a 500
+                raise invalid(
+                    "cimh.exchangeRate", "The exchange rate must be more than 0", "EXCHANGE_RATE_REQUIRED"
+                ) from None
             if cur == "USD" and ex is None and (cimh_ids or fee_bbd > 0):
                 raise invalid("cimh.exchangeRate", "Enter the BBD-per-USD exchange rate", "EXCHANGE_RATE_REQUIRED")
             t = now()

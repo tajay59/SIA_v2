@@ -52,6 +52,33 @@ export function customerActionNeeded(r: Pick<RequestSummary, 'status'>): string 
   return null
 }
 
+/** A request named by what was asked for ("Aneroid barometer and 2 more"); the id is only a reference. */
+/**
+ * Short reference for a record id. v2 ids are `<3 letters><32 hex>` (ORD, QTE, AUD…): "ORD…3f9a2c", the last six
+ * characters being the part people read out. Other long ids keep their head and tail; short ones stay whole.
+ * Pages show the full id somewhere visible (the record's header), never only in a tooltip.
+ */
+export function shortRef(id: string | null | undefined): string {
+  if (!id) return ''
+  const m = /^([A-Z]{3})([0-9a-f]{26,32})$/i.exec(id)
+  if (m) return `${m[1]}…${m[2]!.slice(-6)}`
+  return id.length > 14 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id
+}
+
+export function requestTitle(firstItemName: string | null | undefined, lineCount: number, type: OrderRequest['type'] = 'PAID'): string {
+  if (!firstItemName) return type === 'PROBONO' ? 'Pro Bono request' : 'Request'
+  if (lineCount <= 1) return firstItemName
+  return `${firstItemName} and ${lineCount - 1} more`
+}
+
+/** How long a quote is still valid ("12 days left"); `soon` within a week. Null without a date. */
+export function expiryNote(iso: string | null | undefined): { days: number; text: string; soon: boolean } | null {
+  if (!iso) return null
+  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000)
+  const text = days < 0 ? 'expired' : days === 0 ? 'expires today' : days === 1 ? '1 day left' : `${days} days left`
+  return { days, text, soon: days <= 7 }
+}
+
 /** Steps of the status timeline, in order, for a request type (the current step is highlighted). */
 export function statusSteps(type: OrderRequest['type']): RequestStatus[] {
   return type === 'PROBONO'

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 /**
- * S-01 home, same structure as the legacy SHOP Home: (1) full-width hero carousel, one slide per category,
- * each with a title, a message and a button into the catalogue; (2) logo band on the gear line-art with
- * "The Instrumentation and Equipment Spares" and the Online Stores sign-in card; (3) "Radar Spares" and
- * (4) "Met-service Spares": text and a sliding row of products. No prices (v2 rule).
+ * S-01 home: (1) full-width hero carousel (the only large headline), one slide per category with a button
+ * into the catalogue; (2) logo band on the gear line-art with the next step for this visitor (log in /
+ * register, or catalogue / requests); (3) "How requesting works": approval → request → quote → signed
+ * agreement, plus the Pro Bono entry; (4) "Radar spares" and "Met-service spares": a sliding row of
+ * products each, with Retry when the row can't be loaded. No prices (v2 rule).
  */
 import { call, catalog, type Product, useSession, useThemeMode } from '@cimh/web-app'
 import logoColour from '@cimh/web-app/assets/cimh-logo-blue.webp'
@@ -12,8 +13,9 @@ import awsSmall from '@cimh/web-app/assets/legacy/hero-aws-800.webp'
 import aws from '@cimh/web-app/assets/legacy/hero-aws.webp'
 import radarSmall from '@cimh/web-app/assets/legacy/hero-radar-960.webp'
 import radar from '@cimh/web-app/assets/legacy/hero-radar.webp'
-import { mdiAccountPlusOutline, mdiArrowRight } from '@mdi/js'
+import { mdiAccountPlusOutline, mdiArrowRight, mdiRefresh } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
+import HowRequestingWorks from '../components/HowRequestingWorks.vue'
 import ProductCard from '../components/ProductCard.vue'
 
 definePage({ meta: { guard: 'public', title: 'Home' } })
@@ -53,48 +55,50 @@ const slides: Slide[] = [
     src: radar,
     srcSmall: radarSmall,
     alt: 'A weather radar dish at dusk under a starry sky',
-    title: 'Discover the latest radar equipment',
-    message:
-      'Explore our comprehensive range of radar spare parts designed to ensure optimal performance and reliability for your radar systems.',
-    action: 'Explore radar spares',
+    title: 'Spares for weather radars',
+    message: 'Antennas, transmitters, receivers and signal processors. Send a request and CIMH quotes it for you.',
+    action: 'Browse radar spares',
     to: '/catalogue?type=RAD',
   },
   {
     src: aws,
     srcSmall: awsSmall,
     alt: 'Automatic weather stations in an open field at sunset',
-    title: 'Browse our meteorological-service parts',
-    message:
-      'From temperature and humidity sensors to wind vanes and rain gauges, we offer a wide selection of spare parts for all your meteorological needs.',
-    action: 'Explore met-service spares',
+    title: 'Parts for weather stations',
+    message: 'Temperature and humidity sensors, wind vanes, rain gauges and more for station networks.',
+    action: 'Browse met-service spares',
     to: '/catalogue?type=MET',
   },
 ]
+// No auto-advance (critique 2026-11-14): slides 2–3 hid their actions behind a timer; people move with the arrows/dots.
 const slide = ref(0)
-const reduceMotion = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-const paused = ref(false)
 
 const sections = [
   {
     key: 'RAD',
-    title: 'Radar Spares',
-    text: 'From antennas and transmitters to receivers and signal processors, we offer high-quality components sourced from leading manufacturers in the industry. Whether you need to replace a faulty part or upgrade your radar system, our selection of radar spares has you covered.',
+    title: 'Radar spares',
+    text: 'Antennas, transmitters, receivers and signal processors for weather radars.',
   },
   {
     key: 'MET',
-    title: 'Met-service Spares',
-    text: "Whether you're maintaining a weather station, a climate monitoring network or a specialised meteorological service, our range of spare parts has everything you need to keep your systems operating at peak performance, with the precision and durability accurate weather data needs.",
+    title: 'Met-service spares',
+    text: 'Sensors, wind vanes, rain gauges and other parts for weather stations and climate networks.',
   },
 ] as const
-const products = ref<Record<string, Product[] | null>>({ RAD: null, MET: null })
-onMounted(async () => {
-  for (const s of sections) {
-    try {
-      products.value[s.key] = (await call(() => catalog.GET('/products', { params: { query: { type: s.key, limit: 12 } } }))).items
-    } catch {
-      products.value[s.key] = []
-    }
+type Key = (typeof sections)[number]['key']
+// null = loading; 'failed' is not "empty": the row offers Retry instead of claiming the catalogue has nothing.
+const products = ref<Record<Key, Product[] | null | 'failed'>>({ RAD: null, MET: null })
+async function loadRow(key: Key) {
+  products.value[key] = null
+  try {
+    products.value[key] = (await call(() => catalog.GET('/products', { params: { query: { type: key, limit: 12 } } }))).items
+  } catch {
+    products.value[key] = 'failed'
   }
+}
+const row = (key: Key) => (Array.isArray(products.value[key]) ? (products.value[key] as Product[]) : [])
+onMounted(async () => {
+  for (const s of sections) await loadRow(s.key)
 })
 const logo = computed(() => (dark.value ? logoWhite : logoColour))
 </script>
@@ -106,16 +110,10 @@ const logo = computed(() => (dark.value ? logoWhite : logoColour))
       class="hero"
       aria-roledescription="carousel"
       aria-label="Featured"
-      @mouseenter="paused = true"
-      @mouseleave="paused = false"
-      @focusin="paused = true"
-      @focusout="paused = false"
     >
       <v-carousel
         v-model="slide"
-        :cycle="!reduceMotion && !paused"
-        interval="15000"
-        :show-arrows="false"
+        show-arrows="hover"
         hide-delimiter-background
         height="auto"
         class="carousel"
@@ -147,45 +145,78 @@ const logo = computed(() => (dark.value ? logoWhite : logoColour))
     <section class="band">
       <div class="band-inner">
         <img :src="logo" alt="Caribbean Institute for Meteorology and Hydrology" class="band-logo" width="220" height="68" />
-        <div class="band-text">
-          <p class="band-title">The Instrumentation and Equipment Spares</p>
-          <v-card v-if="!session.isLoggedIn" class="signin" variant="flat" color="surface" elevation="2">
-            <v-card-title class="t-h3">Online Stores</v-card-title>
-            <v-card-text class="stack-sm">
-              <p class="t-body muted">Log in or register to request items from the catalogue.</p>
+        <v-card class="next" variant="flat" color="surface" elevation="2">
+          <v-card-text class="stack-sm">
+            <template v-if="!session.isLoggedIn">
+              <h2 class="t-h3">Request items</h2>
+              <p class="t-body muted">Log in or register to send a request. A CIMH administrator approves new accounts.</p>
               <div class="row">
                 <v-btn to="/login" color="primary" variant="flat">Log in</v-btn>
                 <v-btn to="/signup" variant="text" :prepend-icon="mdiAccountPlusOutline">Register</v-btn>
               </div>
-            </v-card-text>
-          </v-card>
-          <p v-else-if="session.isCimh" class="t-body muted">
-            Signed in with a CIMH account: you can browse, but CIMH staff can't submit requests.
-          </p>
-          <div v-else-if="session.isCustomer" class="row">
-            <v-btn to="/catalogue" color="primary" variant="flat">Browse the catalogue</v-btn>
-            <v-btn to="/requests" variant="outlined">My requests</v-btn>
-          </div>
-        </div>
+            </template>
+            <template v-else-if="session.isCimh">
+              <h2 class="t-h3">Signed in with a CIMH account</h2>
+              <p class="t-body muted">You can browse the catalogue. CIMH staff accounts can't send requests.</p>
+              <div class="row"><v-btn to="/catalogue" color="primary" variant="flat">Browse the catalogue</v-btn></div>
+            </template>
+            <template v-else>
+              <h2 class="t-h3">Welcome back, {{ session.account?.firstname }}</h2>
+              <p class="t-body muted">Quotes and agreements that wait for you are at the top of My requests.</p>
+              <div class="row">
+                <v-btn to="/requests" color="primary" variant="flat">My requests</v-btn>
+                <v-btn to="/catalogue" variant="text">Browse the catalogue</v-btn>
+              </div>
+            </template>
+          </v-card-text>
+        </v-card>
       </div>
     </section>
 
-    <!-- (3, 4) Category sections -->
+    <!-- (3) How requesting works -->
+    <section class="how" aria-labelledby="how-title">
+      <div class="how-head">
+        <h2 id="how-title" class="t-h1">How requesting works</h2>
+        <p class="t-body-lg muted how-intro">
+          CIMH Stores is the institute's own store for the region's weather and water services. You send a request; CIMH answers with a quote.
+        </p>
+      </div>
+      <HowRequestingWorks />
+      <p class="t-body-lg probono-line">
+        <span class="probono-badge">Pro Bono</span>
+        Some items are free through CIMH projects. Staff review those requests; there is no quote to accept.
+        <router-link to="/pro-bono">See Pro Bono items</router-link>
+      </p>
+    </section>
+
+    <!-- (4) Category sections -->
     <section v-for="s in sections" :key="s.key" class="spares">
       <div class="spares-head">
-        <h2 class="t-h1">{{ s.title }}</h2>
-        <p class="t-body-lg muted spares-text">{{ s.text }}</p>
+        <div>
+          <h2 class="t-h2">{{ s.title }}</h2>
+          <p class="t-body-lg muted">{{ s.text }}</p>
+        </div>
+        <v-btn :to="`/catalogue?type=${s.key}`" variant="text" :append-icon="mdiArrowRight">View all {{ s.title.toLowerCase() }}</v-btn>
       </div>
-      <v-slide-group v-if="products[s.key]?.length" show-arrows class="slider" :aria-label="s.title">
-        <v-slide-group-item v-for="p in products[s.key]" :key="p.id">
-          <div class="slot"><ProductCard :product="p" /></div>
-        </v-slide-group-item>
-      </v-slide-group>
+      <template v-if="row(s.key).length">
+        <v-slide-group show-arrows class="slider hide-xs" :aria-label="s.title">
+          <v-slide-group-item v-for="p in row(s.key)" :key="p.id">
+            <div class="slot"><ProductCard :product="p" /></div>
+          </v-slide-group-item>
+        </v-slide-group>
+        <!-- Phones: a slider showed one card and a sliver; four whole cards in two columns, then "View all". -->
+        <ul class="phone-grid show-xs" :aria-label="s.title">
+          <li v-for="p in row(s.key).slice(0, 4)" :key="p.id"><ProductCard :product="p" /></li>
+        </ul>
+      </template>
       <div v-else-if="products[s.key] === null" class="skeletons">
         <v-skeleton-loader v-for="i in 4" :key="i" type="image, list-item-two-line" class="slot" />
       </div>
-      <p v-else class="t-body muted empty">No {{ s.title.toLowerCase() }} in the catalogue yet.</p>
-      <div class="more"><v-btn :to="`/catalogue?type=${s.key}`" variant="text" :append-icon="mdiArrowRight">View all {{ s.title.toLowerCase() }}</v-btn></div>
+      <div v-else-if="products[s.key] === 'failed'" class="row-state" role="alert">
+        <p class="t-body">Couldn't load {{ s.title.toLowerCase() }}. Check your connection and try again.</p>
+        <v-btn variant="outlined" :prepend-icon="mdiRefresh" @click="loadRow(s.key)">Retry</v-btn>
+      </div>
+      <p v-else class="t-body muted row-state">No {{ s.title.toLowerCase() }} in the catalogue yet.</p>
     </section>
   </div>
 </template>
@@ -293,55 +324,83 @@ const logo = computed(() => (dark.value ? logoWhite : logoColour))
   width: 220px;
   height: auto;
 }
-.band-text {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-6);
-}
-.band-title {
-  font-size: clamp(28px, 3.4vw, 44px);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  line-height: 1.15;
-  margin: 0;
-  opacity: 0.85;
-}
-.signin {
-  max-width: 340px;
+.next {
+  max-width: 400px;
   text-align: left;
+  justify-self: end;
 }
 @media (max-width: 959px) {
-  .signin {
-    margin: 0 auto;
-  }
-  .band-text .row {
-    justify-content: center;
+  .next {
+    justify-self: center;
   }
 }
 
-/* (3, 4) category sections */
+/* (3) how requesting works */
+.how {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--sp-16, 64px) var(--sp-4) var(--sp-12, 48px);
+}
+.how-head {
+  margin-bottom: var(--sp-8);
+}
+.how-intro {
+  max-width: 68ch;
+  margin: var(--sp-2) 0 0;
+}
+.probono-line {
+  margin: var(--sp-8) 0 0;
+  max-width: 78ch;
+}
+.probono-line .probono-badge {
+  margin-right: var(--sp-2);
+  vertical-align: 1px;
+}
+
+/* (4) category sections */
 .spares {
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--sp-16, 64px) var(--sp-4) var(--sp-8);
-}
-.spares + .spares {
+  padding: var(--sp-10, 40px) var(--sp-4) var(--sp-4);
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 .spares-head {
-  text-align: center;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--sp-4);
-  margin-bottom: var(--sp-8);
+  justify-content: space-between;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-6);
+  margin-bottom: var(--sp-6);
 }
-.spares-text {
-  max-width: 70ch;
+.spares-head p {
+  margin: var(--sp-1) 0 0;
+  max-width: 68ch;
+}
+.row-state {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding: var(--sp-6) 0;
+}
+.row-state p {
+  margin: 0;
 }
 .slot {
   width: 220px;
   margin: 0 var(--sp-2) var(--sp-4);
+}
+/* The row's last whole card ends in a fade, so a cut tile reads as "more this way", not as broken. */
+.slider :deep(.v-slide-group__container) {
+  mask-image: linear-gradient(to right, #000 calc(100% - 48px), transparent);
+}
+.phone-grid {
+  list-style: none;
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
 }
 @media (max-width: 599.98px) {
   .slot {
@@ -352,13 +411,5 @@ const logo = computed(() => (dark.value ? logoWhite : logoColour))
   display: flex;
   gap: var(--sp-4);
   overflow: hidden;
-}
-.empty {
-  text-align: center;
-}
-.more {
-  display: flex;
-  justify-content: center;
-  margin-top: var(--sp-2);
 }
 </style>

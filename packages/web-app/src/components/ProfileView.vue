@@ -2,14 +2,18 @@
 /**
  * S-19 / A-21 profile: personal details (If-Match), addresses (max 10), change email (code to the new
  * address), change password (other sessions are signed out), theme, log out.
+ * Sections are ProfileSection: cards in SHOP, Graphite Console panels in SIA. Buttons carry `m3` (pill in SIA,
+ * no rule in SHOP).
  */
 import { mdiDelete, mdiPencil, mdiPlus } from '@mdi/js'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatDate } from '@cimh/web-ui'
 import { ApiError, call, identity, ifMatch } from '../api'
+import { useAppName } from '../bootstrap'
 import { countries, countryName } from '../countries'
 import { downloadJson, exportFilename } from '../download'
+import { checkForm, type FormLike } from '../form'
 import { useNotify } from '../notify'
 import { useSession } from '../session'
 import { useThemeMode } from '../theme-mode'
@@ -17,6 +21,7 @@ import type { ShippingAddress } from '../types'
 import { country as countrySchema, email as emailSchema, name as nameSchema, password as passwordSchema, rule } from '../validation'
 import AddressDialog from './AddressDialog.vue'
 import PasswordField from './PasswordField.vue'
+import ProfileSection from './ProfileSection.vue'
 import StatusChip from './StatusChip.vue'
 import VerifyForm from './VerifyForm.vue'
 
@@ -25,10 +30,12 @@ const session = useSession()
 const notify = useNotify()
 const router = useRouter()
 const { dark } = useThemeMode()
+const sia = useAppName() === 'sia'
 
 const account = computed(() => session.account)
 const details = reactive({ firstname: '', lastname: '', phone: '', department: '', country: '' })
-const detailsValid = ref(false)
+// Submit buttons are never disabled for missing input: each form marks its fields on a press.
+const detailsForm = ref<FormLike | null>(null)
 const saving = ref(false)
 const errors = ref<Record<string, string>>({})
 
@@ -66,7 +73,8 @@ async function patch(body: Record<string, unknown>, okText: string): Promise<boo
   }
 }
 
-function saveDetails() {
+async function saveDetails() {
+  if (saving.value || !(await checkForm(detailsForm.value))) return
   void patch(
     {
       firstname: details.firstname.trim(),
@@ -93,8 +101,13 @@ function saveAddress(a: ShippingAddress) {
   else list[addrIndex.value] = a
   void patch({ addresses: list }, 'Address saved')
 }
-function removeAddress(i: number) {
-  void patch({ addresses: addresses.value.filter((_, j) => j !== i) }, 'Address removed')
+/** Index of the address waiting for a confirm (the bin sits next to Edit, also on phones). */
+const removing = ref<number | null>(null)
+async function removeAddress() {
+  const i = removing.value
+  if (i === null || saving.value) return
+  await patch({ addresses: addresses.value.filter((_, j) => j !== i) }, 'Address removed')
+  removing.value = null
 }
 
 // ---- email change
@@ -102,7 +115,7 @@ const emailOpen = ref(false)
 const emailStep = ref<'request' | 'verify'>('request')
 const newEmail = ref('')
 const emailPassword = ref('')
-const emailValid = ref(false)
+const emailForm = ref<FormLike | null>(null)
 const emailBusy = ref(false)
 const emailError = ref<string | null>(null)
 function openEmail() {
@@ -113,6 +126,7 @@ function openEmail() {
   emailOpen.value = true
 }
 async function requestEmail() {
+  if (emailBusy.value || !(await checkForm(emailForm.value))) return
   emailBusy.value = true
   emailError.value = null
   try {
@@ -135,7 +149,7 @@ async function emailVerified() {
 // ---- password change
 const pwOpen = ref(false)
 const pw = reactive({ current: '', next: '', confirm: '' })
-const pwValid = ref(false)
+const pwForm = ref<FormLike | null>(null)
 const pwBusy = ref(false)
 const pwErrors = ref<Record<string, string>>({})
 function openPassword() {
@@ -144,6 +158,7 @@ function openPassword() {
   pwOpen.value = true
 }
 async function changePassword() {
+  if (pwBusy.value || !(await checkForm(pwForm.value))) return
   pwBusy.value = true
   pwErrors.value = {}
   try {
@@ -180,7 +195,7 @@ async function downloadMyData() {
 
 const eraseOpen = ref(false)
 const erasePassword = ref('')
-const eraseValid = ref(false)
+const eraseForm = ref<FormLike | null>(null)
 const eraseBusy = ref(false)
 const eraseError = ref<string | null>(null)
 function openErase() {
@@ -189,6 +204,7 @@ function openErase() {
   eraseOpen.value = true
 }
 async function requestErasure() {
+  if (eraseBusy.value || !(await checkForm(eraseForm.value))) return
   eraseBusy.value = true
   eraseError.value = null
   try {
@@ -219,7 +235,7 @@ const organisation = computed(() => {
 </script>
 
 <template>
-  <div v-if="account" class="stack profile">
+  <div v-if="account" class="stack profile" :class="{ sia }">
     <div class="page-header">
       <div class="stack-sm">
         <h1 class="t-h1">{{ session.displayName }}</h1>
@@ -231,13 +247,11 @@ const organisation = computed(() => {
         </div>
       </div>
       <span class="spacer" />
-      <v-btn variant="outlined" @click="logout">Log out</v-btn>
+      <v-btn variant="outlined" class="m3" @click="logout">Log out</v-btn>
     </div>
 
-    <v-card>
-      <v-card-title class="t-h3">Personal details</v-card-title>
-      <v-card-text>
-        <v-form v-model="detailsValid" class="stack" @submit.prevent="saveDetails">
+    <ProfileSection title="Personal details">
+        <v-form ref="detailsForm" class="stack" @submit.prevent="saveDetails">
           <div class="grid-2">
             <v-text-field v-model="details.firstname" label="First name" autocomplete="given-name" :rules="[rule(nameSchema)]" :error-messages="errors.firstname" />
             <v-text-field v-model="details.lastname" label="Last name" autocomplete="family-name" :rules="[rule(nameSchema)]" :error-messages="errors.lastname" />
@@ -247,19 +261,15 @@ const organisation = computed(() => {
             <v-text-field :model-value="organisation" label="Organisation" readonly hint="Contact an administrator to change it" persistent-hint />
           </div>
           <div class="row-end">
-            <v-btn type="submit" color="primary" :loading="saving" :disabled="!detailsValid">Save details</v-btn>
+            <v-btn type="submit" color="primary" class="m3" :loading="saving">Save details</v-btn>
           </div>
         </v-form>
-      </v-card-text>
-    </v-card>
+    </ProfileSection>
 
-    <v-card v-if="showAddresses">
-      <v-card-title class="row">
-        <span class="t-h3">Shipping addresses</span>
-        <span class="spacer" />
+    <ProfileSection v-if="showAddresses" title="Shipping addresses">
+      <template #action>
         <v-btn variant="outlined" size="small" :prepend-icon="mdiPlus" :disabled="addresses.length >= 10" @click="editAddress(null)">Add address</v-btn>
-      </v-card-title>
-      <v-card-text>
+      </template>
         <p v-if="!addresses.length" class="t-body muted">No saved addresses yet. You can also add one when you submit a request.</p>
         <v-list v-else lines="three" density="comfortable">
           <v-list-item v-for="(a, i) in addresses" :key="i">
@@ -269,24 +279,22 @@ const organisation = computed(() => {
             </v-list-item-subtitle>
             <template #append>
               <v-btn variant="text" :icon="mdiPencil" :aria-label="`Edit address ${i + 1}`" @click="editAddress(i)" />
-              <v-btn variant="text" :icon="mdiDelete" :aria-label="`Remove address ${i + 1}`" @click="removeAddress(i)" />
+              <v-btn variant="text" :icon="mdiDelete" :aria-label="`Remove address ${i + 1}`" @click="removing = i" />
             </template>
           </v-list-item>
         </v-list>
         <p v-if="addresses.length >= 10" class="t-caption muted">You can save up to 10 addresses.</p>
-      </v-card-text>
-    </v-card>
+    </ProfileSection>
 
-    <v-card>
-      <v-card-title class="t-h3">Sign-in</v-card-title>
-      <v-card-text class="stack">
+    <ProfileSection title="Sign-in">
+      <div class="stack">
         <div class="row">
           <div class="stack-sm">
             <span class="t-label">Email</span>
             <span class="t-body">{{ account.email }}</span>
           </div>
           <span class="spacer" />
-          <v-btn variant="outlined" @click="openEmail">Change email</v-btn>
+          <v-btn variant="outlined" class="m3" @click="openEmail">Change email</v-btn>
         </div>
         <v-divider />
         <div class="row">
@@ -295,7 +303,7 @@ const organisation = computed(() => {
             <span class="t-body muted">Changing it signs you out everywhere else.</span>
           </div>
           <span class="spacer" />
-          <v-btn variant="outlined" @click="openPassword">Change password</v-btn>
+          <v-btn variant="outlined" class="m3" @click="openPassword">Change password</v-btn>
         </div>
         <template v-if="session.isAdmin">
           <v-divider />
@@ -304,26 +312,22 @@ const organisation = computed(() => {
             <span class="t-body">{{ account.mfaEnabled ? 'On: you sign in with a code from your authenticator app.' : 'Off' }}</span>
           </div>
         </template>
-      </v-card-text>
-    </v-card>
+      </div>
+    </ProfileSection>
 
-    <v-card>
-      <v-card-title class="t-h3">Appearance</v-card-title>
-      <v-card-text>
-        <v-switch v-model="dark" label="Dark theme (this device)" color="primary" hide-details inset />
-      </v-card-text>
-    </v-card>
+    <ProfileSection title="Appearance">
+      <v-switch v-model="dark" label="Dark theme (this device)" color="primary" hide-details inset />
+    </ProfileSection>
 
-    <v-card>
-      <v-card-title class="t-h3">Your data</v-card-title>
-      <v-card-text class="stack">
+    <ProfileSection title="Your data">
+      <div class="stack">
         <div class="row">
           <div class="stack-sm">
             <span class="t-label">Download your data</span>
             <span class="t-body muted">Your profile, addresses and account history as a JSON file.</span>
           </div>
           <span class="spacer" />
-          <v-btn variant="outlined" :loading="exporting" @click="downloadMyData">Download</v-btn>
+          <v-btn variant="outlined" class="m3" :loading="exporting" @click="downloadMyData">Download</v-btn>
         </div>
         <v-divider />
         <div class="row">
@@ -337,10 +341,28 @@ const organisation = computed(() => {
             </span>
           </div>
           <span class="spacer" />
-          <v-btn v-if="!account.erasureRequestedAt" variant="outlined" color="error" @click="openErase">Ask to delete</v-btn>
+          <v-btn v-if="!account.erasureRequestedAt" variant="outlined" color="error" class="m3 m3-danger" @click="openErase">Ask to delete</v-btn>
         </div>
-      </v-card-text>
-    </v-card>
+      </div>
+    </ProfileSection>
+
+    <v-dialog :model-value="removing !== null" max-width="480" @update:model-value="(v: boolean) => !v && (removing = null)">
+      <v-card v-if="removing !== null && addresses[removing]">
+        <v-card-title class="t-h3">Remove this address?</v-card-title>
+        <v-divider />
+        <v-card-text class="stack">
+          <p class="t-body">
+            <strong>{{ addresses[removing]!.firstname }} {{ addresses[removing]!.lastname }}</strong><br />
+            {{ [addresses[removing]!.organisation, addresses[removing]!.line1, addresses[removing]!.line2, addresses[removing]!.city, addresses[removing]!.parish, addresses[removing]!.zip, countryName(addresses[removing]!.country)].filter(Boolean).join(', ') }}
+          </p>
+          <p class="t-body muted">It leaves your saved list. Requests you already sent keep the address they were sent with.</p>
+        </v-card-text>
+        <v-card-actions class="row-end">
+          <v-btn class="m3" variant="text" @click="removing = null">Keep address</v-btn>
+          <v-btn class="m3" color="error" variant="flat" :loading="saving" @click="removeAddress">Remove</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
     <AddressDialog v-model="addrOpen" :address="addrIndex === null ? null : addresses[addrIndex]" @save="saveAddress" />
 
@@ -348,13 +370,13 @@ const organisation = computed(() => {
       <v-card>
         <v-card-title class="t-h3">Change email</v-card-title>
         <v-card-text>
-          <v-form v-if="emailStep === 'request'" v-model="emailValid" class="stack" @submit.prevent="requestEmail">
+          <v-form v-if="emailStep === 'request'" ref="emailForm" class="stack" @submit.prevent="requestEmail">
             <v-alert v-if="emailError" type="error" variant="tonal" density="compact">{{ emailError }}</v-alert>
             <v-text-field v-model="newEmail" label="New email" type="email" autocomplete="email" :rules="[rule(emailSchema)]" />
             <PasswordField v-model="emailPassword" label="Current password" autocomplete="current-password" :rules="[(v: unknown) => !!v || 'Required']" />
             <div class="row-end">
-              <v-btn variant="text" @click="emailOpen = false">Cancel</v-btn>
-              <v-btn type="submit" color="primary" :loading="emailBusy" :disabled="!emailValid">Send code</v-btn>
+              <v-btn variant="text" class="m3" @click="emailOpen = false">Cancel</v-btn>
+              <v-btn type="submit" color="primary" class="m3" :loading="emailBusy">Send code</v-btn>
             </div>
           </v-form>
           <VerifyForm v-else :email="newEmail.trim()" no-resend submit-label="Confirm new email" @verified="emailVerified" />
@@ -366,7 +388,7 @@ const organisation = computed(() => {
       <v-card>
         <v-card-title class="t-h3">Delete your account?</v-card-title>
         <v-card-text>
-          <v-form v-model="eraseValid" class="stack" @submit.prevent="requestErasure">
+          <v-form ref="eraseForm" class="stack" @submit.prevent="requestErasure">
             <p class="t-body">
               An administrator will erase your name, contact details and addresses, and you will be signed out. This cannot be
               undone. Download your data first if you want a copy.
@@ -374,8 +396,8 @@ const organisation = computed(() => {
             <v-alert v-if="eraseError" type="error" variant="tonal" density="compact">{{ eraseError }}</v-alert>
             <PasswordField v-model="erasePassword" label="Your password" name="erase-password" autocomplete="current-password" :rules="[(v: unknown) => !!v || 'Required']" />
             <div class="row-end">
-              <v-btn variant="text" @click="eraseOpen = false">Cancel</v-btn>
-              <v-btn type="submit" color="error" :loading="eraseBusy" :disabled="!eraseValid">Ask to delete</v-btn>
+              <v-btn variant="text" class="m3" @click="eraseOpen = false">Cancel</v-btn>
+              <v-btn type="submit" color="error" class="m3" :loading="eraseBusy">Ask to delete</v-btn>
             </div>
           </v-form>
         </v-card-text>
@@ -386,13 +408,13 @@ const organisation = computed(() => {
       <v-card>
         <v-card-title class="t-h3">Change password</v-card-title>
         <v-card-text>
-          <v-form v-model="pwValid" class="stack" @submit.prevent="changePassword">
+          <v-form ref="pwForm" class="stack" @submit.prevent="changePassword">
             <PasswordField v-model="pw.current" label="Current password" name="current-password" autocomplete="current-password" :rules="[(v: unknown) => !!v || 'Required']" :error-messages="pwErrors.currentPassword" />
             <PasswordField v-model="pw.next" label="New password" name="new-password" autocomplete="new-password" strength :rules="[rule(passwordSchema)]" :error-messages="pwErrors.newPassword" />
             <PasswordField v-model="pw.confirm" label="Repeat new password" name="confirm-password" autocomplete="new-password" :rules="[(v: unknown) => v === pw.next || 'The passwords do not match']" />
             <div class="row-end">
-              <v-btn variant="text" @click="pwOpen = false">Cancel</v-btn>
-              <v-btn type="submit" color="primary" :loading="pwBusy" :disabled="!pwValid">Change password</v-btn>
+              <v-btn variant="text" class="m3" @click="pwOpen = false">Cancel</v-btn>
+              <v-btn type="submit" color="primary" class="m3" :loading="pwBusy">Change password</v-btn>
             </div>
           </v-form>
         </v-card-text>
@@ -405,5 +427,4 @@ const organisation = computed(() => {
 <style scoped>
 .profile {
   max-width: 880px;
-}
-</style>
+}</style>

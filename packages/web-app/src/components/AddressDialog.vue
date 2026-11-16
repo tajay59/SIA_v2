@@ -4,6 +4,7 @@ import { reactive, ref, watch } from 'vue'
 import { z } from 'zod'
 import { countries } from '../countries'
 import type { ShippingAddress } from '../types'
+import { checkForm, type FormLike } from '../form'
 import { country as countrySchema, email as emailSchema, name as nameSchema, rule } from '../validation'
 
 
@@ -16,7 +17,7 @@ const blank = (): ShippingAddress => ({
   firstname: '', lastname: '', email: '', tel: '',
 })
 const form = reactive<ShippingAddress>(blank())
-const valid = ref(false)
+const formRef = ref<FormLike | null>(null)
 watch(open, (o) => {
   if (o) Object.assign(form, blank(), props.address ?? {})
 })
@@ -24,7 +25,9 @@ watch(open, (o) => {
 const req = (max: number) => rule(z.string().trim().min(1, 'Required').max(max, `At most ${max} characters`))
 const opt = (max: number) => rule(z.string().max(max, `At most ${max} characters`).nullable().optional())
 
-function save() {
+async function save() {
+  // Save is never disabled: missing fields are marked and the first one gets the cursor.
+  if (!(await checkForm(formRef.value))) return
   const clean = Object.fromEntries(
     Object.entries(form).map(([k, v]) => [k, typeof v === 'string' ? v.trim() || null : v]),
   ) as unknown as ShippingAddress
@@ -38,7 +41,7 @@ function save() {
     <v-card>
       <v-card-title class="t-h3">{{ address ? 'Edit address' : 'New address' }}</v-card-title>
       <v-card-text>
-        <v-form v-model="valid" class="stack" @submit.prevent="save">
+        <v-form ref="formRef" class="stack" @submit.prevent="save">
           <div class="grid-2">
             <v-text-field v-model="form.firstname" label="First name" autocomplete="given-name" :rules="[rule(nameSchema)]" />
             <v-text-field v-model="form.lastname" label="Last name" autocomplete="family-name" :rules="[rule(nameSchema)]" />
@@ -65,7 +68,7 @@ function save() {
       </v-card-text>
       <v-card-actions class="row-end">
         <v-btn variant="text" @click="open = false">Cancel</v-btn>
-        <v-btn color="primary" :disabled="!valid" @click="save">Save address</v-btn>
+        <v-btn color="primary" @click="save">Save address</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>

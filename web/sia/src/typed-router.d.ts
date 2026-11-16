@@ -45,6 +45,13 @@ declare module 'vue-router/auto-routes' {
       { notFound: ParamValue<false> },
       | never
     >,
+    '/admin/': RouteRecordInfo<
+      '/admin/',
+      '/admin',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/admin/accounts/': RouteRecordInfo<
       '/admin/accounts/',
       '/admin/accounts',
@@ -248,6 +255,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'notFound'
+    }
+    'src/pages/admin/index.vue': {
+      routes:
+        | '/admin/'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/admin/accounts/index.vue': {
       routes:

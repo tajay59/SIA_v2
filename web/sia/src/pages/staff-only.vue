@@ -17,8 +17,8 @@ async function logout() {
 <template>
   <AuthCard title="This app is for CIMH staff" subtitle="Customers request items in CIMH Stores.">
     <div class="stack">
-      <v-btn :href="shop" color="primary" size="large" block>Go to CIMH Stores</v-btn>
-      <v-btn v-if="session.isLoggedIn" variant="text" block @click="logout">Log out</v-btn>
+      <v-btn :href="shop" color="primary" size="large" class="m3" block>Go to CIMH Stores</v-btn>
+      <v-btn v-if="session.isLoggedIn" variant="text" class="m3" block @click="logout">Log out</v-btn>
     </div>
   </AuthCard>
 </template>

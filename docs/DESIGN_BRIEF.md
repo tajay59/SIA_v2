@@ -64,7 +64,9 @@ All text and component pairs below were **contrast-checked** (WCAG ratio in brac
 | `surface-2` | `#F0F3F7` | `#1C232C` | Table header, hovered row, nested panel |
 | `surface-3` | `#E6EBF1` | `#242C36` | Menus, popovers (dark-mode lift instead of shadow) |
 | `hairline` | `#E1E6EC` | `#2A323C` | 1 px borders and dividers |
-| `hairline-strong` | `#C7D0DA` | `#3A4552` | Input borders, emphasised dividers |
+| `hairline-strong` | `#C7D0DA` | `#3A4552` | Emphasised dividers, card and button outlines |
+| `field-outline` | `#7F8B98` | `#6E7A87` | The 1 px edge of every input at rest. At least 3:1 on `surface`, `bg` and `surface-2` (WCAG 1.4.11, tested) |
+| `photo-ground` | `#FFFFFF` | `#C9D1DA` | Ground behind product photos in SHOP. Photos are multiplied onto it, so dark mode dims them instead of showing white rectangles (SIA keeps white) |
 | `ink` | `#0F1A24` (17.6) | `#E6EDF3` (16.0) | Headings and body. Never pure black |
 | `ink-muted` | `#53606C` (6.45) | `#9AA7B4` (7.71) | Secondary text, labels, captions |
 | `ink-disabled` | `#8C97A3` | `#5C6773` | Disabled text (exempt from contrast) |
@@ -185,7 +187,7 @@ All components live in `packages/web-ui` (Vue, built on Vuetify 4) with matching
 States: hover → `primary-hover`; press → `primary-press`; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.
 
 ### 8.2 Inputs and forms
-- Outlined fields, `r-md`, `hairline-strong` border → `primary` 2 px on focus. Label above the field, never only a placeholder. Helper/error text below in `caption`; errors in `error` with an icon.
+- Fields are Vuetify `solo-inverted`, flat (owner, 2026-11-12), `r-md`: at rest the field has the colour of its card plus a 1 px `field-outline` edge → raised fill and a 2 px `primary` edge on focus; the edge turns `error` on an error. A 6-digit code is always six boxes (`v-otp-input`). Label above the field, never only a placeholder. Helper/error text below in `caption`; errors in `error` with an icon.
 - Required fields marked "(required)" in the label, not with a bare asterisk.
 - **Money input**: currency code prefix, `tnum`, right-aligned. **Exchange rate**: mono, with a "BBD per 1 USD" suffix.
 - **Scan input** (SIA/Mobile): large, autofocused, mono, with a barcode icon. It clears after each scan, and the result chip appears beside it.
@@ -311,7 +313,8 @@ export const cimhDark = {
   },
   variables: { 'border-color': '#3A4552', 'border-opacity': 1, 'medium-emphasis-opacity': 0.72 },
 }
-// defaults: VBtn { rounded: 'md', variant: 'flat' }, VTextField/VSelect { variant: 'outlined', rounded: 'md' },
+// both themes also carry 'field-outline' and 'photo-ground' (§3 table), read by base.css and ProductImage.
+// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'md' },
 // VCard { rounded: 'lg', variant: 'outlined' }, VChip { rounded: 'sm', size: 'small' }
 // SHOP density 'default'; SIA density 'compact'.
 ```
@@ -327,7 +330,7 @@ Same hex values in `Color.kt` → `lightColorScheme` / `darkColorScheme` (`prima
 | Use `primary` for the single main action and for links | Use `brand-logo` blue for normal-size text on white |
 | Show status as chip = icon + word + colour | Use colour alone, or invent new status colours |
 | Use tabular figures and currency codes for money | Show prices on catalogue or product pages |
-| Use real product photos on white | Use stock photos, illustrations, gradients |
+| Use real product photos on white (`photo-ground`: dimmed in SHOP's dark theme) | Use stock photos, illustrations, gradients |
 | Keep SIA compact and SHOP comfortable | Mix densities within one app |
 | Use the Pro Bono yellow only for the Pro Bono badge | Use yellow for warnings or with white text |
 | Use one primary button per view | Use pill-shaped buttons or more than one filled button in a group |

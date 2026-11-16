@@ -4,7 +4,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SIA } from './playwright.config'
-import { isRealPageError, PASSWORD, run, staffAccount } from './support'
+import { isRealPageError, PASSWORD, run, siaCompact, staffAccount } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -30,7 +30,7 @@ test.describe('SIA keyboard and drafts', () => {
     test.skip(info.project.name === 'mobile', 'phones have no hardware keyboard')
     await login(page, staff)
     await expect(page).toHaveURL(`${SIA}/`)
-    await page.locator('body').click({ position: { x: 5, y: 300 } }) // focus the page, not a field
+    await page.getByRole('heading', { level: 1 }).first().click() // focus the page, not a field or a link
     await page.keyboard.press('g')
     await page.keyboard.press('r')
     await expect(page).toHaveURL(/\/requests/)
@@ -65,6 +65,8 @@ test.describe('SIA keyboard and drafts', () => {
 
     const left = await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith('cimh:draft:')))
     expect(left).toEqual(['cimh:draft:product:new'])
+    // Phones: the account menu lives in the navigation drawer, closed until opened.
+    if (siaCompact(page)) await page.getByRole('button', { name: 'Open navigation' }).click()
     await page.getByRole('button', { name: /E2e/ }).click()
     await page.getByText('Log out').click()
     await expect(page).toHaveURL(/\/login/)

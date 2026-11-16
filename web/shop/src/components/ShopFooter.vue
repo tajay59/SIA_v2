@@ -30,10 +30,18 @@ const resources = [
   ['RAMSDIS', 'http://rammb.cira.colostate.edu/ramsdis/online/rmtc.asp'],
 ]
 const year = new Date().getFullYear()
+// slim = flow pages (cart, requests, agreement): one contact line instead of the link directory.
+defineProps<{ slim?: boolean }>()
 </script>
 
 <template>
-  <footer class="footer">
+  <footer v-if="slim" class="footer slim">
+    <p class="slim-line">
+      CIMH · <a href="tel:+12464251362">+1 (246) 425 1362/63</a> · <a href="mailto:info@cimh.edu.bb">info@cimh.edu.bb</a>
+      <span class="copy-inline">© {{ year }} CIMH</span>
+    </p>
+  </footer>
+  <footer v-else class="footer">
     <div class="inner">
       <section>
         <h2 class="head">The Caribbean Institute for Meteorology and Hydrology</h2>
@@ -81,6 +89,21 @@ const year = new Date().getFullYear()
 </template>
 
 <style scoped>
+.footer.slim {
+  padding: var(--sp-4);
+}
+.slim-line {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-2);
+  font-size: 13px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.copy-inline {
+  margin-left: auto;
+}
 .footer {
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgb(var(--v-theme-surface));

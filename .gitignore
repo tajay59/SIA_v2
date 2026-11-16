@@ -68,3 +68,10 @@ tools/perf/results/
 # Alertmanager config rendered from alertmanager.yml.tmpl by render-config.sh
 deploy/prometheus/alertmanager.rendered.yml
 deploy/prometheus/blackbox-targets.rendered.yml
+
+# Playwright MCP screenshots/snapshots
+.playwright-mcp/
+
+# local junk / large binaries
+/undefined/
+.claude/skills/impeccable/scripts/bin/

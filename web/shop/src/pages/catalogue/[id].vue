@@ -1,9 +1,11 @@
 <script setup lang="ts">
 /**
- * S-03 product, same structure as the legacy InventoryItem page: left (about 3/4) a vertical strip of
- * thumbnails beside a large photo carousel; right (1/4) one card with the name, availability, product
- * description, details, units per pack, quantity and a full-width button. On phones the name sits above
- * the photos. v2 rules: no price and no serial numbers for customers. The button adds to the cart (S-07).
+ * S-03 product: left a vertical strip of thumbnails beside a large photo carousel; right one card with the
+ * name, availability, product description, details, units per pack, quantity, a full-width button and
+ * "How requesting works". On phones the name sits above the photos. A product without photos has no photo
+ * area: the name, make and model, description and details take the main column and the card keeps only
+ * availability and the action. v2 rules: no price and no serial numbers for customers. The button adds to
+ * the cart (S-07).
  */
 import {
   ApiError,
@@ -24,6 +26,7 @@ import { mdiArrowLeft, mdiChevronLeft, mdiChevronRight, mdiMinus, mdiPlus } from
 import { computed, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
+import HowRequestingWorks from '../../components/HowRequestingWorks.vue'
 
 definePage({ meta: { guard: 'public', title: 'Product' } })
 const route = useRoute('/catalogue/[id]')
@@ -93,7 +96,7 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
 </script>
 
 <template>
-  <v-container max-width="1440" class="page">
+  <v-container max-width="1200" class="page">
     <div v-if="missing" class="stack">
       <h1 class="t-h2">Product not found</h1>
       <p class="t-body muted">It may have been withdrawn from the catalogue.</p>
@@ -110,9 +113,33 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
         </p>
       </header>
 
-      <div class="layout">
+      <div class="layout" :class="{ 'no-photo': !images.length }">
+        <!-- Left, no photos: the facts lead -->
+        <section v-if="!images.length" class="lead">
+          <div v-if="mdAndUp" class="stack-sm">
+            <h1 class="t-h1">{{ product.name }}</h1>
+            <p v-if="makeLine || product.modelnumber" class="t-body-lg muted">
+              {{ makeLine }} <span v-if="product.modelnumber" class="t-mono">{{ product.modelnumber }}</span>
+            </p>
+          </div>
+          <section v-if="product.description" class="block">
+            <h2 class="block-title">Product description</h2>
+            <p class="t-body-lg prose">{{ product.description }}</p>
+          </section>
+          <section v-if="product.details || specs.length" class="block">
+            <h2 class="block-title">Details</h2>
+            <p v-if="product.details" class="t-body-lg prose details">{{ product.details }}</p>
+            <dl v-if="specs.length" class="facts">
+              <template v-for="[k, v] in specs" :key="k">
+                <dt>{{ k }}</dt>
+                <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
+              </template>
+            </dl>
+          </section>
+          <p class="t-caption muted">No photo of this item yet.</p>
+        </section>
         <!-- Left: thumbnails + carousel -->
-        <section class="media" aria-label="Photos">
+        <section v-else class="media" aria-label="Photos">
           <ul v-if="images.length > 1 && mdAndUp" class="thumbs" aria-label="All photos">
             <li v-for="(img, i) in images" :key="img.fileId">
               <button
@@ -148,7 +175,7 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
 
         <!-- Right: the product card -->
         <aside class="panel">
-          <div v-if="mdAndUp" class="stack-sm">
+          <div v-if="mdAndUp && images.length" class="stack-sm">
             <h1 class="t-h2">{{ product.name }}</h1>
             <p v-if="makeLine || product.modelnumber" class="t-body muted">
               {{ makeLine }} <span v-if="product.modelnumber" class="t-mono">{{ product.modelnumber }}</span>
@@ -156,28 +183,32 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
           </div>
           <ProductBadges :product="product" show-limit />
 
-          <section v-if="product.description" class="block">
-            <h2 class="block-title">Product description</h2>
-            <p class="t-body">{{ product.description }}</p>
-          </section>
-          <section v-if="product.details || specs.length" class="block">
-            <h2 class="block-title">Details</h2>
-            <p v-if="product.details" class="t-body details">{{ product.details }}</p>
-            <dl v-if="specs.length" class="facts">
-              <template v-for="[k, v] in specs" :key="k">
-                <dt>{{ k }}</dt>
-                <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
-              </template>
-            </dl>
-          </section>
+          <template v-if="images.length">
+            <section v-if="product.description" class="block">
+              <h2 class="block-title">Product description</h2>
+              <p class="t-body">{{ product.description }}</p>
+            </section>
+            <section v-if="product.details || specs.length" class="block">
+              <h2 class="block-title">Details</h2>
+              <p v-if="product.details" class="t-body details">{{ product.details }}</p>
+              <dl v-if="specs.length" class="facts">
+                <template v-for="[k, v] in specs" :key="k">
+                  <dt>{{ k }}</dt>
+                  <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
+                </template>
+              </dl>
+            </section>
+          </template>
           <p v-if="product.unitquantity && product.unitquantity > 1" class="pack">{{ product.unitquantity }} in each pack</p>
 
           <div class="buy">
             <template v-if="!session.isLoggedIn">
               <v-btn :to="loginLink" color="primary" size="large" block>Log in to request</v-btn>
-              <p class="t-caption muted">Requests need an approved account. Prices are quoted after you send a request.</p>
+              <p class="t-caption muted">
+                Requests need an approved account. No account yet? <router-link to="/signup">Register</router-link>
+              </p>
             </template>
-            <p v-else-if="session.isCimh" class="t-body muted">CIMH staff accounts can browse but can't submit requests.</p>
+            <p v-else-if="session.isCimh" class="t-body muted">CIMH staff accounts can browse but can't send requests.</p>
             <template v-else>
               <div class="qty-row">
                 <span class="t-label">Quantity</span>
@@ -187,10 +218,15 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
                   <v-btn :icon="mdiPlus" size="small" variant="text" aria-label="More" :disabled="qty >= max" @click="qty++" />
                 </div>
               </div>
-              <v-btn color="primary" size="large" block :loading="adding" @click="addToRequest">Add to request</v-btn>
-              <p class="t-caption muted">Prices are quoted after you send a request.</p>
+              <v-btn color="primary" size="large" block :loading="adding" @click="addToRequest">Add to cart</v-btn>
+              <p class="t-caption muted">Nothing is sent or paid yet. You send the cart as a request, and CIMH quotes it.</p>
             </template>
           </div>
+
+          <details v-if="!session.isCimh" class="how">
+            <summary>How requesting works</summary>
+            <HowRequestingWorks variant="list" :skip-account="session.isLoggedIn" />
+          </details>
         </aside>
       </div>
     </article>
@@ -251,7 +287,7 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
 .stage {
   grid-column: 2;
   position: relative;
-  background: #fff;
+  background: rgb(var(--v-theme-photo-ground));
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 16px;
   aspect-ratio: 4 / 3;
@@ -270,6 +306,7 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
   height: 100%;
   object-fit: contain;
   padding: 4%;
+  mix-blend-mode: multiply; /* as ProductImage: the photo takes the tone of photo-ground */
 }
 .stage-empty {
   width: 100%;
@@ -332,12 +369,46 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
 .block-title {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  opacity: 0.72;
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 600;
   margin: 0;
+}
+/* No photos: the facts take the main column; the card keeps availability and the action. */
+.layout.no-photo {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+}
+@media (max-width: 959px) {
+  .layout.no-photo {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  min-width: 0;
+}
+.lead .block:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.lead .facts {
+  font-size: 15px;
+  gap: 8px var(--sp-6);
+}
+.how {
+  padding-top: var(--sp-4);
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.how summary {
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 24px;
+}
+.how[open] summary {
+  margin-bottom: var(--sp-3);
 }
 .details {
   white-space: pre-line;

@@ -3,7 +3,7 @@
 import type { Product, useCursorList } from '@cimh/web-app'
 import ProductCard from './ProductCard.vue'
 
-defineProps<{ list: ReturnType<typeof useCursorList<Product>>; emptyTitle: string; emptyText?: string }>()
+defineProps<{ list: ReturnType<typeof useCursorList<Product>>; emptyTitle: string; emptyText?: string; clearLabel?: string }>()
 const emit = defineEmits<{ clear: [] }>()
 </script>
 
@@ -25,7 +25,7 @@ const emit = defineEmits<{ clear: [] }>()
     <div v-else-if="list.loaded.value" class="empty stack-sm">
       <h2 class="t-h3">{{ emptyTitle }}</h2>
       <p class="t-body muted">{{ emptyText ?? 'Try another type or department, or clear the filters.' }}</p>
-      <div><v-btn variant="outlined" @click="emit('clear')">Clear filters</v-btn></div>
+      <div><v-btn variant="outlined" @click="emit('clear')">{{ clearLabel ?? 'Clear filters' }}</v-btn></div>
     </div>
     <div v-if="list.nextCursor.value" class="row more">
       <v-btn variant="outlined" :loading="list.loading.value" @click="list.loadMore">Load more</v-btn>

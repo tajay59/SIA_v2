@@ -12,7 +12,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, siaGo, staffAccount, stowUnits } from './support'
+import { auditDialog, customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -74,24 +74,27 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/catalogue/${paidId}`)
     await page.getByRole('button', { name: 'More' }).click() // qty 2
-    await page.getByRole('button', { name: 'Add to request' }).click()
+    await page.getByRole('button', { name: 'Add to cart' }).click()
     await expect(page.getByText(`Added 2 × ${paidName} to your cart`)).toBeVisible()
     await page.goto(`${SHOP}/catalogue/${proId}`)
-    await page.getByRole('button', { name: 'Add to request' }).click()
+    await page.getByRole('button', { name: 'Add to cart' }).click()
     await expect(page.getByText(`Added 1 × ${proName} to your cart`)).toBeVisible()
 
     await page.getByRole('link', { name: /Cart, 3 items/ }).click()
     await expect(page.getByText(paidName)).toBeVisible()
     await expect(page.getByRole('heading', { name: 'Pro Bono items' })).toBeVisible()
     await expect(page.getByText('Paid and Pro Bono items become two requests.')).toBeVisible()
+    await shot(page, 'shop-cart')
     await expect(page.getByText(/BBD|150\.00/)).toHaveCount(0) // no prices before the quote
 
-    await page.getByRole('button', { name: 'Proceed to checkout' }).click()
-    await page.getByLabel('BBD (Barbados dollar)').check()
-    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByRole('heading', { name: 'Items to be quoted' })).toBeVisible()
+    await page.getByRole('button', { name: 'Continue to quote details' }).click()
+    await expect(page.getByLabel('BBD (Barbados dollar)')).toBeChecked() // preselected, so Continue is never blocked
+    await page.getByRole('button', { name: 'Continue to delivery' }).click()
     await page.getByLabel('Notes for CIMH (optional)').fill('Needed for the hurricane season')
     await page.getByRole('button', { name: 'Submit request' }).click()
     await expect(page.getByRole('heading', { name: 'Requests sent' })).toBeVisible()
+    await shot(page, 'shop-sent')
     paidRequest = (await page.locator('p', { hasText: /^\s*Request/ }).getByRole('link').textContent())!.trim()
     proRequest = (await page.locator('p', { hasText: 'Pro Bono request' }).getByRole('link').textContent())!.trim()
     expect(paidRequest).toMatch(/^ORD/)
@@ -103,7 +106,9 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await siaLogin(page, staff)
     await siaGo(page, 'Requests')
     await page.getByRole('textbox', { name: 'Request id, customer or organisation' }).fill(paidRequest)
-    await page.getByRole('link', { name: new RegExp(paidRequest.slice(0, 15)) }).click()
+    const row = page.getByRole('option', { name: new RegExp(paidRequest.slice(-6)) }) // the queue shows ORD…last6
+    await row.focus()
+    await row.press('Enter') // opens beside the list (desk) or full screen (phone)
     await expect(page.getByText('Needed for the hurricane season')).toBeVisible()
     await page.getByRole('button', { name: 'Start quoting' }).click()
     await expect(page.getByRole('cell', { name: 'Full quantity' })).toBeVisible() // 2 units on the shelf
@@ -117,6 +122,11 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByLabel(`Unit price for ${paidName}`).fill('180.00')
     await expect(page.getByText('Draft saved')).toBeVisible()
     await page.getByRole('button', { name: 'Send quote' }).click()
+    // Nothing is emailed before the confirm, which restates the recipient and the total.
+    const confirm = page.getByRole('dialog')
+    await expect(confirm).toContainText('Quote version')
+    await auditDialog(page, 'send-quote')
+    await confirm.getByRole('button', { name: 'Email the customer' }).click()
     await expect(page.getByText('Quote version 1 sent to the customer')).toBeVisible()
     await expect(page.getByText('Quoted', { exact: true }).first()).toBeVisible()
   })
@@ -124,14 +134,21 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
   test('J-03 customer chooses CIMH stock, signs the agreement and accepts', async ({ page }) => {
     await shopLogin(page, customer)
     await page.getByRole('link', { name: 'My requests' }).first().click()
-    await expect(page.getByText('Quote ready')).toBeVisible()
-    await page.getByRole('link', { name: new RegExp(paidRequest) }).click()
-    await expect(page.getByRole('cell', { name: /360\.00/ })).toBeVisible() // supplier 2 × 180.00
-    await expect(page.getByRole('cell', { name: /300\.00/ })).toBeVisible() // CIMH 2 × 150.00
+    // The quote leads the list under "Waiting for you", named by the item, with its expiry.
+    const waiting = page.getByRole('region', { name: 'Waiting for you' })
+    await expect(waiting.getByText('Quote ready')).toBeVisible()
+    await expect(waiting.getByText(paidName)).toBeVisible()
+    await expect(waiting.getByText(/valid until .* days left/)).toBeVisible()
+    await page.getByRole('link', { name: new RegExp(paidRequest.slice(-6)) }).click() // the list shows ORD…last6
+    await expect(page.getByRole('heading', { level: 1, name: paidName })).toBeVisible()
+    // Table cells on wide screens, line cards on phones.
+    await expect(page.getByText(/360\.00/).locator('visible=true').first()).toBeVisible() // supplier 2 × 180.00
+    await expect(page.getByText(/300\.00/).locator('visible=true').first()).toBeVisible() // CIMH 2 × 150.00
     await page.getByRole('link', { name: 'Choose options' }).click()
 
     await page.getByRole('radio', { name: /300\.00/ }).check()
-    await expect(page.getByText(/Total for your choices/)).toBeVisible()
+    await expect(page.getByText(/Total for your choices/).locator('visible=true').first()).toBeVisible()
+    await shot(page, 'shop-agreement-choose')
     await page.getByRole('button', { name: 'Confirm choices' }).click()
     await expect(page.getByText('Preparing the agreement…')).toBeVisible()
     // order.agreement_requested → document-consumer renders the PDF → document.generated → order-consumer.
@@ -147,8 +164,13 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('button', { name: 'I have signed it' }).click()
     await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 signed\n%%EOF\n') })
     await page.getByRole('button', { name: 'Accept quote' }).click()
-    await expect(page.getByText(/Quote accepted/)).toBeVisible()
+    // Ends on the request page: a lasting banner says what CIMH does next, and the chosen option is marked.
+    await expect(page.getByText('Quote accepted', { exact: true })).toBeVisible()
+    await expect(page.getByText(/CIMH staff now check the signature/)).toBeVisible()
     await expect(page.getByText('Accepted', { exact: true }).first()).toBeVisible()
+    await expect(page.getByText('Chosen').locator('visible=true')).toHaveCount(1)
+    await expect(page.getByText('Agreement total').locator('visible=true').first()).toBeVisible()
+    await shot(page, 'shop-request-accepted')
   })
 
   test('J-06 staff verify, pick the reserved units, ship and deliver', async ({ page }) => {
@@ -161,6 +183,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     }).toPass({ timeout: 45_000 })
     await page.getByRole('button', { name: 'Verify and purchase' }).click()
     await page.getByLabel(/signed by an authorised person/).check()
+    await shot(page, 'sia-verify')
     await page.getByRole('button', { name: 'Start purchasing' }).click()
     await expect(page.getByText('Signature verified; purchasing')).toBeVisible()
 
@@ -174,6 +197,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('button', { name: 'Record shipment' }).click()
     await page.getByLabel('Hand delivery').check()
     await page.getByLabel('Delivered by / collected by').fill('Collected by Cass')
+    await shot(page, 'sia-ship-dialog')
     await page.getByRole('dialog').getByRole('button', { name: 'Record shipment' }).click()
     await expect(page.getByText('Shipment recorded')).toBeVisible()
     await page.getByRole('button', { name: 'Mark delivered' }).click()
@@ -185,9 +209,10 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
   test('J-04 customer sees the request delivered', async ({ page }) => {
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/requests/${paidRequest}`)
-    await expect(page.getByText('Delivered.')).toBeVisible()
+    await expect(page.getByRole('alert').getByText('Delivered', { exact: true })).toBeVisible()
     await expect(page.getByText('Collected by Cass')).toBeVisible()
-    await expect(page.locator('.v-chip', { hasText: 'From CIMH stock' })).toBeVisible() // the line's choice
+    await shot(page, 'shop-request-delivered')
+    await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // the line's choice
   })
 
   test('J-07 Pro Bono: approve, pick, ship with tracking, deliver', async ({ page }) => {

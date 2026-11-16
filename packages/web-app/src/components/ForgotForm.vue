@@ -4,18 +4,20 @@ import { ref } from 'vue'
 import { ApiError, call, identity } from '../api'
 import { useNotify } from '../notify'
 import { useInitialFocus } from '../focus'
+import { checkForm, type FormLike } from '../form'
 import { email as emailSchema, rule } from '../validation'
 
 const props = defineProps<{ initialEmail?: string }>()
 const emit = defineEmits<{ sent: [email: string] }>()
 const notify = useNotify()
 const email = ref(props.initialEmail ?? '')
-const valid = ref(false)
+const formRef = ref<FormLike | null>(null)
 const busy = ref(false)
 const field = ref<{ focus: () => void } | null>(null)
 useInitialFocus(field)
 
 async function submit() {
+  if (busy.value || !(await checkForm(formRef.value))) return
   busy.value = true
   try {
     await call(() => identity.POST('/auth/password/forgot', { body: { email: email.value.trim() } }), { refresh: false })
@@ -31,7 +33,7 @@ async function submit() {
 </script>
 
 <template>
-  <v-form v-model="valid" class="stack" @submit.prevent="submit">
+  <v-form ref="formRef" class="stack" @submit.prevent="submit">
     <v-text-field
       v-model="email"
       label="Email"
@@ -40,6 +42,6 @@ async function submit() {
       autocomplete="email"
       :rules="[rule(emailSchema)]"
     />
-    <v-btn type="submit" color="primary" size="large" block :loading="busy" :disabled="!valid">Send reset code</v-btn>
+    <v-btn type="submit" color="primary" size="large" class="m3" block :loading="busy">Send reset code</v-btn>
   </v-form>
 </template>

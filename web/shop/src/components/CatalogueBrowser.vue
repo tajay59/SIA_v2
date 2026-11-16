@@ -88,10 +88,9 @@ watch(() => [q.value, type.value, department.value, project.value, inStock.value
             :label="probono ? 'Search Pro Bono items' : 'Search the catalogue'"
             hide-details
             clearable
-            variant="solo"
+            variant="solo-inverted"
             flat
             rounded="lg"
-            bg-color="surface"
             @click:clear="text = ''"
           />
         </form>
@@ -157,7 +156,8 @@ watch(() => [q.value, type.value, department.value, project.value, inStock.value
         :list="list"
         :empty-title="searching ? 'No products found' : 'Nothing matches these filters'"
         :empty-text="searching ? 'Check the spelling or try a model number.' : 'Try another type, or clear the filters.'"
-        @clear="router.replace({ query: {} })"
+        :clear-label="searching ? 'Clear search' : 'Clear filters'"
+        @clear="searching ? setQuery({ q: null }) : router.replace({ query: {} })"
       />
     </v-container>
   </div>
@@ -222,6 +222,15 @@ watch(() => [q.value, type.value, department.value, project.value, inStock.value
 .chips {
   flex: 1;
   min-width: 0;
+}
+/* Phones: the row scrolls; a fade on the right edge shows there are more types. */
+@media (max-width: 599px) {
+  .chips {
+    mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  }
+  .chips :deep(.v-slide-group__content) {
+    padding-right: 32px;
+  }
 }
 .chips :deep(.chip-on) {
   background: rgb(var(--v-theme-primary));

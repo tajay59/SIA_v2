@@ -1,14 +1,24 @@
 <script setup lang="ts">
-/** "Files" card of a request (legacy order page): one chip per document, opened from document-svc. */
+/**
+ * "Files" of a request: one chip per document, opened from document-svc. Documents CIMH generates are named by
+ * what they are ("CIMH quote · PDF"; their file names only repeat the request id); uploads keep their own name.
+ * `bare` = no card of its own (SIA puts it inside a console panel that already says "Files").
+ */
 import { mdiFilePdfBox, mdiFileOutline } from '@mdi/js'
+import { VCard, VCardText } from 'vuetify/components'
 import { FILE_KIND_LABELS, fileUrl, type FileRef } from '../orders'
 
-defineProps<{ files: FileRef[] }>()
+withDefaults(defineProps<{ files: FileRef[]; bare?: boolean }>(), { bare: false })
+
+const GENERATED = new Set<FileRef['kind']>(['cimh_quote', 'agreement', 'invoice', 'commercial_invoice', 'probono_invoice'])
+const fileType = (f: FileRef) => (f.mime === 'application/pdf' ? 'PDF' : (f.mime.split('/')[1] ?? 'file').toUpperCase())
+const label = (f: FileRef) =>
+  GENERATED.has(f.kind) ? `${FILE_KIND_LABELS[f.kind]} · ${fileType(f)}` : `${FILE_KIND_LABELS[f.kind]} · ${f.name}`
 </script>
 
 <template>
-  <v-card subtitle="Files" flat border>
-    <v-card-text>
+  <component :is="bare ? 'div' : VCard" v-bind="bare ? {} : { subtitle: 'Files', flat: true, border: true }">
+    <component :is="bare ? 'div' : VCardText">
       <v-chip-group v-if="files.length" column>
         <v-chip
           v-for="f in files"
@@ -18,11 +28,25 @@ defineProps<{ files: FileRef[] }>()
           rel="noopener"
           :prepend-icon="f.mime === 'application/pdf' ? mdiFilePdfBox : mdiFileOutline"
           label
+          class="file"
+          :title="f.name"
         >
-          {{ FILE_KIND_LABELS[f.kind] }} · {{ f.name }}
+          <span class="file-name">{{ label(f) }}</span>
         </v-chip>
       </v-chip-group>
       <p v-else class="t-caption muted">No files yet.</p>
-    </v-card-text>
-  </v-card>
+    </component>
+  </component>
 </template>
+
+<style scoped>
+/* Long upload names (phone photos, scanner output) ran past the card; cut them with the full name on hover. */
+.file {
+  max-width: 100%;
+}
+.file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

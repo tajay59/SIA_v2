@@ -6,7 +6,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SIA } from './playwright.config'
-import { apiProduct, isRealPageError, mongo, PASSWORD, run, siaCompact, siaGo, staffAccount } from './support'
+import { apiProduct, auditDialog, isRealPageError, mongo, PASSWORD, run, shot, siaCompact, siaGo, staffAccount } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -50,37 +50,38 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
   test('register a site, a location and two shelves with QR codes (A-08)', async ({ page }) => {
     await login(page, staff)
     await siaGo(page, 'Inventory')
-    await page.getByRole('button', { name: /Location/ }).click()
-
-    await page.getByRole('button', { name: 'Previous form' }).click() // Location → Site (legacy arrows)
+    await page.getByRole('link', { name: 'Register site' }).click()
     await page.getByLabel('Site name').fill(siteName)
     await page.getByRole('button', { name: 'Register site' }).click()
     await expect(page.getByText(`Site ${siteName} registered`)).toBeVisible()
 
-    // The new site is preselected on the Location form.
+    // The new site opens beside the Places tree, with its Add a location form.
+    await expect(page.getByRole('heading', { name: siteName })).toBeVisible()
     await page.getByLabel('Location name (store room, bay…)').fill(bayName)
     await page.getByRole('button', { name: 'Create location' }).click()
     await expect(page.getByText(`Location ${bayName} created`)).toBeVisible()
 
+    // …and the new location opens with its Add shelves form; new shelves get their QR labels straight away.
+    await expect(page.getByRole('heading', { name: bayName })).toBeVisible()
     await page.getByLabel('How many shelves').fill('2')
     await page.getByRole('button', { name: 'Add shelves' }).click()
-    const dialog = page.getByRole('dialog')
-    await expect(dialog.getByText('Shelf 1', { exact: true })).toBeVisible()
-    await expect(dialog.getByRole('img', { name: /QR code SHEL/ })).toHaveCount(2)
-    await dialog.getByRole('button', { name: 'Close' }).click()
+    await expect(page.getByRole('img', { name: /QR code SHEL/ })).toHaveCount(2)
 
     shelves = mongo<string[]>(`
       const loc = db.misc.findOne({ kind: 'location', name: ${JSON.stringify(bayName)} });
       return db.misc.find({ kind: 'shelf', location: loc.id }).sort({ number: 1 }).toArray().map((s) => s.id);`)
     expect(shelves).toHaveLength(2)
-    await page.getByRole('button', { name: new RegExp(siteName) }).click()
-    await expect(page.getByText('2 shelves', { exact: true })).toBeVisible() // not the "2 shelves added" toast
+    // The Places tree lists both shelves under the new location (folded under the record on phones).
+    if (siaCompact(page)) await page.getByRole('button', { name: 'Show' }).press('Enter') // the toast covers it on phones
+    const tree = page.getByRole('navigation', { name: 'Places' })
+    await expect(tree.getByRole('link', { name: bayName })).toBeVisible()
+    await expect(tree.getByRole('link', { name: /^Shelf 2$/ }).last()).toBeVisible()
   })
 
   test('create three unit labels for the product (A-12)', async ({ page }) => {
     await login(page, staff)
     await page.goto(`${SIA}/inventory?op=labels&product=${productId}`)
-    await expect(page.getByRole('combobox', { name: 'Product' })).toHaveValue(productName)
+    await expect(page.getByRole('combobox', { name: 'Product', exact: true })).toHaveValue(productName)
     await page.getByLabel('Number of units').fill('3')
     await page.getByRole('button', { name: 'Create labels' }).click()
     await expect(page.getByText('3 units created')).toBeVisible()
@@ -92,26 +93,44 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     expect(units).toHaveLength(3)
   })
 
-  test('stow: scan a shelf, then units; wrong codes are explained (A-09)', async ({ page }) => {
+  test('stow · relocate: scan a shelf, then units; wrong codes are explained (A-09, A-10)', async ({ page }) => {
     await login(page, staff)
-    await siaGo(page, 'Stow')
+    // /stow is folded into /pick's "Stow · Relocate" tab; old links land there.
+    await page.goto(`${SIA}/stow`)
+    await expect(page).toHaveURL(/\/pick\?op=stow/)
+    await expect(page.getByRole('navigation', { name: 'Pick operations' }).getByRole('button', { name: 'Stow · Relocate' })).toHaveAttribute('aria-current', 'page')
     await scanInto(page, 'Shelf', 'SHELnotashelf')
     await expect(page.getByText('No shelf with this code')).toBeVisible()
     await scanInto(page, 'Shelf', shelves[0]!)
-    await expect(page.getByText('You have selected')).toBeVisible()
+    await expect(page.getByText('Putting units on')).toBeVisible()
     await expect(page.getByText('Shelf 1', { exact: true })).toBeVisible()
 
     for (const u of units) await scanInto(page, 'Unit', u)
-    await expect(page.getByText(`${productName} · ${bayName} · shelf 1`)).toHaveCount(3)
-    await expect(page.getByText('3', { exact: true })).toBeVisible() // "3 stowed on this shelf"
+    await expect(page.getByText(`${productName} · stowed`)).toHaveCount(3)
+    await expect(page.getByText(/3\s+put on this shelf/)).toBeVisible()
+    // A unit already on a shelf moves to the chosen one (and back, so later tests find all three on shelf 1).
+    await page.getByRole('button', { name: 'Change shelf' }).click()
+    await scanInto(page, 'Shelf', shelves[1]!)
+    await scanInto(page, 'Unit', units[1]!)
+    await expect(page.getByText(`${productName} · moved here`)).toHaveCount(1)
+    await page.getByRole('button', { name: 'Change shelf' }).click()
+    await scanInto(page, 'Shelf', shelves[0]!)
+    await scanInto(page, 'Unit', units[1]!)
+    await expect(page.getByText(`${productName} · moved here`)).toHaveCount(2)
     await scanInto(page, 'Unit', `NOPRODUCT${run}_00000000`) // <productId>_<code> of a product that does not exist
     await expect(page.getByText('No unit with this barcode')).toBeVisible()
+    // Change shelf keeps the log, with the refused scan still waiting for Retry.
+    await page.getByRole('button', { name: 'Change shelf' }).click()
+    await expect(page.getByText('No unit with this barcode')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible()
+    await shot(page, 'stow-change-shelf')
+    await expect(page.getByText(`${productName} · stowed`)).toHaveCount(3)
   })
 
   test('pick with a reason; a second pick is refused (A-10)', async ({ page }) => {
     await login(page, staff)
     await siaGo(page, 'Pick')
-    await page.getByRole('button', { name: /^Pick Take units/ }).click()
+    await page.getByRole('navigation', { name: 'Pick operations' }).getByRole('button', { name: 'Pick', exact: true }).click()
     await page.getByLabel('Reason').fill('Station repair')
     await scanInto(page, 'Unit', units[0]!)
     await expect(page.getByText(`${productName} · picked`)).toBeVisible()
@@ -149,11 +168,18 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     await expect(page.getByText(/· with E2e warehouse/)).toBeVisible()
 
     await page.goto(`${SIA}/reports/assignments`)
-    const row = page.getByRole('row', { name: new RegExp(units[2]!) })
-    await expect(row).toContainText('E2e warehouse')
+    // One panel per person; each unit a row with its own Return.
+    const panel = page.getByRole('region', { name: /E2e warehouse/ })
+    const row = panel.getByRole('listitem').filter({ hasText: units[2]!.slice(-9) })
+    await expect(row).toBeVisible()
     await row.getByRole('button', { name: 'Return' }).click()
+    // One click never takes a unit off someone's name: the dialog names the unit and the person.
+    const confirm = page.getByRole('dialog')
+    await expect(confirm).toContainText('E2e warehouse')
+    await auditDialog(page, 'return-unit')
+    await confirm.getByRole('button', { name: 'Return unit' }).click()
     await expect(page.getByText(/returned\. Stow it on a shelf/)).toBeVisible()
-    await expect(page.getByRole('row', { name: new RegExp(units[2]!) })).toHaveCount(0)
+    await expect(page.getByRole('listitem').filter({ hasText: units[2]!.slice(-9) })).toHaveCount(0)
   })
 
   test('history and stock reflect every scan (A-15, A-07 Stock)', async ({ page }) => {
@@ -169,6 +195,11 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     await expect(page.getByText(/1 available · 0 reserved · 0 issued · 1 picked/)).toBeVisible()
     await expect(page.getByRole('link', { name: 'Shelf 2' })).toBeVisible()
     await page.goto(`${SIA}/reports/stock`)
-    await expect(page.getByRole('link', { name: productName })).toBeVisible() // low stock
+    // Low stock: the board draws 60 rows at a time, most urgent first; a busy dev DB pushes this product further down.
+    const low = page.getByRole('link', { name: productName })
+    const more = page.getByRole('button', { name: /^Show \d+ more of/ })
+    await expect(page.locator('.lrow').first()).toBeVisible()
+    while (!(await low.isVisible()) && (await more.isVisible())) await more.click()
+    await expect(low).toBeVisible()
   })
 })

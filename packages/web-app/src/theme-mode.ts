@@ -5,13 +5,15 @@ import { computed } from 'vue'
 const KEY = 'cimh.theme'
 type Mode = 'cimhLight' | 'cimhDark'
 
-export function storedTheme(): Mode {
+/** Stored choice, else `fallback` (SIA defaults to dark), else the OS preference. */
+export function storedTheme(fallback?: Mode): Mode {
   try {
     const v = localStorage.getItem(KEY)
     if (v === 'cimhLight' || v === 'cimhDark') return v
   } catch {
     // private mode / blocked storage
   }
+  if (fallback) return fallback
   return typeof matchMedia !== 'undefined' && matchMedia('(prefers-color-scheme: dark)').matches ? 'cimhDark' : 'cimhLight'
 }
 

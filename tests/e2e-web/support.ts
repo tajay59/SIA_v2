@@ -6,7 +6,8 @@
  */
 import { execFileSync } from 'node:child_process'
 import { createHmac, randomBytes } from 'node:crypto'
-import type { Page } from '@playwright/test'
+import AxeBuilder from '@axe-core/playwright'
+import { expect, type Page, test } from '@playwright/test'
 
 export const IDENTITY = process.env.IDENTITY_URL ?? 'http://localhost:18001'
 const API = `${IDENTITY}/api/identity/v1`
@@ -231,21 +232,34 @@ export const siaCompact = (page: Page) => (page.viewportSize()?.width ?? 1280) <
 export const shopCompact = (page: Page) => (page.viewportSize()?.width ?? 1280) < 960
 
 /**
- * Go to a SIA screen through the main navigation in either layout: header links and the Reports/Admin
- * menus on desktop, the "Open navigation" drawer on smaller screens.
+ * Go to a SIA screen through the left navigation drawer: always open on desktop, behind "Open navigation"
+ * on smaller screens. `group` (Reports/Admin) is kept for readability; the drawer lists every link.
  */
-export async function siaGo(page: Page, name: string, group?: 'Reports' | 'Admin'): Promise<void> {
+export async function siaGo(page: Page, name: string, _group?: 'Reports' | 'Admin'): Promise<void> {
   if (siaCompact(page)) {
     await page.getByRole('button', { name: 'Open navigation' }).click()
     await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click()
     return
   }
-  if (group) {
-    await page.getByRole('button', { name: group }).click()
-    await page.getByRole('link', { name, exact: true }).click()
-    return
-  }
   await page.getByRole('navigation', { name: 'Main' }).getByRole('link', { name, exact: true }).click()
+}
+
+/**
+ * The open dialog has 0 serious/critical axe issues (WCAG 2.1 A/AA + 2.2 AA). With SHOTS=<folder> set it also
+ * saves a screenshot, for looking at a change by eye.
+ */
+export async function auditDialog(page: Page, name: string): Promise<void> {
+  await expect(page.getByRole('dialog')).toBeVisible()
+  const result = await new AxeBuilder({ page })
+    .include('.v-dialog.v-overlay--active .v-overlay__content') // the dialog only: an open toast is an overlay too
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  const found = result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${name}: ${v.id} ${v.help} — ${v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")} ${n.failureSummary ?? ""}`).join(" | ")}`)
+  expect(found, found.join('\n')).toEqual([])
+  await shot(page, name)
+}
+export async function shot(page: Page, name: string): Promise<void> {
+  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage: true })
 }
 
 /**

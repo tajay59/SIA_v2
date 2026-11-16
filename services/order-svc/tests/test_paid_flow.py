@@ -181,6 +181,18 @@ def test_usd_needs_an_exchange_rate_for_cimh_lines_and_the_fee(ctx: Ctx) -> None
     assert q["adminFee"] == "10.00"
 
 
+@pytest.mark.req("O15")
+def test_zero_exchange_rate_is_refused_not_a_500(ctx: Ctx) -> None:
+    ctx.deps.fee = Decimal("20.00")
+    rid = to_quoted(ctx, "USD")
+    ctx.ok(rid, "quote-draft", {"supplierQuotes": [{"supplier": "S", "fileIds": [], "lines": [
+        {"lineId": "L1", "unitPrice": "60.00"}, {"lineId": "L2", "unitPrice": "25.00"}]}],
+        "cimh": {"lineIds": [], "exchangeRate": "0.000"}}, method="PUT")  # fmt: skip
+    r = ctx.act(rid, "send-quote")
+    assert r.status_code == 422
+    assert r.json()["code"] == "EXCHANGE_RATE_REQUIRED"
+
+
 def test_quote_must_cover_every_line(ctx: Ctx) -> None:
     rid = to_quoted(ctx)
     only_l1 = [{"supplier": "S", "fileIds": [], "lines": [{"lineId": "L1", "unitPrice": "1.00"}]}]

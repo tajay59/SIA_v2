@@ -4,7 +4,9 @@ import {
   ApiError,
   AuthCard,
   call,
+  checkForm,
   countries,
+  type FormLike,
   identity,
   isCimhEmail,
   PasswordField,
@@ -31,7 +33,7 @@ const form = reactive({
   phone: '',
   terms: false,
 })
-const valid = ref(false)
+const formRef = ref<FormLike | null>(null)
 const busy = ref(false)
 const errors = ref<Record<string, string>>({})
 const cimh = computed(() => isCimhEmail(form.email))
@@ -39,6 +41,9 @@ const cimh = computed(() => isCimhEmail(form.email))
 const field = (k: keyof typeof registerFields) => rule(registerFields[k])
 
 async function submit() {
+  if (busy.value) return
+  // The button is never disabled: every missing field is marked and the first one gets the cursor.
+  if (!(await checkForm(formRef.value))) return
   const parsed = register.safeParse(form)
   if (!parsed.success) {
     errors.value = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]))
@@ -79,7 +84,11 @@ async function submit() {
 
 <template>
   <AuthCard title="Create your account" subtitle="Request instruments and supplies from CIMH." :width="560">
-    <v-form v-model="valid" class="stack" @submit.prevent="submit">
+    <v-form ref="formRef" class="stack" @submit.prevent="submit">
+      <p v-if="!cimh" class="t-body muted after">
+        After this form you confirm your email with a code. A CIMH administrator then approves the account, usually within two
+        working days, and emails you. You can send requests once it is approved.
+      </p>
       <div class="grid-2">
         <v-text-field v-model="form.firstname" label="First name" autocomplete="given-name" :rules="[field('firstname')]" :error-messages="errors.firstname" />
         <v-text-field v-model="form.lastname" label="Last name" autocomplete="family-name" :rules="[field('lastname')]" :error-messages="errors.lastname" />
@@ -115,10 +124,16 @@ async function submit() {
           <span class="t-body">I agree that CIMH stores my details to handle my requests (Barbados Data Protection Act 2019).</span>
         </template>
       </v-checkbox>
-      <v-btn type="submit" color="primary" size="large" block :loading="busy" :disabled="!valid">Create account</v-btn>
+      <v-btn type="submit" color="primary" size="large" block :loading="busy">Create account</v-btn>
     </v-form>
     <template #footer>
       <span>Already have an account? <router-link to="/login">Log in</router-link></span>
     </template>
   </AuthCard>
 </template>
+
+<style scoped>
+.after {
+  margin: 0;
+}
+</style>

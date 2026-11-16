@@ -4124,6 +4124,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>SIA/Mobile: "This app is for CIMH staff" + link to SHOP. SHOP staff-only pages don't exist</td>
 </tr>
 <tr>
+<td>Staff opens an admin-only page (SIA)</td>
+<td>→ dashboard with a toast naming the page: "“Audit log” is for administrators only. Ask an administrator if you need something there." (no silent jump)</td>
+</tr>
+<tr>
+<td>Record ids on screen (SIA)</td>
+<td>Lists show a short reference (<code>shortRef</code>, web-app: <code>ORD…3f9a2c</code>, the last six characters); the record's own header shows the full id with Copy. Meanings are never only in a tooltip (Held legend on A-13; full unit codes on unit cards, Pick Order lines and Who has what)</td>
+</tr>
+<tr>
 <td><code>@cimh.edu.bb</code> user in SHOP</td>
 <td>Can browse. Cart icon hidden; "Add to request" replaced by a note: "CIMH staff can't submit requests"</td>
 </tr>
@@ -4160,6 +4168,18 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Skeletons for lists and detail; buttons show a spinner and are disabled while submitting</td>
 </tr>
 <tr>
+<td>Incomplete forms</td>
+<td>Submit buttons are <strong>not</strong> disabled for missing input: pressing one marks every missing or wrong field and puts the cursor in the first (<code>checkForm</code>). A save button is disabled only when nothing has changed, and the save bar says so. Exception: small dialogs whose single field carries the hint (reason dialogs; Erase account, where typing the email is the safeguard)</td>
+</tr>
+<tr>
+<td>Actions that can't be undone, or that email someone</td>
+<td>Ask first in a dialog that names the record and what happens (send quote, return a unit, remove an address, erase, merge). The safe button is named for what it keeps ("Keep editing", "Keep issued")</td>
+</tr>
+<tr>
+<td>Narrow screens (SIA)</td>
+<td>No page scrolls sideways at 360 px; tab strips and chip rows scroll in place and keep the active tab on screen. Tables that would clip become stacked entries: the request timeline in narrow panels, quote-builder lines (two rows below 900 px of panel, cards below 600; laid out by panel width, not window width). Long lists are capped: the dashboard queue shows 10 on phones with a link to the desk, the Places tree 40 sites with "Show all" (the open site always listed). A record opened "beside" a list (<code>?open=</code>) goes to its own page on narrow screens. Emails keep their domain whole; only the part before @ is shortened</td>
+</tr>
+<tr>
 <td>Theme</td>
 <td>Light/dark toggle, remembered per device</td>
 </tr>
@@ -4185,8 +4205,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/</code></td>
 <td>Home</td>
 <td>public</td>
-<td>Hero, featured MET/RAD products, Pro Bono teaser, how requesting works (3 steps)</td>
-<td>Product → S-03 · Browse → S-02 · Pro Bono → S-04 · Sign up → S-13</td>
+<td>Hero carousel (the only large headline; no auto-advance, arrows + dots); logo band with the visitor's next step (log in / register, or My requests / catalogue); <strong>How requesting works</strong> (4 steps: approved account → request without prices → quote valid 30 days → signed agreement and delivery) with the Pro Bono entry; Radar and Met-service product rows (sliders; on phones four cards in two columns; a failed load shows <strong>Retry</strong>, not "empty")</td>
+<td>Product → S-03 · Browse → S-02 · Pro Bono → S-04 · Register → S-13 · My requests → S-10</td>
 </tr>
 <tr>
 <td>S-02</td>
@@ -4201,8 +4221,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/catalogue/[id]</code></td>
 <td>Product detail</td>
 <td>public</td>
-<td>Images, specs, availability (<strong>no price</strong>), Pro Bono badge and max per request</td>
-<td>Quantity + <strong>Add to request</strong> (customer) ↺ cart badge, toast "Added" with "View cart" → S-07 · Not logged in → S-16 (<code>returnTo</code>)</td>
+<td>Images, specs, availability (<strong>no price</strong>), Pro Bono badge and max per request, "How requesting works" (folded). <strong>No photos:</strong> no photo area; name, make/model, description and details take the main column</td>
+<td>Quantity + <strong>Add to cart</strong> (customer) ↺ cart badge, toast "Added … to your cart" with "View cart" → S-07 · Not logged in → <strong>Log in to request</strong> S-16 (<code>returnTo</code>) or Register → S-13</td>
 </tr>
 <tr>
 <td>S-04</td>
@@ -4225,16 +4245,16 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/cart</code></td>
 <td>Cart</td>
 <td>customer</td>
-<td>Lines (snapshot, qty stepper, remove); Pro Bono lines grouped separately; note: "Paid and Pro Bono items become two requests"</td>
-<td>Qty change ↺ · Remove ↺ · <strong>Continue</strong> → S-08 · Empty → S-02</td>
+<td>Lines (snapshot, qty stepper with a typed quantity (0 removes), remove) under "Items to be quoted"; Pro Bono lines grouped separately; notes: "Paid and Pro Bono items become two requests", "Nothing is paid here"</td>
+<td>Qty change ↺ · Remove ↺ · <strong>Continue to quote details</strong> → S-08 · Add more items / Empty → S-02</td>
 </tr>
 <tr>
 <td>S-08</td>
 <td><code>/cart</code> (steps 2–3)</td>
 <td>Submit request</td>
 <td>customer</td>
-<td>Shipping address (saved list or new), billing (same as shipping by default), currency <strong>BBD/USD</strong> (only if paid lines), notes, review</td>
-<td><strong>Submit</strong> → S-09 · Back → S-07</td>
+<td>Step <strong>Quote details</strong>: quote currency <strong>BBD/USD</strong> (only if paid lines; BBD preselected) and invoice address (saved list or new). Step <strong>Delivery</strong>: deliver to the invoice address or another one, notes, "Check before you send" (items, currency, invoice to, deliver to; "not a commitment to pay")</td>
+<td><strong>Submit request</strong> → S-09 · Back → S-07 · Continue / Submit without an address → the missing address is named beside it</td>
 </tr>
 <tr>
 <td>S-09</td>
@@ -4249,7 +4269,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests</code></td>
 <td>My requests</td>
 <td>customer</td>
-<td>Tabs <strong>Mine / My organisation</strong>; filters status, year, requester; list with status chip and "action needed" badge (quote ready, agreement to sign)</td>
+<td><strong>Waiting for you</strong> on top (own requests with a quote to review or an agreement to sign, soonest expiry first, "valid until" + days left); tabs <strong>Mine / My organisation</strong>; filters status, year; list rows titled by what was requested (first item "and n more"), id as a small reference, status chip. Empty with filters set → <strong>Clear filters</strong> Ids shown as <code>shortRef</code> (full on hover). Status and Year appear only once there is something to filter (Mine / My organisation always).</td>
 <td>Row → S-11</td>
 </tr>
 <tr>
@@ -4257,7 +4277,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]</code></td>
 <td>Request detail</td>
 <td>customer (owner or same org)</td>
-<td>Status timeline; lines; <strong>Quote panel</strong> (when QUOTED+): supplier quote(s) and the CIMH option side by side per line, totals, expiry countdown, PDFs; documents; shipping (carrier, tracking link); cancel</td>
+<td>Title = what was requested (id as reference); banner saying where the request stands and who acts next (customer's turn = primary tone + action; waiting on CIMH = neutral; amber only when the quote expires within 7 days). <strong>Quote panel first while QUOTED / AWAITING_AGREEMENT</strong>: valid until + days left, labelled <strong>Agreement total</strong>, supplier and CIMH option per line with the <strong>chosen</strong> one marked; afterwards it follows status and items. Status timeline; items (linked to the catalogue; an empty paid list is not shown on Pro Bono requests); delivery (address, currency, carrier, tracking link); files; decline / cancel Files: CIMH-made documents named by kind ("CIMH quote · PDF"), uploads by their name. Cart and request pages use the slim footer (contact line only).</td>
 <td><strong>Choose options</strong> (QUOTED) → S-12 · <strong>Decline</strong> ⧉ reason → ↺ · <strong>Cancel</strong> ⧉ reason → ↺ · Tracking link → carrier site (new tab) · Document → download</td>
 </tr>
 <tr>
@@ -4265,7 +4285,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]/agreement</code></td>
 <td>Choose and sign</td>
 <td>requester</td>
-<td>Step 1: radio CIMH/SUPPLIER per line with both options, live total. Step 2: <strong>Download agreement</strong> (PDF, appears when generated; ↺ polling). Step 3: <strong>Upload signed agreement</strong> (PDF/JPG/PNG, ≤ 20 MB)</td>
+<td>Step 1: radio CIMH/SUPPLIER per line with both options, live total (phones: one card per line with full-width option tiles). <strong>Summary</strong> on every step (chosen source and amount per line, admin fee, total, valid until, ship-to): beside the stepper on wide screens, first on phones in steps 2–3. Step 2: <strong>Download agreement</strong> (PDF, appears when generated; ↺ polling). Step 3: what happens next (staff check the signature, CIMH stock reserved, supplier items ordered and shipped direct) + <strong>Upload signed agreement</strong> (scan or phone photo; PDF/JPG/PNG, ≤ 20 MB) Confirm choices is never disabled: with lines still open it says so and focuses the first one.</td>
 <td>Confirm choices → step 2 (status AWAITING_AGREEMENT) · Change choices → step 1 (new agreement) · Upload → <strong>Accept</strong> → S-11 (ACCEPTED, toast) · Cancel → S-11</td>
 </tr>
 <tr>
@@ -4273,7 +4293,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/signup</code></td>
 <td>Sign up</td>
 <td>public</td>
-<td>Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
+<td>Note on top: email code, then admin approval (usually two working days) before requests can be sent. Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
 <td>Submit → S-14</td>
 </tr>
 <tr>
@@ -4290,14 +4310,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Awaiting approval</td>
 <td>public</td>
 <td>"An administrator will review your account; you'll get an email"</td>
-<td>Home → S-01</td>
+<td><strong>Browse the catalogue</strong> → S-02 · Home → S-01</td>
 </tr>
 <tr>
 <td>S-16</td>
 <td><code>/login</code></td>
 <td>Log in</td>
 <td>public</td>
-<td>Email, password, (code if MFA)</td>
+<td>Email, password, (code if MFA); contact line "Trouble logging in? Write to info@cimh.edu.bb" (sign-in pages have no footer)</td>
 <td>Success → <code>returnTo</code> or S-10 · Status errors as §2 · Forgot → S-17 · Sign up → S-13</td>
 </tr>
 <tr>
@@ -4313,7 +4333,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/reset-password?email=</code></td>
 <td>Reset password</td>
 <td>public</td>
-<td>Code + new password</td>
+<td>6-digit code (six boxes, as S-14; no auto-submit) + new password</td>
 <td>Success → S-16 "Password changed"</td>
 </tr>
 <tr>
@@ -4322,15 +4342,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Profile</td>
 <td>auth</td>
 <td>Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme, <strong>your data</strong></td>
-<td>Save ↺ (If-Match) · Change email ⧉ → code step · Download my data · Ask to delete ⧉ (password) · Log out → S-01</td>
+<td>Save ↺ (If-Match) · Change email ⧉ → code step · Remove address ⧉ (confirm; sent requests keep their copy) · Download my data · Ask to delete ⧉ (password) · Log out → S-01</td>
 </tr>
 <tr>
 <td>S-20</td>
 <td><code>/[...notFound]</code></td>
 <td>Not found</td>
 <td>public</td>
-<td>Message + links</td>
-<td>→ S-01</td>
+<td>Message, catalogue search field, links (catalogue, My requests for customers, home); signed out: "log in to see it" with <code>returnTo</code></td>
+<td>→ S-02 · S-10 · S-01 · S-16</td>
 </tr>
 </tbody>
 </table>
@@ -4354,7 +4374,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/</code></td>
 <td>Dashboard</td>
 <td>staff</td>
-<td>Counters: new requests, quoting, agreements to verify, to purchase, to pick, to ship, quotes expiring ≤ 3 days, low stock, pending approvals (admin)</td>
+<td>Counters: new requests, quoting, agreements to verify, to purchase, to pick, to ship, quotes expiring ≤ 3 days, low stock, pending approvals (admin) "Products low on stock" and "accounts waiting for approval" become an amber cell (with "Restock board →") when the count is above 0.</td>
 <td>Each counter → A-02 filtered / A-13 / A-16</td>
 </tr>
 <tr>
@@ -4362,15 +4382,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests</code></td>
 <td>Request desk (queue)</td>
 <td>staff</td>
-<td>Filters: status (multi), type, year, organisation, customer, search; sort by <strong>waiting time</strong>; columns: id, customer, org, type, status, waiting days, expiry</td>
-<td>Row → A-03</td>
+<td>Stage tabs with counts (Open, New, Quoting, Quoted, Awaiting signature, To verify, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>waiting time</strong>); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows titled by what was requested (<code>requestTitle</code>), customer/organisation as the second line, <code>shortRef</code> as the reference.</td>
+<td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03</td>
 </tr>
 <tr>
 <td>A-03</td>
 <td><code>/requests/[id]</code></td>
 <td>Request (staff)</td>
 <td>staff</td>
-<td>Customer + org, lines (with <code>cimhAvailable</code>, choice, reservation), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code></td>
+<td>Customer + org, lines (with <code>cimhAvailable</code>, choice, reservation), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code> While QUOTED the customer acts next, so Revise quote is an outlined (secondary) button; Pro Bono requests have no Invoiced step. Title = what was requested; under it customer · organisation · <code>shortRef</code> (full id on hover and copied by the button). Files panel without its own card (<code>RequestFiles bare</code>); timeline "By" shows the part before @ for actors without a name.</td>
 <td><code>start-quoting</code> ↺ → A-04 · <code>send-quote</code> (from A-04) · <strong>Verify agreement</strong> (view signed PDF ⧉) → <code>purchase-orders</code> ⧉ (supplier, PO no., lines, ☑ agreement verified) ↺ · <code>reject-agreement</code> ⧉ reason ↺ · <code>approve</code> / <code>reject</code> (Pro Bono) ↺ · <strong>Pick</strong> → A-10 (prefilled) · <code>ship</code> ⧉ carrier, tracking (not for HAND), note, cost, date, notify ↺ · <code>deliver</code> ⧉ ↺ · <code>cancel</code> ⧉ ↺</td>
 </tr>
 <tr>
@@ -4378,143 +4398,151 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]/quote</code></td>
 <td>Quote builder</td>
 <td>staff</td>
-<td>Per line: CIMH option (if fully in stock: cost + admin fee, auto-priced), supplier price inputs per supplier, upload supplier PDFs; <strong>exchange rate</strong> (USD requests with a CIMH option); totals; draft autosave (<code>quote-draft</code>)</td>
-<td><strong>Send quote</strong> → A-03 (QUOTED; customer emailed) · Incomplete → inline errors</td>
+<td>Per line: CIMH option (if fully in stock: cost + admin fee, auto-priced), supplier price inputs per supplier, upload supplier PDFs; <strong>exchange rate</strong> (USD requests with a CIMH option); totals; draft autosave (<code>quote-draft</code>) Summary: admin fee 0 reads "None set"; a range shows two rows (Agreement total, lowest / highest). Header shows <code>shortRef</code>.</td>
+<td><strong>Send quote…</strong> ⧉ confirm (recipient, quote version, lines priced, totals, "can't be recalled") → <strong>Email the customer</strong> → A-03 (QUOTED; customer emailed) · Incomplete → inline errors</td>
 </tr>
 <tr>
 <td>A-05</td>
 <td><code>/products</code></td>
 <td>Products</td>
 <td>staff</td>
-<td>Search, filters (type, department, sellable, Pro Bono, inactive), table with stock count</td>
-<td>Row → A-07 · New → A-06</td>
+<td>Filter strip (search incl. serials, type chips, More filters: department, shown to customers, Pro Bono, inactive), product list (rows or photos) with a stock meter; wide screens open the full A-07 record beside the list (<code>?open=&lt;id&gt;</code>) Stock meter states: a number + bar; "Low" amber at or under the alert; zero = "None" in red with an alert level, neutral without one; no stock record = "Not counted" (no number, no bar). The list drops the Model number column when no product on the page has one.</td>
+<td>Row → A-07 beside the list (own page on narrow screens) · New → A-06</td>
 </tr>
 <tr>
 <td>A-06</td>
 <td><code>/products/new</code></td>
 <td>New product</td>
 <td>staff</td>
-<td>Form (all ProductInput fields; <strong>Pro Bono</strong> toggle required, max per request when on)</td>
-<td>Save → A-07 (then add images)</td>
+<td>Form in sections (all ProductInput fields; <strong>Pro Bono</strong> choice required, max per request when on) + <strong>Photos</strong> section: add (pick or drop, JPEG/PNG/WebP ≤ 20 MB, up to 10), preview, reorder, make primary, remove, background-removal option; photos stay in the browser until Create</td>
+<td>Create → product created, photos uploaded (primary first) → A-07 Images tab showing them as Processing… until media-worker finishes</td>
 </tr>
 <tr>
 <td>A-07</td>
 <td><code>/products/[id]</code></td>
 <td>Product</td>
 <td>staff</td>
-<td>Tabs: Details (edit), Images (upload, background-removal option, set primary, remove), Stock (by location), History</td>
+<td>Header (name, stock meter vs alert level, Create labels); tabs Overview (photos, description, facts, shelves), Edit details (sectioned form; Deactivate isolated below it), Images (upload, background-removal option, set primary, remove), Stock (by location), History</td>
 <td>Save ↺ · Deactivate ⧉ · Create labels → A-12 (prefilled)</td>
 </tr>
 <tr>
 <td>A-08</td>
-<td><code>/inventory?op=location</code></td>
-<td>Inventory → <strong>Location</strong> (legacy arrow tabs)</td>
+<td><code>/inventory?code=&lt;site or location&gt;</code>, <code>?op=site</code></td>
+<td>Inventory: <strong>Places</strong> tree + record (storeroom map)</td>
 <td>staff</td>
-<td>‹ Site · Location · Shelves › forms; below, tree site → location → shelves with printable QR codes</td>
-<td>Register site / Create location / Add shelves (QR sheet shown) · Shelf → A-11</td>
+<td>Scan field + product search on top; left, tree site → location → shelves (always shown); right, the open place: site (locations + Add a location), location (shelf grid, shelf QR codes, Add shelves), or Register site</td>
+<td>Register site → opens the site · Create location → opens the location · Add shelves (new shelves' QR sheet shown inline) · Shelf → A-11 · a location opened by its code alone finds its site and opens (site added to the URL)</td>
 </tr>
 <tr>
 <td>A-09</td>
-<td><code>/stow</code></td>
-<td>Stow (legacy numbered steps)</td>
+<td><code>/stow</code> → <code>/pick?op=stow</code></td>
+<td>Stow (now the <strong>Stow · Relocate</strong> tab of A-10)</td>
 <td>staff</td>
-<td>1. Select shelf (scan, validated, "You have selected Location › Shelf n"); 2. Scan units (repeat); running ✓/✗ list with the reason</td>
-<td>Each scan ↺ (Retry reuses its Idempotency-Key) · Change shelf → step 1</td>
+<td><code>/stow</code> redirects to the A-10 tab (old links and bookmarks keep working). See A-10</td>
+<td>—</td>
 </tr>
 <tr>
 <td>A-10</td>
 <td><code>/pick</code></td>
-<td>Pick (legacy operation buttons)</td>
+<td>Pick (tabs; opens on Pick Order)</td>
 <td>staff</td>
-<td><strong>Pick</strong> (reason, then scan units) · <strong>Relocate</strong> (target shelf, then units) · <strong>Issue / Return</strong> (person, then units; legacy self-stow) · <strong>Pick Order</strong> (request lines; with P5)</td>
-<td>Scan ↺ · Request done → A-03</td>
+<td>Tabs <strong>Pick Order</strong> · <strong>Pick</strong> · <strong>Stow · Relocate</strong> · <strong>Issue / Return</strong>. <strong>Pick Order</strong>: queue "Ready to pick" (APPROVED, PICKING, PURCHASING; oldest first; scan/type a request id) beside the open request (Unit scan, lines with reserved units and progress, picked of total). Every tab: set-up rail left, work pane right (Unit scan + scan log), stacked on phones. <strong>Pick</strong>: Purpose rail (chips Repair, Station visit, Calibration, Loan, or free text); a scan without a reason is logged as refused. <strong>Stow · Relocate</strong> (A-09 folded in, <code>?op=stow</code> or <code>?op=relocate</code>): shelf rail (scan, validated, then a shelf card "Putting units on Shelf n" with Location, Site, the count put on this shelf, Change shelf); each unit scan stows it there, or moves it there when it already sits on another shelf (stow refused with <code>UNIT_ALREADY_STOWED</code> → relocate); Change shelf keeps the log, each entry names its shelf, and a refused scan is retried on the shelf it was scanned for. <strong>Issue / Return</strong>: mode + person rail (legacy self-stow); a return links to Stow · Relocate. Pick Order lines list each reserved, unpicked unit with where it sits (Site › Location › Shelf n). On the Pick tab the Unit field stays plain with a dashed edge until a purpose is chosen</td>
+<td>Scan ↺ (Retry: same Idempotency-Key after a connection or server error, a new one after a refusal) · Request done → A-03</td>
 </tr>
 <tr>
 <td>A-11</td>
-<td><code>/inventory?op=lookup&amp;code=</code></td>
-<td>Inventory → <strong>Lookup</strong></td>
+<td><code>/inventory?code=</code> (old <code>?op=lookup&amp;code=</code> still works)</td>
+<td>Inventory: record beside the Places tree</td>
 <td>staff</td>
-<td>Scan/enter a shelf (units, paged), unit (card) or product code, or search a product by name (stock by location)</td>
-<td>Unit card: Move · Issue · Return · Pick ↺ · Create labels → A-12</td>
+<td>Scan/enter a shelf (units, paged, shelf QR label), unit (card) or product code, or search a product by name (stock meter, counts, where it is by shelf); the tree marks the shelf</td>
+<td>Unit card: Where links to its shelf; actions are outlined pill buttons with icons (open one filled): Move · Issue to a person · Return · Pick ↺ · Create labels → A-12</td>
 </tr>
 <tr>
 <td>A-12</td>
 <td><code>/inventory?op=labels&amp;product=</code></td>
-<td>Inventory → <strong>Labels</strong> (legacy "Product"; products are created in A-06)</td>
+<td>Inventory: <strong>Create labels</strong> (beside the Places tree; products are created in A-06)</td>
 <td>staff</td>
 <td>Product, quantity, serials (optional, one per unit)</td>
-<td>Create → QR label sheet (print) + legacy CSV; server PDF with document-svc (P6)</td>
+<td>Create → QR label sheet (print) + legacy CSV + server PDF · Go to Stow · More labels</td>
 </tr>
 <tr>
 <td>A-13</td>
 <td><code>/reports/stock</code></td>
 <td>Stock levels</td>
 <td>staff</td>
-<td>Low stock (available ≤ alert level) with available/alert/reserved/issued/picked; any product's stock via search</td>
-<td>→ A-07 Stock tab</td>
+<td>Restock board: low stock (available ≤ alert level; none left first, then furthest under) with meter and held total, beside the open product's stock record (<code>?open=</code>): meter + verdict, reserved/issued/picked, units by site and shelf; the finder opens any product into the record A legend under the list says what Held means (reserved + issued + picked); the record splits it.</td>
+<td>→ A-07 Stock tab, A-12 labels, shelf on A-08</td>
 </tr>
 <tr>
 <td>A-14</td>
 <td><code>/reports/assignments</code></td>
 <td>Who has what</td>
 <td>staff</td>
-<td>Units issued to people, grouped by person; filter one person</td>
-<td>Return ↺</td>
+<td>Graphite Console: filter strip (one person; unit and people counts), then one panel per person (most units first) with a row per unit (product link, unit code, serial, last on a shelf) and its own Return, kept on screen at 360 px (the button wraps under the text); empty state links to Issue / Return Filter "Person" (placeholder Everyone); person name as a title (not an uppercase eyebrow); unit codes shortened (<code>shortUnit</code>, full code on hover).</td>
+<td>Return ⧉ (confirm names the unit and the person) ↺</td>
 </tr>
 <tr>
 <td>A-15</td>
 <td><code>/reports/history</code></td>
 <td>Movement history</td>
 <td>staff</td>
-<td>Filters unit, user, operation, dates</td>
-<td>—</td>
+<td>Day ledger: movements grouped by Barbados day (newest first, count per day); rows = time, operation, unit, readable place (from → to), person/request/reason, who scanned. Filters: unit code, scanned by, date presets (any time, today, 7 days, 30 days, custom range), operation chips</td>
+<td>→ unit / shelf on A-08, request A-03</td>
 </tr>
 <tr>
 <td>A-16</td>
 <td><code>/admin/approvals</code></td>
 <td>Pending accounts</td>
 <td>admin</td>
-<td>Oldest first; organisation text, email domain, suggested organisation match; checkbox multi-select</td>
+<td>Review queue, oldest first: person + email (domain emphasised), organisation given, email domain, wait (amber "Overdue" after 48 h); suggested organisation match in the dialog; checkbox multi-select, bulk actions in the panel head Each row has a match line: the email domain belongs to an organisation on record, the name given matches one, a personal email (Gmail etc.) never counts, or no organisation yet (create one when approving).</td>
 <td><strong>Approve</strong> ⧉ (pick/create organisation, role) ↺ · <strong>Deny</strong> ⧉ reason ↺ · Bulk approve/deny ⧉ (207 results) ↺</td>
+</tr>
+<tr>
+<td>A-00</td>
+<td><code>/admin</code></td>
+<td>Admin overview</td>
+<td>staff (admin parts admin only)</td>
+<td>"Needs an administrator": oldest 5 waiting for approval, every open deletion request (rows open the account beside the list); admin pages index</td>
+<td>→ A-16 · → A-17 (<code>?open=</code>) · links to A-17–A-21</td>
 </tr>
 <tr>
 <td>A-17</td>
 <td><code>/admin/accounts</code> · <code>/admin/accounts/[id]</code></td>
 <td>Accounts</td>
 <td>admin (staff read)</td>
-<td>List with filters (incl. "asked to be deleted"); detail with status history</td>
+<td>Filter strip (name/email prefix, role, "Asked to be deleted", status chips) + list; the account record opens beside it on wide screens (<code>?open=&lt;id&gt;</code>), own page on phones: header (status, role), Next step well (approve/deny, deletion request, suspended, admin without MFA), Profile + Sign-in and access facts, status history; actions at the foot (Suspend is reversible, a plain button); <strong>Personal data</strong> group apart: Export data and the only red button, "Erase permanently…"</td>
 <td>Role ⧉ · Suspend ⧉ / Reactivate · Export data · Erase ⧉ (reason + type the email) · → A-20 filtered</td>
 </tr>
 <tr>
 <td>A-18</td>
 <td><code>/admin/organisations</code></td>
 <td>Organisations</td>
-<td>admin</td>
-<td>List, members, aliases, domains</td>
-<td>New/Edit ⧉ · <strong>Merge</strong> ⧉ target</td>
+<td>admin (staff read)</td>
+<td>Search + list (name, other names, type, country, domains, members); the organisation record opens beside it (<code>?open=&lt;id&gt;</code>, <code>?open=new</code> to create; alone with a way back below 1280 px): facts, members (first 20, linked to A-17), Edit details form with save bar, Merge a duplicate apart at the foot</td>
+<td>New/Save · <strong>Merge</strong> ⧉ (confirm) target</td>
 </tr>
 <tr>
 <td>A-19</td>
 <td><code>/admin/settings</code></td>
 <td>Settings</td>
 <td>admin</td>
-<td>Tabs: Fees (admin fee) · Email lists · Workflow (quote validity, reminders, purge, cart inactivity) · Reference (departments, projects)</td>
-<td>Save ↺</td>
+<td>One frame: section index (<code>?tab=</code> fees · lists · workflow · reference, unsaved dot) beside the open section: Fees ledger (once per CIMH-stock request, total) · Email lists (who, count, warning when a list is empty) · Workflow grouped Quotes/Accounts/Carts with explanations · Reference (departments; projects incl. inactive, rename, toggle, add); sticky save bar per section; one save model: every edit waits for the section's Save (project names and Active included; only Add project acts at once)</td>
+<td>Save ↺ · Leaving with unsaved sections ⧉ "Leave without saving?" (lists them; also on tab close)</td>
 </tr>
 <tr>
 <td>A-20</td>
 <td><code>/admin/audit</code></td>
 <td>Audit log</td>
 <td>admin</td>
-<td>Filters entity, actor, action, dates</td>
-<td>Entity link → its screen</td>
+<td>Day ledger (Barbados days, newest first): filters action, record id, date presets (Any time/Today/7/30 days/Custom), record kind chips, all in the URL; entry = time, action in words + code, from → to, reason, record, who + role Entries read in words: action as a sentence (code kept small for the filter), people and organisations by name, services as "System", change details as "Field: value" (never JSON); runs of 2+ routine sign-in entries fold into one line with "Show them".</td>
+<td>Record link → A-17 / A-18 record</td>
 </tr>
 <tr>
 <td>A-21</td>
 <td><code>/login</code> · <code>/profile</code></td>
 <td>Login / Profile</td>
 <td>public / staff</td>
-<td>As S-16 / S-19; non-staff → "staff only" message</td>
+<td>As S-16 / S-19; non-staff → "staff only" message. Sign-in card: always the dark console panel (whatever theme is stored), headed by the SIA mark + "SIA · CIMH Stores staff app". Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
 <td>—</td>
 </tr>
 </tbody>
@@ -4691,7 +4719,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>2</td>
 <td>S-03</td>
-<td>Add to request (qty; Pro Bono capped)</td>
+<td>Add to cart (qty; Pro Bono capped)</td>
 <td>Toast; badge ↺</td>
 </tr>
 <tr>
@@ -4998,7 +5026,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-01</td>
-<td>Legacy Home structure: hero carousel (owner's image, radar, AWS), logo band with the "Online Stores" sign-in card, "Radar Spares" and "Met-service Spares" rows. Hero files in <code>web/shop/src/assets/hero/</code></td>
+<td>Hero carousel (owner's image, radar, AWS; plain copy), logo band with the next-step card ("Request items" for visitors), <code>components/HowRequestingWorks.vue</code> (also folded on S-03), "Radar spares" and "Met-service spares" rows with Retry on a failed load. One headline only (the old band title is gone). Hero files in <code>web/shop/src/assets/hero/</code></td>
 </tr>
 <tr>
 <td>S-02, S-04, S-06</td>
@@ -5006,15 +5034,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-03</td>
-<td>Legacy InventoryItem structure: thumbnail strip + large photo left, one card right (name, availability, Pro Bono limit, description, details, units per pack, quantity, <strong>Add to request disabled</strong> until order-svc, P5). No price or serials</td>
+<td>Thumbnail strip + large photo left, one card right (name, availability, Pro Bono limit, description, details, units per pack, quantity, <strong>Add to cart</strong>, toast with "View cart", folded "How requesting works"). Without photos the facts lead and the card keeps availability + action. 1200 px container (as the header). Product tiles without a photo are a shorter "nameplate" (make, model, model number). No price or serials</td>
 </tr>
 <tr>
 <td>A-05, A-06, A-07</td>
-<td>Legacy SIA structure: list with grid/list toggle, search, filters, stock count; product page = photos + description left, Info card right, then tabs Details (edit, explicit Pro Bono choice), Images (upload, background removal, processing tiles, primary, remove), History (admins). "Create labels" comes with P4</td>
+<td>Graphite Console list beside record (owner choice 2026-11-12, replaces the legacy structure): filter strip, product list, <code>components/ProductRecord.vue</code> beside it (also the <code>/products/[id]</code> page); shared <code>StockMeter</code> (available against the alert level, amber "Low", red "None"); form in sections with a section index and a sticky save bar</td>
 </tr>
 <tr>
 <td>Shells</td>
-<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer, no top bar on sign-in pages; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = legacy split layout on the met-enclosure photo</td>
+<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer; sign-in pages show only their card (no top bar, bottom navigation or footer; the logo links home); SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = legacy split layout on the met-enclosure photo</td>
 </tr>
 <tr>
 <td>A-01</td>
@@ -5025,7 +5053,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Fees, email lists (active staff/admins), workflow, reference (departments; projects incl. inactive, rename, toggle)</td>
 </tr>
 <tr>
-<td>S-10</td>
+<td>S-10 Ids shown as <code>shortRef</code> (full on hover).</td>
 <td>Empty state until order-svc (P5)</td>
 </tr>
 <tr>
@@ -5207,7 +5235,19 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>hairline-strong</code></td>
 <td><code>#C7D0DA</code></td>
 <td><code>#3A4552</code></td>
-<td>Input borders, emphasised dividers</td>
+<td>Emphasised dividers, card and button outlines</td>
+</tr>
+<tr>
+<td><code>field-outline</code></td>
+<td><code>#7F8B98</code></td>
+<td><code>#6E7A87</code></td>
+<td>The 1 px edge of every input at rest. At least 3:1 on <code>surface</code>, <code>bg</code> and <code>surface-2</code> (WCAG 1.4.11, tested)</td>
+</tr>
+<tr>
+<td><code>photo-ground</code></td>
+<td><code>#FFFFFF</code></td>
+<td><code>#C9D1DA</code></td>
+<td>Ground behind product photos in SHOP. Photos are multiplied onto it, so dark mode dims them instead of showing white rectangles (SIA keeps white)</td>
 </tr>
 <tr>
 <td><code>ink</code></td>
@@ -5606,7 +5646,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <p>States: hover → <code>primary-hover</code>; press → <code>primary-press</code>; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.</p>
 <h3 id="82-inputs-and-forms">8.2 Inputs and forms</h3>
 <ul>
-<li>Outlined fields, <code>r-md</code>, <code>hairline-strong</code> border → <code>primary</code> 2 px on focus. Label above the field, never only a placeholder. Helper/error text below in <code>caption</code>; errors in <code>error</code> with an icon.</li>
+<li>Fields are Vuetify <code>solo-inverted</code>, flat (owner, 2026-11-12), <code>r-md</code>: at rest the field has the colour of its card plus a 1 px <code>field-outline</code> edge → raised fill and a 2 px <code>primary</code> edge on focus; the edge turns <code>error</code> on an error. A 6-digit code is always six boxes (<code>v-otp-input</code>). Label above the field, never only a placeholder. Helper/error text below in <code>caption</code>; errors in <code>error</code> with an icon.</li>
 <li>Required fields marked "(required)" in the label, not with a bare asterisk.</li>
 <li><strong>Money input</strong>: currency code prefix, <code>tnum</code>, right-aligned. <strong>Exchange rate</strong>: mono, with a "BBD per 1 USD" suffix.</li>
 <li><strong>Scan input</strong> (SIA/Mobile): large, autofocused, mono, with a barcode icon. It clears after each scan, and the result chip appears beside it.</li>
@@ -5871,7 +5911,8 @@ export const cimhDark = {
   },
   variables: { 'border-color': '#3A4552', 'border-opacity': 1, 'medium-emphasis-opacity': 0.72 },
 }
-// defaults: VBtn { rounded: 'md', variant: 'flat' }, VTextField/VSelect { variant: 'outlined', rounded: 'md' },
+// both themes also carry 'field-outline' and 'photo-ground' (§3 table), read by base.css and ProductImage.
+// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'md' },
 // VCard { rounded: 'lg', variant: 'outlined' }, VChip { rounded: 'sm', size: 'small' }
 // SHOP density 'default'; SIA density 'compact'.
 </code></pre>
@@ -5900,7 +5941,7 @@ export const cimhDark = {
 <td>Show prices on catalogue or product pages</td>
 </tr>
 <tr>
-<td>Use real product photos on white</td>
+<td>Use real product photos on white (<code>photo-ground</code>: dimmed in SHOP's dark theme)</td>
 <td>Use stock photos, illustrations, gradients</td>
 </tr>
 <tr>

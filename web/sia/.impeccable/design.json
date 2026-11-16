@@ -1,0 +1,673 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-12T17:05:41+00:00",
+  "title": "Design System: SIA (CIMH Stores staff app)",
+  "extensions": {
+    "colorMeta": {
+      "graphite-ground": {
+        "role": "neutral",
+        "displayName": "Graphite Ground",
+        "canonical": "#16191D",
+        "tonalRamp": [
+          "#0A0B0C",
+          "#232426",
+          "#3E4043",
+          "#5B5E62",
+          "#7D8085",
+          "#A2A5A9",
+          "#C9CBCD",
+          "#EDEEF0"
+        ]
+      },
+      "graphite-panel": {
+        "role": "neutral",
+        "displayName": "Graphite Panel",
+        "canonical": "#1C2026",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3D4044",
+          "#5A5E64",
+          "#7C8187",
+          "#A1A5AA",
+          "#C8CBCF",
+          "#EDEEF1"
+        ]
+      },
+      "graphite-raised": {
+        "role": "neutral",
+        "displayName": "Graphite Raised",
+        "canonical": "#22272E",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3C4045",
+          "#595E65",
+          "#7B8188",
+          "#A0A5AB",
+          "#C8CBCF",
+          "#EDEFF1"
+        ]
+      },
+      "seam": {
+        "role": "neutral",
+        "displayName": "Seam",
+        "canonical": "#30363D",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3C4045",
+          "#585E65",
+          "#7B8188",
+          "#A0A5AB",
+          "#C7CBCF",
+          "#ECEFF1"
+        ]
+      },
+      "console-ink": {
+        "role": "neutral",
+        "displayName": "Console Ink",
+        "canonical": "#E6EDF3",
+        "tonalRamp": [
+          "#0A0B0C",
+          "#222426",
+          "#3C4043",
+          "#595E63",
+          "#7B8186",
+          "#A1A5A9",
+          "#C8CBCE",
+          "#EDEFF0"
+        ]
+      },
+      "console-ink-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#9DA7B3",
+        "tonalRamp": [
+          "#090B0E",
+          "#212429",
+          "#3B4047",
+          "#575E68",
+          "#78818C",
+          "#9EA5AE",
+          "#C6CBD1",
+          "#ECEFF2"
+        ]
+      },
+      "action-blue": {
+        "role": "primary",
+        "displayName": "Action Blue",
+        "canonical": "#5CC2FF",
+        "tonalRamp": [
+          "#000D18",
+          "#00273E",
+          "#004568",
+          "#006595",
+          "#2989BD",
+          "#6DADD6",
+          "#A6D1EE",
+          "#DAF3FF"
+        ]
+      },
+      "on-action": {
+        "role": "primary",
+        "displayName": "On Action",
+        "canonical": "#0D1117",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3D4045",
+          "#595E65",
+          "#7C8188",
+          "#A1A5AB",
+          "#C8CBCF",
+          "#EDEEF1"
+        ]
+      },
+      "action-subtle": {
+        "role": "primary",
+        "displayName": "Action Wash",
+        "canonical": "#0B2A3D",
+        "tonalRamp": [
+          "#060C10",
+          "#19262E",
+          "#2F4250",
+          "#476174",
+          "#678499",
+          "#91A8B9",
+          "#BDCDD9",
+          "#E7F0F7"
+        ]
+      },
+      "done-green": {
+        "role": "tertiary",
+        "displayName": "Done Green",
+        "canonical": "#3FB950",
+        "tonalRamp": [
+          "#001001",
+          "#002E05",
+          "#004F0D",
+          "#007318",
+          "#2A993B",
+          "#6EB973",
+          "#A7DAA9",
+          "#DAF8DB"
+        ]
+      },
+      "verify-amber": {
+        "role": "tertiary",
+        "displayName": "Verify Amber",
+        "canonical": "#F2B13A",
+        "tonalRamp": [
+          "#140800",
+          "#361E00",
+          "#5C3700",
+          "#845100",
+          "#AB7400",
+          "#C89D56",
+          "#E4C697",
+          "#FEECD1"
+        ]
+      },
+      "expiring-red": {
+        "role": "tertiary",
+        "displayName": "Expiring Red",
+        "canonical": "#F97066",
+        "tonalRamp": [
+          "#1B0303",
+          "#430F0D",
+          "#701F1C",
+          "#A1312D",
+          "#CC544C",
+          "#E5867D",
+          "#FBB7AF",
+          "#FFE3DE"
+        ]
+      },
+      "graphite-ground-light": {
+        "role": "neutral",
+        "displayName": "Graphite Ground (light theme)",
+        "canonical": "#F6F8FA",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#232425",
+          "#3F4041",
+          "#5C5E5F",
+          "#7F8082",
+          "#A3A5A6",
+          "#CACACB",
+          "#EEEEEF"
+        ]
+      },
+      "graphite-panel-light": {
+        "role": "neutral",
+        "displayName": "Graphite Panel (light theme)",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#404040",
+          "#5D5D5D",
+          "#808080",
+          "#A4A4A4",
+          "#CACACA",
+          "#EEEEEE"
+        ]
+      },
+      "graphite-raised-light": {
+        "role": "neutral",
+        "displayName": "Graphite Raised (light theme)",
+        "canonical": "#EEF1F4",
+        "tonalRamp": [
+          "#0B0B0C",
+          "#232425",
+          "#3E4041",
+          "#5C5E60",
+          "#7E8083",
+          "#A3A5A7",
+          "#C9CBCC",
+          "#EEEEEF"
+        ]
+      },
+      "seam-light": {
+        "role": "neutral",
+        "displayName": "Seam (light theme)",
+        "canonical": "#D0D7DE",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3C4044",
+          "#595E64",
+          "#7B8187",
+          "#A1A5AA",
+          "#C8CBCE",
+          "#EDEFF1"
+        ]
+      },
+      "console-ink-light": {
+        "role": "neutral",
+        "displayName": "Console Ink (light theme)",
+        "canonical": "#14191F",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#222427",
+          "#3C4045",
+          "#595E65",
+          "#7B8188",
+          "#A0A5AB",
+          "#C7CBCF",
+          "#EDEFF1"
+        ]
+      },
+      "console-ink-muted-light": {
+        "role": "neutral",
+        "displayName": "Muted Ink (light theme)",
+        "canonical": "#57606A",
+        "tonalRamp": [
+          "#0A0B0D",
+          "#212428",
+          "#3B4047",
+          "#575F67",
+          "#79818B",
+          "#9FA5AD",
+          "#C6CBD0",
+          "#ECEFF2"
+        ]
+      },
+      "action-blue-light": {
+        "role": "primary",
+        "displayName": "Action Blue (light theme)",
+        "canonical": "#006FA8",
+        "tonalRamp": [
+          "#010C18",
+          "#03273D",
+          "#084467",
+          "#116394",
+          "#3987BD",
+          "#74ABD5",
+          "#AAD0EE",
+          "#DCF2FF"
+        ]
+      },
+      "on-action-light": {
+        "role": "primary",
+        "displayName": "On Action (light theme)",
+        "canonical": "#FFFFFF",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#404040",
+          "#5D5D5D",
+          "#808080",
+          "#A4A4A4",
+          "#CACACA",
+          "#EEEEEE"
+        ]
+      },
+      "action-subtle-light": {
+        "role": "primary",
+        "displayName": "Action Wash (light theme)",
+        "canonical": "#E6F4FB",
+        "tonalRamp": [
+          "#090C0D",
+          "#202527",
+          "#3A4145",
+          "#555F65",
+          "#778288",
+          "#9DA6AB",
+          "#C5CCCF",
+          "#EBEFF1"
+        ]
+      },
+      "done-green-light": {
+        "role": "tertiary",
+        "displayName": "Done Green (light theme)",
+        "canonical": "#1A7F37",
+        "tonalRamp": [
+          "#010F03",
+          "#072C10",
+          "#114D21",
+          "#1D7032",
+          "#429453",
+          "#7AB682",
+          "#AED7B3",
+          "#DEF6E0"
+        ]
+      },
+      "verify-amber-light": {
+        "role": "tertiary",
+        "displayName": "Verify Amber (light theme)",
+        "canonical": "#B54708",
+        "tonalRamp": [
+          "#190500",
+          "#401502",
+          "#6B2805",
+          "#9A3C0A",
+          "#C45F32",
+          "#DD8E6D",
+          "#F5BCA4",
+          "#FFE6D8"
+        ]
+      },
+      "expiring-red-light": {
+        "role": "tertiary",
+        "displayName": "Expiring Red (light theme)",
+        "canonical": "#B42318",
+        "tonalRamp": [
+          "#1C0301",
+          "#450D08",
+          "#731C14",
+          "#A42C20",
+          "#D05041",
+          "#E98475",
+          "#FEB6AA",
+          "#FFE3DB"
+        ]
+      },
+      "logo-blue": {
+        "role": "secondary",
+        "displayName": "Logo Blue",
+        "canonical": "#0084C8",
+        "tonalRamp": [
+          "#000C1A",
+          "#002741",
+          "#00446D",
+          "#00639C",
+          "#2788C5",
+          "#6CACDC",
+          "#A5D1F3",
+          "#D9F2FF"
+        ]
+      },
+      "probono-yellow": {
+        "role": "secondary",
+        "displayName": "Pro Bono Yellow",
+        "canonical": "#F5C400",
+        "tonalRamp": [
+          "#130900",
+          "#332100",
+          "#573A00",
+          "#7E5600",
+          "#A47900",
+          "#C1A142",
+          "#DFC98D",
+          "#FAEECC"
+        ]
+      },
+      "probono-ink": {
+        "role": "secondary",
+        "displayName": "Pro Bono Ink",
+        "canonical": "#1A1A1A",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#242424",
+          "#404040",
+          "#5D5D5D",
+          "#808080",
+          "#A4A4A4",
+          "#CACACA",
+          "#EEEEEE"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "page-title": {
+        "displayName": "Page Title",
+        "purpose": "Shell h1 above each page."
+      },
+      "section-title": {
+        "displayName": "Section Title",
+        "purpose": "Headings inside pages (t-h3)."
+      },
+      "identity": {
+        "displayName": "Identity",
+        "purpose": "Customer or organisation name heading the request detail."
+      },
+      "next-step": {
+        "displayName": "Next Step",
+        "purpose": "The one sentence saying what to do with the selected request."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Default UI text: rows, nav, forms."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Status chips, stage tabs, field labels."
+      },
+      "button": {
+        "displayName": "Button",
+        "purpose": "M3 button labels, sentence case."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Fact labels, hints, secondary lines."
+      },
+      "panel-title": {
+        "displayName": "Panel Title",
+        "purpose": "A panel's or drawer group's own heading, uppercase, muted."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Ids, unit and shelf codes, counts, scan input; tabular figures."
+      }
+    },
+    "shadows": [
+      {
+        "name": "button-hover",
+        "value": "0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15)",
+        "purpose": "M3 level 1 under a filled pill button on hover only."
+      },
+      {
+        "name": "floating-tooltip",
+        "value": "0 6px 18px rgba(0,0,0,0.28)",
+        "purpose": "Drawer tooltip floating over content."
+      },
+      {
+        "name": "select-bar",
+        "value": "inset 2px 0 0 #5CC2FF",
+        "purpose": "Selection indicator on queue rows (left) and the active nav row (inset -2px, right); not elevation."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Arrivals: rows, counts, detail swap, view transitions (--ease-out)."
+      },
+      {
+        "name": "ease-m3-standard",
+        "value": "cubic-bezier(0.2, 0, 0, 1)",
+        "purpose": "M3 button shadow, 200 ms."
+      },
+      {
+        "name": "row-enter",
+        "value": "220ms, stagger 24ms, fade + translateY(6px)",
+        "purpose": "Queue rows arriving."
+      },
+      {
+        "name": "row-leave",
+        "value": "140ms ease-in fade",
+        "purpose": "Queue rows leaving."
+      },
+      {
+        "name": "row-move",
+        "value": "280ms",
+        "purpose": "Queue re-sort."
+      },
+      {
+        "name": "count-roll",
+        "value": "320ms, translateY(60%) + fade",
+        "purpose": "A changed count rolls into place."
+      },
+      {
+        "name": "detail-swap",
+        "value": "200ms, translateX(8px) + fade",
+        "purpose": "Detail panel body when the selection changes."
+      },
+      {
+        "name": "skeleton-shimmer",
+        "value": "1.4s linear infinite",
+        "purpose": "Loading rows and blocks."
+      },
+      {
+        "name": "request-pane-transition",
+        "value": "group 320ms; old 120ms ease-in; new 240ms +60ms",
+        "purpose": "View Transition when a request opens beside the queue, closes, or moves to its own page."
+      },
+      {
+        "name": "nav-tooltip",
+        "value": "in 160/220ms ease-out; out 90ms ease-in; translateX(-6px) scale(0.98)",
+        "purpose": "Drawer tooltip."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transforms/staggers off; global durations 0.01ms",
+        "purpose": "prefers-reduced-motion path for every animation."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "phone",
+        "value": "600px"
+      },
+      {
+        "name": "request-full-width",
+        "value": "900px"
+      },
+      {
+        "name": "console-wide",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button (M3 pill)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one filled action per panel: Start quoting, Approve, Send quote, Ship.",
+      "html": "<button class=\"ds-btn ds-btn-primary\">Start quoting</button>",
+      "css": ".ds-btn { height: 40px; padding: 0 24px; border-radius: 999px; font: 500 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: 0.00625em; cursor: pointer; transition: box-shadow 200ms cubic-bezier(0.2,0,0,1), background-color 200ms cubic-bezier(0.2,0,0,1); } .ds-btn-primary { background: #5CC2FF; color: #0D1117; border: 0; } .ds-btn-primary:hover { background: color-mix(in srgb, #5CC2FF 92%, #0D1117); box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15); } .ds-btn-primary:active, .ds-btn-primary:focus-visible { background: color-mix(in srgb, #5CC2FF 88%, #0D1117); } .ds-btn:focus-visible { outline: 2px solid #0084C8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Outlined Button",
+      "kind": "button",
+      "refersTo": "button-outlined",
+      "description": "Secondary actions beside the primary pill; never lifts.",
+      "html": "<button class=\"ds-btn ds-btn-outlined\">Open quote</button>",
+      "css": ".ds-btn { height: 40px; padding: 0 24px; border-radius: 999px; font: 500 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: 0.00625em; cursor: pointer; transition: background-color 200ms cubic-bezier(0.2,0,0,1); } .ds-btn-outlined { background: transparent; color: #5CC2FF; border: 1px solid #30363D; } .ds-btn-outlined:hover { background: rgba(92,194,255,0.08); } .ds-btn-outlined:active, .ds-btn-outlined:focus-visible { background: rgba(92,194,255,0.12); } .ds-btn:focus-visible { outline: 2px solid #0084C8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive action (Reject, Cancel), outlined in red and isolated from the primary.",
+      "html": "<button class=\"ds-btn ds-btn-danger\">Reject</button>",
+      "css": ".ds-btn { height: 40px; padding: 0 24px; border-radius: 999px; font: 500 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: 0.00625em; cursor: pointer; transition: background-color 200ms cubic-bezier(0.2,0,0,1); } .ds-btn-danger { background: transparent; color: #F97066; border: 1px solid rgba(249,112,102,0.5); } .ds-btn-danger:hover { background: rgba(249,112,102,0.08); } .ds-btn-danger:active, .ds-btn-danger:focus-visible { background: rgba(249,112,102,0.12); } .ds-btn:focus-visible { outline: 2px solid #0084C8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Status Chip",
+      "kind": "chip",
+      "refersTo": "status-chip",
+      "description": "Icon + sentence-case word + tone; a label, not a button. Neutral is outline only.",
+      "html": "<span class=\"ds-chip ds-chip-warning\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path d=\"M13 13H11V7H13M13 17H11V15H13M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2Z\"/></svg><span>Awaiting agreement</span></span> <span class=\"ds-chip ds-chip-success\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path d=\"M12 2C6.5 2 2 6.5 2 12S6.5 22 12 22 22 17.5 22 12 17.5 2 12 2M10 17L5 12L6.41 10.58L10 14.17L17.59 6.58L19 8L10 17Z\"/></svg><span>Delivered</span></span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 12px 0 8px; border-radius: 8px; font: 500 13px/1 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: 0.1px; white-space: nowrap; } .ds-chip svg { flex: none; } .ds-chip-warning { background: rgba(242,177,58,0.08); border: 1px solid rgba(242,177,58,0.32); color: color-mix(in srgb, #F2B13A 72%, #E6EDF3); } .ds-chip-warning svg { fill: #F2B13A; } .ds-chip-success { background: rgba(63,185,80,0.08); border: 1px solid rgba(63,185,80,0.32); color: color-mix(in srgb, #3FB950 72%, #E6EDF3); } .ds-chip-success svg { fill: #3FB950; }"
+    },
+    {
+      "name": "Console Panel",
+      "kind": "card",
+      "refersTo": "panel",
+      "description": "Panel on graphite, 1 px seams, 44 px head with its own uppercase title.",
+      "html": "<section class=\"ds-panel\"><header class=\"ds-panel-head\"><h2>Needs you now</h2><span class=\"ds-mono\">12</span></header><div class=\"ds-panel-body\">Rows go here.</div></section>",
+      "css": ".ds-panel { background: #1C2026; border: 1px solid #30363D; border-radius: 4px; color: #E6EDF3; font: 400 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; } .ds-panel-head { display: flex; align-items: center; justify-content: space-between; min-height: 44px; padding: 0 16px; border-bottom: 1px solid #30363D; } .ds-panel-head h2 { margin: 0; font: 600 11px/16px 'Inter Variable', Inter, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.08em; color: #9DA7B3; } .ds-mono { font: 500 12px/1 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #9DA7B3; } .ds-panel-body { padding: 16px; }"
+    },
+    {
+      "name": "Queue Row",
+      "kind": "custom",
+      "refersTo": "queue-row",
+      "description": "Work queue row: mono id, customer, reason with icon + word, waiting time; selected = wash + left bar.",
+      "html": "<ul class=\"ds-rows\"><li class=\"ds-row\" tabindex=\"0\"><span class=\"ds-code\">R-2026-0142</span><span class=\"ds-who\">Barbados Met Service</span><span class=\"ds-why\">To quote</span><span class=\"ds-wait\">2 d</span></li><li class=\"ds-row ds-sel\" tabindex=\"0\"><span class=\"ds-code\">R-2026-0139</span><span class=\"ds-who\">Guyana Hydromet <span class=\"ds-pb\">Pro Bono</span></span><span class=\"ds-why\">To approve</span><span class=\"ds-wait ds-overdue\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" aria-hidden=\"true\"><path d=\"M13 13H11V7H13M13 17H11V15H13M12 2A10 10 0 0 0 2 12A10 10 0 0 0 12 22A10 10 0 0 0 22 12A10 10 0 0 0 12 2Z\"/></svg> 5 d</span></li></ul>",
+      "css": ".ds-rows { list-style: none; margin: 0; padding: 0; background: #1C2026; color: #E6EDF3; font: 400 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; } .ds-row { display: grid; grid-template-columns: minmax(120px,0.9fr) minmax(0,1.2fr) minmax(0,1fr) 72px; gap: 12px; align-items: center; min-height: 44px; padding: 0 16px; border-bottom: 1px solid #30363D; cursor: pointer; transition: background-color 120ms ease-out, box-shadow 160ms cubic-bezier(0.16,1,0.3,1); } .ds-row:hover { background: #22272E; } .ds-row:focus-visible { outline: 2px solid #0084C8; outline-offset: -2px; } .ds-sel, .ds-sel:hover { background: #0B2A3D; box-shadow: inset 2px 0 0 #5CC2FF; } .ds-code { font: 400 13px 'JetBrains Mono', ui-monospace, monospace; } .ds-who { font-weight: 500; display: flex; gap: 8px; align-items: center; } .ds-why { font-size: 13px; } .ds-wait { display: inline-flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 13px; color: #9DA7B3; } .ds-overdue { color: #F2B13A; font-weight: 600; } .ds-overdue svg { fill: currentColor; width: 16px; height: 16px; } .ds-pb { font: 600 11px/16px 'Inter Variable', Inter, system-ui, sans-serif; letter-spacing: 0.02em; padding: 1px 6px; border-radius: 3px; background: #F5C400; color: #1A1A1A; }"
+    },
+    {
+      "name": "Drawer Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Grouped flat rows with counts; active = raised ground, bold label, blue icon, 2 px right bar.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main\"><div class=\"ds-grp\">Work</div><a class=\"ds-item\" href=\"#\"><span class=\"ds-ic\"></span>Dashboard</a><a class=\"ds-item ds-on\" href=\"#\" aria-current=\"page\"><span class=\"ds-ic\"></span>Requests<span class=\"ds-count\">4</span></a><a class=\"ds-item\" href=\"#\"><span class=\"ds-ic\"></span>Pick<span class=\"ds-count\">2</span></a></nav>",
+      "css": ".ds-nav { width: 240px; background: #1C2026; border-right: 1px solid #30363D; padding: 16px 0; font: 400 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; } .ds-grp { padding: 8px 16px 4px; font: 600 11px/16px 'Inter Variable', Inter, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.08em; color: #9DA7B3; } .ds-item { display: flex; align-items: center; gap: 12px; min-height: 32px; padding: 0 16px; color: #E6EDF3; text-decoration: none; transition: background-color 120ms ease-out; } .ds-item:hover { background: #22272E; } .ds-item:focus-visible { outline: 2px solid #0084C8; outline-offset: -2px; } .ds-ic { width: 20px; height: 20px; border-radius: 4px; background: #9DA7B3; opacity: 0.5; } .ds-on { background: #22272E; box-shadow: inset -2px 0 0 #5CC2FF; font-weight: 600; } .ds-on .ds-ic { background: #5CC2FF; opacity: 1; } .ds-count { margin-left: auto; font: 500 12px/1 'JetBrains Mono', ui-monospace, monospace; font-variant-numeric: tabular-nums; color: #9DA7B3; }"
+    },
+    {
+      "name": "Stage Tabs",
+      "kind": "nav",
+      "refersTo": "stage-tab",
+      "description": "Request desk stages as one strip cut by seams; active = wash + blue underline; urgent = amber.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><a class=\"ds-tab ds-active\" href=\"#\">New <span class=\"ds-n\">4</span></a><a class=\"ds-tab ds-urgent\" href=\"#\">Verify <span class=\"ds-n\">2</span></a><a class=\"ds-tab\" href=\"#\">To ship <span class=\"ds-n\">1</span></a></div>",
+      "css": ".ds-tabs { display: flex; border: 1px solid #30363D; border-radius: 4px; background: #1C2026; overflow: hidden; } .ds-tab { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px; font: 500 13px/18px 'Inter Variable', Inter, system-ui, sans-serif; color: #9DA7B3; text-decoration: none; transition: background-color 120ms ease-out, color 120ms ease-out, box-shadow 200ms cubic-bezier(0.16,1,0.3,1); } .ds-tab + .ds-tab { border-left: 1px solid #30363D; } .ds-tab:hover { background: #22272E; color: #E6EDF3; } .ds-tab:focus-visible { outline: 2px solid #0084C8; outline-offset: -2px; } .ds-active { background: #0B2A3D; color: #E6EDF3; font-weight: 600; box-shadow: inset 0 -2px 0 #5CC2FF; } .ds-n { font: 500 12px 'JetBrains Mono', ui-monospace, monospace; color: #9DA7B3; } .ds-urgent, .ds-urgent .ds-n { color: #F2B13A; font-weight: 600; }"
+    },
+    {
+      "name": "Scan Field",
+      "kind": "input",
+      "refersTo": "scan-field",
+      "description": "Keyboard-wedge scan input: barcode icon, mono text, Enter submits one scan and keeps focus.",
+      "html": "<form class=\"ds-scan\"><label class=\"ds-field\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M4 6H6V18H4V6M7 6H8V18H7V6M9 6H12V18H9V6M13 6H14V18H13V6M16 6H18V18H16V6M19 6H20V18H19V6M2 4V8H0V4A2 2 0 0 1 2 2H6V4H2M22 2A2 2 0 0 1 24 4V8H22V4H18V2H22M2 16V20H6V22H2A2 2 0 0 1 0 20V16H2M22 20V16H24V20A2 2 0 0 1 22 22H18V20H22Z\"/></svg><input placeholder=\"Scan a code\" autocomplete=\"off\" spellcheck=\"false\"><button type=\"submit\">Enter</button></label><p class=\"ds-hint\">Scan the code, or type it and press Enter</p></form>",
+      "css": ".ds-scan { font: 400 14px/20px 'Inter Variable', Inter, system-ui, sans-serif; color: #E6EDF3; } .ds-field { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 6px 0 12px; border: 1px solid #30363D; border-radius: 2px; background: #1C2026; color: #9DA7B3; transition: border-color 120ms ease-out; } .ds-field:hover { border-color: #9DA7B3; } .ds-field:focus-within { border: 2px solid #5CC2FF; padding-left: 11px; } .ds-field input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: #E6EDF3; font: 400 13px/20px 'JetBrains Mono', ui-monospace, monospace; } .ds-field button { height: 28px; padding: 0 10px; border: 0; border-radius: 4px; background: rgba(92,194,255,0.12); color: #5CC2FF; font: 500 13px 'Inter Variable', Inter, system-ui, sans-serif; cursor: pointer; } .ds-field button:hover { background: rgba(92,194,255,0.2); } .ds-hint { margin: 4px 0 0 12px; font-size: 12px; line-height: 16px; color: #9DA7B3; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Graphite Console",
+    "overview": "SIA is a working console, not a website. Panels sit on a graphite ground and stay put: the drawer, the work queue and the selected item's detail share the window, and navigating changes what the panels hold instead of replacing the page. Panels are cut apart by 1 px seams, not floated on shadows. Dark is the default (`storedTheme('cimhDark')`); the light theme mirrors it with white panels and pale seams.\n\nColour is reserved. Action blue marks the one primary action, the selected row and the active place; amber, red and green mean state (verify, expiring or failed, done) and always travel with an icon and a word. Everything else is ink, muted ink and seams. Type is compact Inter at 13 to 14 px for rows and controls; codes, counts and ids are set in JetBrains Mono with tabular figures. Panels name themselves with a small uppercase header.\n\nMotion is quiet and functional: counts roll when they change, rows enter, leave and re-sort in place, the detail panel swaps in from the queue's side, and a View Transition morphs the request pane when it opens beside the queue or moves to its own page. Every motion has a reduced-motion path.",
+    "keyCharacteristics": [
+      "Persistent panels on graphite, separated by 1 px seams, 4 px corners.",
+      "Colour only for state and the primary action; state is never colour alone.",
+      "Compact Inter for UI, JetBrains Mono for codes, ids and figures.",
+      "Material 3 pill buttons beside square-cornered panels.",
+      "Dark by default, light as an equal mirror."
+    ],
+    "rules": [
+      {
+        "name": "The State-Only Colour Rule",
+        "body": "Amber, red and green appear only when something is in that state; a quiet queue is ink and seams. Stage tints and decorative colour were removed from the dashboard for this reason.",
+        "section": "colors"
+      },
+      {
+        "name": "The Never-Colour-Alone Rule",
+        "body": "Every state colour carries an icon and a word: status chips (icon + sentence-case word), \"Overdue\" and \"Expiring\" in queue rows, the Next step sentence.",
+        "section": "colors"
+      },
+      {
+        "name": "The Codes-in-Mono Rule",
+        "body": "A value someone could scan, type or compare (ids, barcodes, counts) is set in JetBrains Mono with `tabular-nums`; prose and names never are.",
+        "section": "typography"
+      },
+      {
+        "name": "The Panel-Names-Itself Rule",
+        "body": "A panel's heading is its own small uppercase header in the 44 px head bar; it is the heading, not a label above another heading.",
+        "section": "typography"
+      },
+      {
+        "name": "The Seams-Not-Shadows Rule",
+        "body": "Panels at rest have no shadow; they are separated by a 1 px seam and a step on the tonal ladder. Shadow belongs to hover lift and floating overlays.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do separate panels with a 1 px seam and a step on the tonal ladder (ground, panel, raised).",
+      "Do keep the queue and the selected item's detail on screen together at 1280 px and wider.",
+      "Do give every state colour an icon and a word, using the shared status mapping.",
+      "Do make the current step's action the filled Action Blue pill and keep the rest outlined; put a destructive action outlined in red and apart from it.",
+      "Do set ids, codes and counts in JetBrains Mono with tabular figures.",
+      "Do head each panel with its own 11 px uppercase title in a 44 px head bar.",
+      "Do mark a selected row with Action Wash plus a 2 px Action Blue bar, and the current nav place with Graphite Raised plus the same bar.",
+      "Do give every animation a reduced-motion path."
+    ],
+    "donts": [
+      "Don't put shadows on panels at rest; shadows are for hover lift and floating overlays (tooltips, menus, dialogs).",
+      "Don't use amber, red or green as decoration or as a stage tint.",
+      "Don't use Logo Blue for text, or Pro Bono Yellow with anything but ink text.",
+      "Don't round panels beyond 4 px or round nav rows into pills.",
+      "Don't hard-code colours that exist as theme tokens; read them from the Vuetify theme."
+    ]
+  }
+}

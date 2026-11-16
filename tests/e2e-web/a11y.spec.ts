@@ -67,7 +67,7 @@ test.describe('accessibility (axe)', () => {
     await expect(page.getByRole('link', { name: 'My requests' }).first()).toBeVisible()
     const found: string[] = []
     await audit(page, `${SHOP}/catalogue/${pid}`, found)
-    await page.getByRole('button', { name: 'Add to request' }).click()
+    await page.getByRole('button', { name: 'Add to cart' }).click()
     for (const path of ['/cart', '/requests', '/account']) await audit(page, `${SHOP}${path}`, found)
     expect(found, found.join('\n')).toEqual([])
   })
@@ -83,7 +83,7 @@ test.describe('accessibility (axe)', () => {
     await page.getByRole('button', { name: 'Log in' }).click()
     await expect(page).toHaveURL(`${SIA}/`)
     for (const path of ['/', '/requests', '/products', '/products/new', `/products/${pid}`, '/inventory',
-      '/inventory?op=location', '/inventory?op=lookup', '/stow', '/pick', '/reports/stock', '/reports/assignments',
+      '/inventory?op=location', '/inventory?op=lookup', '/inventory?op=labels', '/inventory?op=site', '/pick?op=stow', '/pick', '/reports/stock', '/reports/assignments',
       '/reports/history', '/profile', '/no-such-page']) {
       await audit(page, `${SIA}${path}`, found)
     }
@@ -98,7 +98,7 @@ test.describe('accessibility (axe)', () => {
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
     await page.getByRole('textbox', { name: '6-digit code' }).fill(totp(admin.key))
-    await expect(page.getByText(/Good to see you/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible()
     const found: string[] = []
     for (const path of ['/admin/approvals', '/admin/accounts', '/admin/organisations', '/admin/settings', '/admin/audit']) {
       await audit(page, `${SIA}${path}`, found)
