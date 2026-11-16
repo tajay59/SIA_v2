@@ -1,11 +1,10 @@
 <script setup lang="ts">
 /**
- * S-03 product: left a vertical strip of thumbnails beside a large photo carousel; right one card with the
- * name, availability, product description, details, units per pack, quantity, a full-width button and
- * "How requesting works". On phones the name sits above the photos. A product without photos has no photo
- * area: the name, make and model, description and details take the main column and the card keeps only
- * availability and the action. v2 rules: no price and no serial numbers for customers. The button adds to
- * the cart (S-07).
+ * S-03 product (impeccable 2026-11-16, "Gallery band"; brief web/shop/.impeccable/surfaces/src-pages-catalogue-id-vue.md):
+ * a full-width light band shows the part first (photo on a white plate, thumbnails along its foot; no photo = a large
+ * nameplate), then one request bar names it (make, name, mono model number, badges) and takes the order (quantity +
+ * Add to cart); the bar pins under the app bar once the band scrolls away. Description | Specifications below,
+ * How requesting works folded last. v2 rules: no price and no serial numbers for customers.
  */
 import {
   ApiError,
@@ -22,8 +21,8 @@ import {
   useReference,
   useSession,
 } from '@cimh/web-app'
-import { mdiArrowLeft, mdiChevronLeft, mdiChevronRight, mdiMinus, mdiPlus } from '@mdi/js'
-import { computed, ref, watch } from 'vue'
+import { mdiChevronDown, mdiChevronLeft, mdiChevronRight, mdiMinus, mdiPlus } from '@mdi/js'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import HowRequestingWorks from '../../components/HowRequestingWorks.vue'
@@ -42,11 +41,62 @@ const cart = useCart()
 const notify = useNotify()
 const adding = ref(false)
 
+// Focal moment (impeccable animate): the added parts travel from the button into the cart. A token (photo or
+// make initial + "× n") flies along a short arc to whichever cart button is visible (header on desktop, bottom
+// bar on phones); the cart button nudges as it lands. Reduced motion: no flight, the cart only flashes.
+const addBtn = ref<{ $el: HTMLElement } | null>(null)
+function flyToCart(count: number) {
+  const from = addBtn.value?.$el?.getBoundingClientRect()
+  const target = Array.from(document.querySelectorAll<HTMLElement>('[data-cart-target]')).find((el) => el.offsetParent !== null)
+  if (!from || !target) return
+  const to = target.getBoundingClientRect()
+  const nudge = () =>
+    target.animate(
+      reduced()
+        ? [{ filter: 'brightness(1)' }, { filter: 'brightness(1.6)' }, { filter: 'brightness(1)' }]
+        : [{ transform: 'scale(1)' }, { transform: 'scale(1.18)' }, { transform: 'scale(1)' }],
+      { duration: 320, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+    )
+  if (reduced()) return void nudge()
+  const token = document.createElement('div')
+  token.className = 'cart-token'
+  token.setAttribute('aria-hidden', 'true')
+  const pic = shown.value?.url
+  token.innerHTML = (pic ? `<img src="${pic}" alt="">` : `<b>${(product.value?.make ?? product.value?.name ?? '?').slice(0, 1)}</b>`) + `<span>× ${count}</span>`
+  document.body.appendChild(token)
+  const x0 = from.left + from.width / 2 - 28
+  const y0 = from.top + from.height / 2 - 20
+  const dx = to.left + to.width / 2 - 28 - x0
+  const dy = to.top + to.height / 2 - 20 - y0
+  const lift = Math.min(-80, dy * 0.4)
+  token.style.left = `${x0}px`
+  token.style.top = `${y0}px`
+  const flight = token.animate(
+    [
+      { transform: 'translate(0, 0) scale(1)', opacity: 0 },
+      { transform: `translate(${dx * 0.08}px, ${-12}px) scale(1.05)`, opacity: 1, offset: 0.12 },
+      { transform: `translate(${dx * 0.55}px, ${dy * 0.55 + lift}px) scale(0.85)`, opacity: 1, offset: 0.55 },
+      { transform: `translate(${dx}px, ${dy}px) scale(0.35)`, opacity: 0.2 },
+    ],
+    { duration: 640, easing: 'cubic-bezier(0.45, 0, 0.2, 1)' },
+  )
+  flight.onfinish = () => {
+    token.remove()
+    nudge()
+  }
+}
+const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// The quantity rolls in the direction it changes.
+const qtyDir = ref<'up' | 'down'>('up')
+watch(qty, (n, o) => (qtyDir.value = n >= o ? 'up' : 'down'))
+
 async function addToRequest() {
   if (!product.value) return
   adding.value = true
   try {
     await cart.add(product.value.id, qty.value)
+    flyToCart(qty.value)
     notify.toast(`Added ${qty.value} × ${product.value.name} to your cart`, 'success', {
       action: { label: 'View cart', run: () => void router.push('/cart') },
     })
@@ -92,6 +142,26 @@ const specs = computed(() => {
   ].filter(([, v]) => v !== null && v !== undefined && v !== '') as [string, string | number][]
 })
 const makeLine = computed(() => [product.value?.make, product.value?.modelname].filter(Boolean).join(' · '))
+// The no-photo nameplate never repeats the heading: make + model where known; else the model number alone, else a quiet "No photo yet".
+const plateTitle = computed(() => {
+  const p = product.value
+  if (!p) return ''
+  const t = [p.make, p.modelname].filter(Boolean).join(' ')
+  return t && t !== p.name ? t : ''
+})
+const typeName = computed(() => (product.value ? typeLabel(reference.value, product.value.type) : ''))
+
+// The request bar pins once the 1 px sentinel above it scrolls under the app bar.
+const sentinel = ref<HTMLElement | null>(null)
+const pinned = ref(false)
+let io: IntersectionObserver | null = null
+watch(sentinel, (el) => {
+  io?.disconnect()
+  if (!el || typeof IntersectionObserver === 'undefined') return
+  io = new IntersectionObserver(([e]) => (pinned.value = !!e && !e.isIntersecting && e.boundingClientRect.top < 100), { rootMargin: mdAndUp.value ? '-73px 0px 0px 0px' : '0px' })
+  io.observe(el)
+})
+onBeforeUnmount(() => io?.disconnect())
 const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.fullPath } }))
 </script>
 
@@ -104,131 +174,118 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
     </div>
     <v-skeleton-loader v-else-if="!product" type="image, article" />
     <article v-else class="product">
-      <router-link to="/catalogue" class="back t-body"><v-icon :icon="mdiArrowLeft" size="18" /> Equipment and Spares</router-link>
+      <nav class="crumb t-body" aria-label="Breadcrumb">
+        <router-link to="/catalogue">Equipment and spares</router-link>
+        <template v-if="typeName">
+          <v-icon :icon="mdiChevronRight" size="16" class="crumb-sep" aria-hidden="true" />
+          <router-link :to="{ path: '/catalogue', query: { type: product.type } }">{{ typeName }}</router-link>
+        </template>
+      </nav>
 
-      <header v-if="!mdAndUp" class="stack-sm">
-        <h1 class="t-h1">{{ product.name }}</h1>
-        <p v-if="makeLine || product.modelnumber" class="t-body muted">
-          {{ makeLine }} <span v-if="product.modelnumber" class="t-mono">{{ product.modelnumber }}</span>
-        </p>
-      </header>
-
-      <div class="layout" :class="{ 'no-photo': !images.length }">
-        <!-- Left, no photos: the facts lead -->
-        <section v-if="!images.length" class="lead">
-          <div v-if="mdAndUp" class="stack-sm">
-            <h1 class="t-h1">{{ product.name }}</h1>
-            <p v-if="makeLine || product.modelnumber" class="t-body-lg muted">
-              {{ makeLine }} <span v-if="product.modelnumber" class="t-mono">{{ product.modelnumber }}</span>
-            </p>
+      <!-- The band: the part, shown first. -->
+      <section class="band" :class="{ bare: !images.length }" aria-label="Photos">
+        <template v-if="images.length">
+          <div class="plate">
+            <Transition name="swap" mode="out-in">
+              <img
+                v-if="shown"
+                :key="shown.fileId"
+                :src="shown.url"
+                :srcset="imageSrcset(shown.url)"
+                sizes="(max-width: 960px) 90vw, 640px"
+                :alt="product.name"
+                class="plate-img"
+              />
+            </Transition>
           </div>
-          <section v-if="product.description" class="block">
-            <h2 class="block-title">Product description</h2>
-            <p class="t-body-lg prose">{{ product.description }}</p>
-          </section>
-          <section v-if="product.details || specs.length" class="block">
-            <h2 class="block-title">Details</h2>
-            <p v-if="product.details" class="t-body-lg prose details">{{ product.details }}</p>
-            <dl v-if="specs.length" class="facts">
-              <template v-for="[k, v] in specs" :key="k">
-                <dt>{{ k }}</dt>
-                <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
-              </template>
-            </dl>
-          </section>
-          <p class="t-caption muted">No photo of this item yet.</p>
-        </section>
-        <!-- Left: thumbnails + carousel -->
-        <section v-else class="media" aria-label="Photos">
-          <ul v-if="images.length > 1 && mdAndUp" class="thumbs" aria-label="All photos">
-            <li v-for="(img, i) in images" :key="img.fileId">
-              <button
-                type="button"
-                class="thumb"
-                :class="{ on: i === index }"
-                :aria-label="`Photo ${i + 1} of ${images.length}`"
-                :aria-pressed="i === index"
-                @click="index = i"
-              >
-                <ProductImage :image="img" alt="" small sizes="96px" />
-              </button>
-            </li>
-          </ul>
-          <div class="stage">
-            <img
-              v-if="shown"
-              :key="shown.fileId"
-              :src="shown.url"
-              :srcset="imageSrcset(shown.url)"
-              sizes="(max-width: 960px) 100vw, 900px"
-              :alt="product.name"
-              class="stage-img"
-            />
-            <ProductImage v-else :image="null" :alt="product.name" class="stage-empty" />
-            <template v-if="images.length > 1">
-              <v-btn class="nav prev" :icon="mdiChevronLeft" variant="flat" size="small" aria-label="Previous photo" @click="step(-1)" />
-              <v-btn class="nav next" :icon="mdiChevronRight" variant="flat" size="small" aria-label="Next photo" @click="step(1)" />
-              <span class="counter t-caption">{{ index + 1 }} / {{ images.length }}</span>
-            </template>
-          </div>
-        </section>
-
-        <!-- Right: the product card -->
-        <aside class="panel">
-          <div v-if="mdAndUp && images.length" class="stack-sm">
-            <h1 class="t-h2">{{ product.name }}</h1>
-            <p v-if="makeLine || product.modelnumber" class="t-body muted">
-              {{ makeLine }} <span v-if="product.modelnumber" class="t-mono">{{ product.modelnumber }}</span>
-            </p>
-          </div>
-          <ProductBadges :product="product" show-limit />
-
-          <template v-if="images.length">
-            <section v-if="product.description" class="block">
-              <h2 class="block-title">Product description</h2>
-              <p class="t-body">{{ product.description }}</p>
-            </section>
-            <section v-if="product.details || specs.length" class="block">
-              <h2 class="block-title">Details</h2>
-              <p v-if="product.details" class="t-body details">{{ product.details }}</p>
-              <dl v-if="specs.length" class="facts">
-                <template v-for="[k, v] in specs" :key="k">
-                  <dt>{{ k }}</dt>
-                  <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
-                </template>
-              </dl>
-            </section>
+          <template v-if="images.length > 1">
+            <span class="counter tnum" aria-hidden="true"><Transition name="roll-up" mode="out-in"><span :key="index">{{ index + 1 }}</span></Transition> / {{ images.length }}</span>
+            <v-btn class="nav prev" :icon="mdiChevronLeft" variant="flat" size="small" aria-label="Previous photo" @click="step(-1)" />
+            <v-btn class="nav next" :icon="mdiChevronRight" variant="flat" size="small" aria-label="Next photo" @click="step(1)" />
+            <ul class="thumbs" aria-label="All photos">
+              <li v-for="(img, i) in images" :key="img.fileId">
+                <button
+                  type="button"
+                  class="thumb"
+                  :class="{ on: i === index }"
+                  :aria-label="`Photo ${i + 1} of ${images.length}`"
+                  :aria-pressed="i === index"
+                  @click="index = i"
+                >
+                  <ProductImage :image="img" alt="" small sizes="64px" />
+                </button>
+              </li>
+            </ul>
           </template>
-          <p v-if="product.unitquantity && product.unitquantity > 1" class="pack">{{ product.unitquantity }} in each pack</p>
+        </template>
+        <!-- No photo yet: the band carries the part's nameplate instead. -->
+        <div v-else class="nameplate-big" aria-hidden="true">
+          <span v-if="plateTitle" class="np-model">{{ plateTitle }}</span>
+          <span v-else-if="!product.modelnumber" class="np-model quiet">No photo yet</span>
+          <span v-if="product.modelnumber" class="np-num">{{ product.modelnumber }}</span>
+          <span class="np-rule" />
+          <span v-if="plateTitle || product.modelnumber" class="np-note">No photo of this item yet</span>
+        </div>
+      </section>
 
-          <div class="buy">
-            <template v-if="!session.isLoggedIn">
-              <v-btn :to="loginLink" color="primary" size="large" block>Log in to request</v-btn>
-              <p class="t-caption muted">
-                Requests need an approved account. No account yet? <router-link to="/signup">Register</router-link>
-              </p>
-            </template>
-            <p v-else-if="session.isCimh" class="t-body muted">CIMH staff accounts can browse but can't send requests.</p>
-            <template v-else>
-              <div class="qty-row">
-                <span class="t-label">Quantity</span>
-                <div class="stepper" role="group" aria-label="Quantity">
-                  <v-btn :icon="mdiMinus" size="small" variant="text" aria-label="Fewer" :disabled="qty <= 1" @click="qty--" />
-                  <span class="tnum qty" aria-live="polite">{{ qty }}</span>
-                  <v-btn :icon="mdiPlus" size="small" variant="text" aria-label="More" :disabled="qty >= max" @click="qty++" />
-                </div>
-              </div>
-              <v-btn color="primary" size="large" block :loading="adding" @click="addToRequest">Add to cart</v-btn>
-              <p class="t-caption muted">Nothing is sent or paid yet. You send the cart as a request, and CIMH quotes it.</p>
-            </template>
+      <div ref="sentinel" class="sentinel" aria-hidden="true" />
+
+      <!-- The request bar: names the part and takes the order; pins under the app bar once the band scrolls away. -->
+      <section class="bar" :class="{ pinned }" aria-labelledby="product-name">
+        <div class="ident">
+          <h1 id="product-name" class="name">{{ product.name }}</h1>
+          <div class="ident-row">
+            <span v-if="product.make" class="make">{{ product.make }}</span>
+            <span v-if="product.modelnumber" class="num">{{ product.modelnumber }}</span>
+            <span v-if="product.modelname && product.modelname !== product.name" class="t-body muted">{{ product.modelname }}</span>
+            <ProductBadges :product="product" show-limit />
+            <span v-if="product.unitquantity && product.unitquantity > 1" class="t-body muted">{{ product.unitquantity }} in each pack</span>
           </div>
+        </div>
 
-          <details v-if="!session.isCimh" class="how">
-            <summary>How requesting works</summary>
-            <HowRequestingWorks variant="list" :skip-account="session.isLoggedIn" />
-          </details>
-        </aside>
+        <div class="buy">
+          <template v-if="!session.isLoggedIn">
+            <v-btn :to="loginLink" color="primary" size="large">Log in to request</v-btn>
+            <p class="buy-note">Requests need an approved account. <router-link to="/signup">Sign up</router-link></p>
+          </template>
+          <p v-else-if="session.isCimh" class="buy-note staff">CIMH staff accounts can browse but can't send requests.</p>
+          <template v-else>
+            <div class="buy-row">
+              <div class="stepper" role="group" aria-label="Quantity">
+                <v-btn :icon="mdiMinus" size="small" variant="text" aria-label="Fewer" :disabled="qty <= 1" @click="qty--" />
+                <span class="tnum qty" aria-live="polite"><Transition :name="`roll-${qtyDir}`" mode="out-in"><span :key="qty" class="qty-n">{{ qty }}</span></Transition></span>
+                <v-btn :icon="mdiPlus" size="small" variant="text" aria-label="More" :disabled="qty >= max" @click="qty++" />
+              </div>
+              <v-btn ref="addBtn" color="primary" size="large" :loading="adding" @click="addToRequest">Add to cart</v-btn>
+            </div>
+            <p class="buy-note">{{ product.probono ? 'Free for member organisations. You send the cart as a request, and CIMH approves it.' : 'Nothing is sent or paid yet. You send the cart as a request, and CIMH quotes it.' }}</p>
+          </template>
+        </div>
+      </section>
+
+      <!-- Below: what it is, and its facts. -->
+      <div class="cols">
+        <section class="col" aria-labelledby="desc-h">
+          <h2 id="desc-h" class="col-title">Description</h2>
+          <p v-if="product.description" class="t-body-lg prose">{{ product.description }}</p>
+          <p v-else class="t-body muted">No description yet. Ask CIMH about this part when you send your request.</p>
+          <p v-if="product.details" class="t-body-lg prose details">{{ product.details }}</p>
+        </section>
+        <section v-if="specs.length" class="col" aria-labelledby="spec-h">
+          <h2 id="spec-h" class="col-title">Specifications</h2>
+          <dl class="facts">
+            <template v-for="[k, v] in specs" :key="k">
+              <dt>{{ k }}</dt>
+              <dd :class="{ 't-mono': k === 'Model number' }">{{ v }}</dd>
+            </template>
+          </dl>
+        </section>
       </div>
+
+      <details v-if="!session.isCimh" class="how">
+        <summary><v-icon :icon="mdiChevronDown" size="20" class="how-chev" aria-hidden="true" />How requesting works</summary>
+        <HowRequestingWorks variant="list" :skip-account="session.isLoggedIn" />
+      </details>
     </article>
   </v-container>
 </template>
@@ -239,218 +296,493 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
   flex-direction: column;
   gap: var(--sp-4);
 }
-.back {
+.crumb {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.crumb-sep {
+  color: rgb(var(--v-theme-primary));
+}
+.crumb a {
+  text-decoration: none;
+  min-height: 24px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  text-decoration: none;
-  width: fit-content;
 }
-.layout {
+.crumb a:hover {
+  text-decoration: underline;
+}
+
+/* The band. */
+.band {
+  position: relative;
+  height: 440px;
+  border-radius: 12px;
+  /* One step darker than the page ground in both themes, so the white plate reads as the subject. */
+  background: rgba(var(--v-theme-on-surface), 0.05);
+  border-bottom: 4px solid #0084c8; /* the store's logo-blue rule, as the catalogue band */
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(300px, 1fr);
-  gap: var(--sp-8);
-  align-items: start;
+  place-items: center;
+  padding: var(--sp-6) var(--sp-6) 88px;
+  overflow: hidden;
 }
-@media (max-width: 959px) {
-  .layout {
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--sp-6);
+.band:not(:has(.thumbs)) {
+  padding-bottom: var(--sp-6);
+}
+/* Arrival: the plate settles onto the band once, on load. */
+.plate {
+  animation: plate-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  height: 100%;
+  aspect-ratio: 4 / 3;
+  max-width: 100%;
+  border-radius: 8px;
+  background: rgb(var(--v-theme-photo-ground));
+  box-shadow: 0 16px 36px -22px rgba(10, 46, 74, 0.45);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+@keyframes plate-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    box-shadow: 0 2px 6px -4px rgba(10, 46, 74, 0.2);
   }
 }
-.media {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--sp-3);
+.plate-img {
+  max-width: 92%;
+  max-height: 92%;
+  object-fit: contain;
+  mix-blend-mode: multiply; /* as ProductImage: the photo takes the tone of photo-ground */
+}
+.counter {
+  position: absolute;
+  top: var(--sp-4);
+  right: var(--sp-4);
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+}
+.nav {
+  position: absolute;
+  top: calc(50% - 32px);
+  background: rgb(var(--v-theme-surface)) !important;
+  box-shadow: 0 4px 12px -6px rgba(10, 46, 74, 0.4);
+}
+.prev {
+  left: var(--sp-4);
+}
+.next {
+  right: var(--sp-4);
 }
 .thumbs {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-4);
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--sp-2);
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  max-height: 600px;
-  overflow-y: auto;
+  max-width: calc(100% - 32px);
+  overflow-x: auto;
 }
 .thumb {
-  width: 96px;
-  padding: 2px;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
+  overflow: hidden;
   border: 2px solid transparent;
-  border-radius: 10px;
-  background: none;
+  background: rgb(var(--v-theme-photo-ground));
+  padding: 0;
   cursor: pointer;
+  transition: border-color 150ms ease-out, transform 150ms ease-out;
+}
+.thumb:hover {
+  transform: translateY(-2px);
 }
 .thumb.on {
   border-color: rgb(var(--v-theme-primary));
 }
-.stage {
-  grid-column: 2;
-  position: relative;
-  background: rgb(var(--v-theme-photo-ground));
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 16px;
-  aspect-ratio: 4 / 3;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-@media (max-width: 959px) {
-  .stage {
-    grid-column: 1 / -1;
-  }
-}
-.stage-img {
+.thumb :deep(img) {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding: 4%;
-  mix-blend-mode: multiply; /* as ProductImage: the photo takes the tone of photo-ground */
 }
-.stage-empty {
-  width: 100%;
+.swap-enter-active {
+  transition: opacity 220ms ease-out;
 }
-.nav {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.92) !important;
-  color: #0f1a24 !important;
-  box-shadow: 0 1px 4px rgba(15, 26, 36, 0.2);
+.swap-leave-active {
+  transition: opacity 100ms ease-in;
+}
+.swap-enter-from,
+.swap-leave-to {
   opacity: 0;
-  transition: opacity 160ms;
 }
-.stage:hover .nav,
-.nav:focus-visible {
-  opacity: 1;
-}
-@media (hover: none) {
-  .nav {
-    opacity: 1;
-  }
-}
-.prev {
-  left: 12px;
-}
-.next {
-  right: 12px;
-}
-.counter {
-  position: absolute;
-  bottom: 10px;
-  right: 12px;
-  padding: 2px 8px;
-  border-radius: 10px;
-  background: rgba(15, 26, 36, 0.6);
+
+/* No photo: the nameplate fills the band. */
+/* No photo: the band becomes the store's navy field (as the catalogue band) carrying the part's nameplate. */
+.band.bare {
+  height: 300px;
+  padding: var(--sp-8);
+  background: #0a2e4a;
   color: #fff;
+  border-bottom: 4px solid #0084c8;
 }
-.panel {
-  position: sticky;
-  top: 96px;
+.band.bare::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('@cimh/web-app/assets/legacy/gears.webp') right -40px bottom -60px / 520px auto no-repeat;
+  filter: invert(1);
+  mix-blend-mode: screen;
+  opacity: 0.12;
+  pointer-events: none;
+}
+.nameplate-big {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5, 20px);
-  padding: var(--sp-6);
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 16px;
-  background: rgb(var(--v-theme-surface));
+  align-items: center;
+  gap: var(--sp-3);
+  text-align: center;
+  max-width: 90%;
 }
-@media (max-width: 959px) {
-  .panel {
-    position: static;
-  }
+.np-model {
+  font-size: clamp(32px, 4.4vw, 56px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
 }
-.block {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  padding-top: var(--sp-4);
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-}
-.block-title {
-  font-size: 14px;
-  line-height: 22px;
+.np-model.quiet {
+  font-size: clamp(24px, 2.6vw, 32px);
   font-weight: 600;
-  margin: 0;
+  color: rgba(255, 255, 255, 0.86);
 }
-/* No photos: the facts take the main column; the card keeps availability and the action. */
-.layout.no-photo {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
+.np-num {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: clamp(18px, 2vw, 26px);
+  padding: 2px 12px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
 }
-@media (max-width: 959px) {
-  .layout.no-photo {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.np-rule {
+  width: 48px;
+  height: 3px;
+  border-radius: 3px;
+  background: #0084c8;
+  margin-top: var(--sp-2);
 }
-.lead {
+.np-note {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+/* The request bar. */
+.sentinel {
+  height: 1px;
+  margin-bottom: -1px;
+}
+.bar {
+  position: sticky;
+  top: 72px;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-4) var(--sp-8);
+  align-items: center;
+  padding: var(--sp-5, 20px) 0;
+  /* The page ground, so the bar is part of the page until it pins; then it spans the window with a shadow. */
+  background: rgb(var(--v-theme-background));
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  transition: padding 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease-out;
+}
+.bar.pinned {
+  padding: var(--sp-3) 0;
+  box-shadow: 0 10px 16px -14px rgba(10, 46, 74, 0.35), -100vw 0 0 rgb(var(--v-theme-background)), 100vw 0 0 rgb(var(--v-theme-background));
+  clip-path: inset(0 -100vw -24px -100vw);
+}
+.ident {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-6);
+  gap: 4px;
   min-width: 0;
 }
-.lead .block:first-child {
-  padding-top: 0;
-  border-top: 0;
-}
-.lead .facts {
+.make {
   font-size: 15px;
-  gap: 8px var(--sp-6);
-}
-.how {
-  padding-top: var(--sp-4);
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-}
-.how summary {
-  cursor: pointer;
-  font-size: 14px;
+  line-height: 22px;
   font-weight: 600;
-  min-height: 24px;
 }
-.how[open] summary {
-  margin-bottom: var(--sp-3);
-}
-.details {
-  white-space: pre-line;
-}
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 6px var(--sp-4);
+.name {
   margin: 0;
-  font-size: 14px;
-}
-.facts dt {
-  opacity: 0.72;
-}
-.facts dd {
-  margin: 0;
-}
-.pack {
-  font-size: 18px;
+  font-size: 34px;
+  line-height: 40px;
   font-weight: 700;
-  margin: 0;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  transition: font-size 200ms cubic-bezier(0.16, 1, 0.3, 1), line-height 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pinned .name {
+  font-size: 20px;
+  line-height: 28px;
+}
+.ident-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  margin-top: 4px;
+}
+.pinned .ident-row,
+.pinned .buy-note {
+  display: none;
+}
+.num {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 15px;
+  line-height: 22px;
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface-variant));
 }
 .buy {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding-top: var(--sp-4);
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  align-items: flex-end;
+  gap: var(--sp-2);
 }
-.qty-row {
+.buy-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.buy-note {
+  margin: 0;
+  max-width: 34ch;
+  text-align: right;
+  font-size: 13px;
+  line-height: 18px;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+.buy-note.staff {
+  font-size: 15px;
+  line-height: 22px;
 }
 .stepper {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  gap: 4px;
+  height: 48px;
+  padding: 0 4px;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 8px;
+  border-radius: 24px;
 }
 .qty {
   min-width: 2.5ch;
   text-align: center;
+  font-weight: 600;
+  display: inline-block;
+  overflow: hidden;
+}
+.qty-n {
+  display: inline-block;
+}
+.roll-up-enter-active,
+.roll-down-enter-active {
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), opacity 180ms ease-out;
+}
+.roll-up-leave-active,
+.roll-down-leave-active {
+  transition: transform 90ms ease-in, opacity 90ms ease-in;
+}
+.roll-up-enter-from,
+.roll-down-leave-to {
+  transform: translateY(60%);
+  opacity: 0;
+}
+.roll-up-leave-to,
+.roll-down-enter-from {
+  transform: translateY(-60%);
+  opacity: 0;
+}
+.counter > span {
+  display: inline-block;
+}
+
+/* Below the bar. */
+.cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--sp-12, 48px);
+  padding-top: var(--sp-6);
+}
+.col-title {
+  margin: 0 0 var(--sp-3);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 700;
+}
+.prose {
+  max-width: 62ch;
+  margin: 0;
+  white-space: pre-line;
+}
+.details {
+  margin-top: var(--sp-3);
+}
+.facts {
+  display: grid;
+  grid-template-columns: minmax(120px, auto) 1fr;
+  margin: 0;
+}
+.facts dt,
+.facts dd {
+  margin: 0;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.facts dd.t-mono {
+  font-size: inherit;
+  line-height: inherit;
+}
+.facts dt {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  padding-right: var(--sp-4);
+}
+.how {
+  margin-top: var(--sp-4);
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  padding-top: var(--sp-4);
+}
+.how summary {
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 24px;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.how summary::-webkit-details-marker {
+  display: none;
+}
+.how-chev {
+  color: rgb(var(--v-theme-primary));
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.how[open] .how-chev {
+  transform: rotate(180deg);
+}
+.how[open] summary {
+  margin-bottom: var(--sp-4);
+}
+
+/* Phones and tablets: no top bar here (bottom navigation), so the bar pins to the top; it stacks. */
+@media (max-width: 959.98px) {
+  .band {
+    height: 280px;
+    padding: var(--sp-4) var(--sp-4) 76px;
+  }
+  .band:not(:has(.thumbs)) {
+    padding-bottom: var(--sp-4);
+  }
+  .thumb {
+    width: 48px;
+    height: 48px;
+  }
+  .nav {
+    top: calc(50% - 30px);
+  }
+  .prev {
+    left: var(--sp-2);
+  }
+  .next {
+    right: var(--sp-2);
+  }
+  .band.bare {
+    height: 220px;
+    padding: var(--sp-5, 20px);
+  }
+  .bar {
+    top: 0;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .name {
+    font-size: 26px;
+    line-height: 32px;
+  }
+  .buy {
+    align-items: stretch;
+  }
+  .buy-row > :last-child {
+    flex: 1;
+  }
+  .buy-note {
+    text-align: left;
+    max-width: none;
+  }
+  .bar.pinned {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .pinned .stepper {
+    display: none;
+  }
+  .cols {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--sp-8);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar,
+  .name {
+    transition: none;
+  }
+  .plate {
+    animation: none;
+  }
+  .roll-up-enter-from,
+  .roll-down-leave-to,
+  .roll-up-leave-to,
+  .roll-down-enter-from {
+    transform: none;
+  }
+}
+</style>
+
+<style>
+/* The token that carries added parts to the cart (flyToCart; lives on <body>). */
+.cart-token {
+  position: fixed;
+  z-index: 3000;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 40px;
+  padding: 4px 10px 4px 4px;
+  border-radius: 999px;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  box-shadow: 0 10px 24px -10px rgba(10, 46, 74, 0.5);
+  font: 600 13px/1 Inter, sans-serif;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.cart-token img,
+.cart-token b {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: contain;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  color: #0a2e4a;
 }
 </style>

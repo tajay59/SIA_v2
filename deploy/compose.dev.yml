@@ -82,6 +82,9 @@ services:
               "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
     environment:
       ALLOW_EPHEMERAL_KEYS: "true"
+      # Fixed dev-only data key: with a throw-away one, every restart made stored MFA secrets unreadable
+      # (login 500 InvalidTag). Never used outside the dev stack.
+      DATA_KEY: "Y2ltaC1kZXYtb25seS1kYXRhLWtleS0zMi1ieXRlcyE="  # gitleaks:allow (dev-only, not a secret)
       MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
       REDIS_URL: redis://redis:6379/0
       COOKIE_SECURE: "false"          # dev runs over http
