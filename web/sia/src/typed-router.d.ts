@@ -206,6 +206,13 @@ declare module 'vue-router/auto-routes' {
       Record<never, never>,
       | never
     >,
+    '/signup': RouteRecordInfo<
+      '/signup',
+      '/signup',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/staff-only': RouteRecordInfo<
       '/staff-only',
       '/staff-only',
@@ -435,6 +442,14 @@ declare module 'vue-router/auto-routes' {
     'src/pages/reset-password.vue': {
       routes:
         | '/reset-password'
+      views:
+        | never
+      pathParamNames:
+        | never
+    }
+    'src/pages/signup.vue': {
+      routes:
+        | '/signup'
       views:
         | never
       pathParamNames:

@@ -4293,7 +4293,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/signup</code></td>
 <td>Sign up</td>
 <td>public</td>
-<td>Note on top: email code, then admin approval (usually two working days) before requests can be sent. Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
+<td>Three steps on the visitor pass (You · Organisation (CIMH emails: Details) · Password; each Continue checks only its step, a server 422 jumps to the step of the first bad field); the wall lists the way to an approved account (pass → email code → admin approval, usually two working days → requests). Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
 <td>Submit → S-14</td>
 </tr>
 <tr>
@@ -4539,10 +4539,10 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>A-21</td>
-<td><code>/login</code> · <code>/profile</code></td>
-<td>Login / Profile</td>
+<td><code>/login</code> · <code>/signup</code> · <code>/profile</code></td>
+<td>Login / Sign up / Profile</td>
 <td>public / staff</td>
-<td>As S-16 / S-19; non-staff → "staff only" message. Sign-in card: always the dark console panel (whatever theme is stored), headed by the SIA mark + "SIA · CIMH Stores staff app". Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
+<td>As S-16 / S-19; non-staff → "staff only" message. <strong>SIA sign-up</strong> (owner, 2026-11-16): as S-13 but only @cimh.edu.bb addresses; after the email code an administrator gives the account staff access. Sign-in pages: the navy staff card on a graphite wall (whatever theme is stored), stamped with the SIA mark + "SIA · CIMH Stores staff app". Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
 <td>—</td>
 </tr>
 </tbody>
@@ -5042,7 +5042,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>Shells</td>
-<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer; sign-in pages show only their card (no top bar, bottom navigation or footer; the logo links home); SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = legacy split layout on the met-enclosure photo</td>
+<td>Legacy structure (owner rule 2026-11-07): SHOP = top bar on desktop, bottom navigation on phones, CIMH footer; sign-in pages = "Reception desk + pass" (impeccable 2026-11-16, <code>AuthCard</code>): a wall (SHOP navy, SIA graphite) with the crest, title and line, and the pass on the page ground (SHOP white visitor pass, SIA navy staff card) with a lanyard slot and an app stamp; phones: the wall is a header band. No top bar, bottom navigation or footer; the crest links home; SIA = one horizontal header with an Admin menu (no side drawer). Sign-in pages (both apps) = the reception desk + pass layout above (the met-enclosure photo is no longer used there)</td>
 </tr>
 <tr>
 <td>A-01</td>

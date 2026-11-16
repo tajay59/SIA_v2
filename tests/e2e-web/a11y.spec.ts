@@ -77,6 +77,8 @@ test.describe('accessibility (axe)', () => {
     const pid = await orderableProduct(staff, `E2E a11y psychrometer ${run}`)
     await page.goto(`${SIA}/login`)
     const found: string[] = []
+    await audit(page, `${SIA}/signup`, found)
+    await page.goto(`${SIA}/login`)
     await audit(page, `${SIA}/login`, found)
     await page.getByLabel('Email').fill(staff)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)

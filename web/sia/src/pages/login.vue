@@ -29,5 +29,9 @@ function done() {
       :initial-email="typeof route.query.email === 'string' ? route.query.email : ''"
       @success="done"
     />
+    <template #footer>
+      <span>New at CIMH? <router-link to="/signup">Create a staff account</router-link></span>
+      <span class="muted">Trouble logging in? Ask a SIA administrator.</span>
+    </template>
   </AuthCard>
 </template>

@@ -39,17 +39,24 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
 
   test('visitor signs up and verifies the email (S-13 → S-14 → S-15)', async ({ page }) => {
     await page.goto(`${SHOP}/signup`)
-    // Create account is never disabled: an empty form is marked field by field, the first one focused.
-    await page.getByRole('button', { name: 'Create account' }).click()
-    await expect(page.getByText('Enter your organisation')).toBeVisible()
-    await expect(page.getByText('Please accept the terms')).toBeVisible()
+    // Sign-up is three steps on the visitor pass. Continue is never disabled: an empty step is marked field
+    // by field and the first field gets the cursor.
+    await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByLabel('First name')).toBeFocused()
     await expect(page).toHaveURL(/\/signup/)
     await page.getByLabel('First name').fill('Mem')
     await page.getByLabel('Last name').fill('Ber')
     await page.getByLabel('Work email').fill(member)
-    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByRole('heading', { name: 'Organisation' })).toBeVisible()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByText('Enter your organisation')).toBeVisible()
     await page.getByLabel('Organisation').fill(org)
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByRole('heading', { name: 'Password' })).toBeVisible()
+    await page.getByRole('button', { name: 'Create account' }).click()
+    await expect(page.getByText('Please accept the terms')).toBeVisible()
+    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByLabel(/I agree/).check()
     await page.getByRole('button', { name: 'Create account' }).click()
 
