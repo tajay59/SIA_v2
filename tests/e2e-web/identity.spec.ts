@@ -132,6 +132,9 @@ test.describe('J-11 password reset', () => {
     const newPassword = `a brand new password ${run}`
     await page.goto(`${SHOP}/login`)
     await page.getByRole('link', { name: 'Forgot password?' }).click()
+    // Sign-in pages change with a View Transition: wait for the new page before typing (else the old field gets it).
+    await expect(page).toHaveURL(/\/forgot-password/)
+    await page.waitForFunction(() => !document.getAnimations().some((x) => String((x.effect as KeyframeEffect | null)?.pseudoElement ?? '').startsWith('::view-transition')))
     await page.getByLabel('Email').fill(email)
     await page.getByRole('button', { name: 'Send reset code' }).click()
     await expect(page).toHaveURL(/\/reset-password\?email=/)
