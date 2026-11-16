@@ -606,6 +606,7 @@ components:
         organisationName: { type: [string, 'null'] }
         currency: { oneOf: [ { $ref: './common.yaml#/components/schemas/Currency' }, { type: 'null' } ] }
         lineCount: { type: integer }
+        firstItemName: { type: [string, 'null'], description: 'Name of the first line, so lists can title a request by what was asked for' }
         quoteExpiresAt: { type: [string, 'null'], format: date-time }
         submittedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         updatedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }

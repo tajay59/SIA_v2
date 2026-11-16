@@ -3,6 +3,7 @@
  * S-16 / A-21 login (APD §2): email + password, then a 6-digit code for admins with MFA.
  * Account-state errors route or explain: unverified → verify screen, awaiting approval → pending screen,
  * rejected/suspended/locked → message.
+ * Buttons: `m3` = Material 3 pill (SIA: web/sia/src/console.css; SHOP: web/shop/src/m3.css, where every v-btn gets it by default).
  */
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -11,6 +12,7 @@ import { useNotify } from '../notify'
 import { useSession } from '../session'
 import { code as codeSchema, email as emailSchema, rule } from '../validation'
 import { useInitialFocus } from '../focus'
+import { checkForm, type FormLike } from '../form'
 import PasswordField from './PasswordField.vue'
 
 const props = defineProps<{
@@ -33,7 +35,7 @@ const step = ref<'credentials' | 'mfa'>('credentials')
 const busy = ref(false)
 const formError = ref<string | null>(null)
 const fieldErrors = ref<Record<string, string>>({})
-const valid = ref(false)
+const formRef = ref<FormLike | null>(null)
 const emailField = ref<{ focus: () => void } | null>(null)
 const totpField = ref<{ focus: () => void } | null>(null)
 useInitialFocus(emailField)
@@ -47,8 +49,17 @@ const MESSAGES: Record<string, string> = {
 const title = computed(() => (step.value === 'mfa' ? 'Enter the code from your authenticator app' : null))
 
 async function submit() {
+  if (busy.value) return
   formError.value = null
   fieldErrors.value = {}
+  // The button is never disabled: an incomplete form is marked instead (first field focused).
+  if (step.value === 'mfa') {
+    if (rule(codeSchema)(totp.value) !== true) {
+      fieldErrors.value = { totp: 'Enter the 6-digit code from your authenticator app.' }
+      totpField.value?.focus()
+      return
+    }
+  } else if (!(await checkForm(formRef.value))) return
   busy.value = true
   try {
     const out = await session.login(email.value.trim(), password.value, step.value === 'mfa' ? totp.value : undefined)
@@ -87,7 +98,7 @@ function back() {
 </script>
 
 <template>
-  <v-form v-model="valid" class="stack" @submit.prevent="submit">
+  <v-form ref="formRef" class="stack" @submit.prevent="submit">
     <v-alert v-if="formError" type="error" variant="tonal" density="compact" role="alert">{{ formError }}</v-alert>
 
     <template v-if="step === 'credentials'">
@@ -126,16 +137,16 @@ function back() {
       <p v-if="fieldErrors.totp" class="t-caption" style="color: rgb(var(--v-theme-error))" role="alert">
         {{ fieldErrors.totp }}
       </p>
-      <v-btn variant="text" class="align-self-start" @click="back">Use a different account</v-btn>
+      <v-btn variant="text" class="m3 align-self-start" @click="back">Use a different account</v-btn>
     </template>
 
     <v-btn
       type="submit"
       color="primary"
       size="large"
+      class="m3"
       block
       :loading="busy"
-      :disabled="step === 'mfa' ? rule(codeSchema)(totp) !== true : !valid"
     >
       {{ step === 'mfa' ? 'Verify and log in' : 'Log in' }}
     </v-btn>

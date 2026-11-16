@@ -13,6 +13,7 @@ Alerts go to `ALERT_EMAIL_TO` (Gmail SMTP). Critical alerts repeat every hour, w
 | mongodb | mongodb-exporter (`svc_monitor`, clusterMonitor) | replica set member health, lag |
 | kafka | kafka-exporter (`exporter`, Describe only) | topic offsets, consumer-group lag, DLQs |
 | redis | redis-exporter | up, memory, clients |
+| blackbox | blackbox-exporter → `https://<SIA_HOST>/health`, `https://<STORE_HOST>/health` | reachability, certificate expiry |
 
 ## Alerts: meaning and first steps
 
@@ -28,10 +29,18 @@ Alerts go to `ALERT_EMAIL_TO` (Gmail SMTP). Critical alerts repeat every hour, w
 | `HostMemoryHigh` | warning | > 85 % memory for 5 min | `docker stats` by container; the budget is tight (32 GB); a leak shows as steady growth: restart that service and report it |
 | `DiskAbove80` | warning | A filesystem is over 80 % | `du -sh /srv/*`; Kafka trims by retention; old restic snapshots are pruned by `backup.sh`; Prometheus keeps 30 days |
 | `HostRebooted` | critical | A machine started < 10 min ago | expected in a patch window; otherwise power: unlock the Pis (LUKS), check the replica set |
+| `FailedLoginsHigh` | warning | > 20 failed logins/min for 2 min | password guessing? `$C logs identity-svc` for the source; the edge already limits 5/min per IP; block a single source in nginx |
+| `AdminLockedOut` | critical | An admin account locked after 5 failures | call the admin: was it them? If not, treat as an attack on that account (INCIDENT_RESPONSE) |
+| `AdminLoginNewIp` | warning | An admin signed in from a new IP | confirm with the admin; audit log A-20 (`auth.admin_login`, `newIp`) |
+| `RefreshTokenReuse` | warning | A refresh token was used twice | the session family is already revoked; a stolen token or a buggy client; ask the user, check the audit log |
+| `MalwareUploaded` | critical | ClamAV found malware in an upload | the file is quarantined (`/srv/sia-data/quarantine`); who uploaded it (audit `file.quarantined`)? contact the customer |
+| `NewExceptionType` | warning | A new kind of unhandled error in a service | find it by type in the logs (traceId); usually a bug: fix or roll back |
+| `CertExpiringSoon` | warning | < 14 days left on the public certificate | `$C logs certbot`; DNS and port 80 reachable? run `certbot renew` by hand; reload nginx |
+| `SiteUnreachable` | critical | A public name fails HTTPS for 3 min | nginx up? certificate valid? DNS? firewall? |
 
-## Not covered by alerts yet (TR-OBS-3 gaps)
+## Not covered by alerts
 
-Security-event alerts (failed-login spikes, admin login from a new IP, refresh-token reuse, ClamAV detections), certificate expiry < 14 days, and "new unhandled exception type" need metrics the services do not export yet. Until then: the audit log (A-20) and `$C logs identity-svc | grep -E 'TOKEN_REUSE|auth.locked'` weekly, and certbot renews automatically (check `certbot certificates` monthly).
+"403/404 spikes from one user" (TR-OBS-3) is not alerted: a per-user metric label would grow without bound. Watch for it in the logs (`traceId`, `userId`) when another alert fires; nginx rate limits cap the volume.
 
 ## Checking that alerting works
 

@@ -1,4 +1,5 @@
 # Raspberry Pi replica-set members (INFRASTRUCTURE §4.4). One file for both Pis; the env file selects the role:
+#   First, on each Pi:  bash scripts/check-db-host.sh   (refuses CPUs older than ARMv8.2-A, e.g. Pi 3/4: MongoDB 8 cannot run)
 #   Pi A:  docker compose -p sia-db-a --env-file env/pi-a.env -f compose.pi.yml up -d
 #   Pi B:  docker compose -p sia-db-b --env-file env/pi-b.env -f compose.pi.yml --profile backup up -d
 # Data lives on the LUKS-encrypted NVMe (/srv, TR-SEC-10). The Pis never run application services.

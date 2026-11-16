@@ -270,3 +270,13 @@ def test_public_endpoints_apply_the_same_token_rules(verifier: TokenVerifier, ke
     assert r.status_code == 403
     assert r.json()["code"] == "MFA_REQUIRED"
     assert c.get("/catalogue", headers=bearer(keys.token("svc:order", "service"))).status_code == 403
+
+
+def test_csrf_with_non_ascii_values_is_403_not_500(verifier: TokenVerifier, keys: Keys) -> None:
+    c = make_client(verifier)
+    token = keys.token("USR1", "user")
+    c.cookies.set("access_token", token)
+    c.cookies.set("csrf_token", "abc")
+    r = c.post("/me", headers={"X-CSRF-Token": "abé".encode("latin-1")})  # raw header bytes, as a client may send
+    assert r.status_code == 403
+    assert r.json()["code"] == "CSRF_FAILED"

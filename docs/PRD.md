@@ -99,7 +99,7 @@ Priority: **Must** = launch blocker · **Should** = launch target · **Could** =
 
 | # | Title | User story | Priority | Notes |
 |---|---|---|---|---|
-| C1 | Browse catalogue | As a customer, I want to browse sellable products by type (met, radar, equipment, supplies, misc, projects) and department. | Must | Only `sellable` products. **No prices shown.** Cursor-based paging. |
+| C1 | Browse catalogue | As a customer, I want to browse sellable meteorological and radar products by type and department. | Must | Only `sellable` products of type MET or RAD, plus Pro Bono items of any type (owner, 2026-11-16). **No prices shown.** Cursor-based paging. |
 | C2 | Search | As any user, I want to search by name, make, model name or number, serial or keyword and get relevant results quickly. | Must | MongoDB text search replaces the current `$regex` queries. Typo-tolerant search is a Could. |
 | C3 | Product detail | As a customer, I want to see a product's images, description, details, make and model, dimensions, weight and availability (in stock / available on request). | Must | Exact stock counts are shown to staff only. |
 | C4 | Pro Bono catalogue | As a customer, I want a separate **Pro Bono** items section listing items CIMH provides free. | Must | Keeps today's NCI pages. |

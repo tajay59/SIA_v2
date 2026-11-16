@@ -192,7 +192,7 @@ Alerts: backup age > 26 h; restic check failure; repository size growth > 20 %/w
 Restores run `mongorestore --bypassDocumentValidation`: the dump re-creates each collection with its BSD §7 validator, which would otherwise silently drop older documents that predate a schema change (found by the P9 rehearsal).
 
 ## 8. Monitoring endpoints
-Prometheus scrapes: services `/metrics` (incl. `outbox_pending_events` / `outbox_oldest_event_age_seconds`, computed by each owning service at scrape time so a stopped relay still shows), node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (`/ops/prometheus`, admin basic-auth + IP allow-list).
+Prometheus scrapes: blackbox-exporter probes of the public HTTPS names (reachability, certificate expiry; targets rendered from `env/<env>.env` by `render-config.sh`); services `/metrics` (incl. `security_events_total` from identity/document-svc, `unhandled_exceptions_total`, `outbox_pending_events` / `outbox_oldest_event_age_seconds`, computed by each owning service at scrape time so a stopped relay still shows), node-exporters (host, Pis), mongodb-exporter (replica set health, lag), kafka-exporter (consumer lag), redis-exporter, nginx stub_status (via exporter), clamav (signature age via a small textfile exporter). Alert rules: TRD TR-OBS-3 + SECURITY §9. Prometheus UI reachable only from the CIMH LAN through nginx (`/ops/prometheus`, admin basic-auth + IP allow-list).
 
 ## 9. Environments
 
@@ -214,7 +214,7 @@ Prometheus scrapes: services `/metrics` (incl. `outbox_pending_events` / `outbox
 2. Install OS on all three; run `bootstrap` (users, SSH, ufw, Docker, chrony, unattended upgrades, fail2ban; LUKS on Pis).
 3. Host: NVIDIA driver + Container Toolkit; verify `docker run --gpus all nvidia/cuda… nvidia-smi`.
 4. Create private CA; issue MongoDB/Kafka/Redis certs; load secrets from the password manager into `deploy/secrets/`.
-5. Start Pis (`compose.pi.yml`), then mongo1; run `init-replset.js` and `roles.js`; check `rs.status()` (1 primary, 2 secondaries).
+5. On each Pi run `scripts/check-db-host.sh` (refuses CPUs older than ARMv8.2-A such as Pi 3/4, < 4 GB RAM, kernels MongoDB 8.0 rejects; every member runs the same `mongo:8.0.30`), then start Pis (`compose.pi.yml`), then mongo1; run `init-replset.js` and `roles.js`; check `rs.status()` (1 primary, 2 secondaries).
 6. Start Kafka, run `kafka-setup` (topics + ACLs); start Redis, Apicurio, ClamAV.
 7. Copy the SHOP and SIA builds to `/srv/sia-web/shop` and `/srv/sia-web/sia`; set `SIA_HOST`, `STORE_HOST`, `OPS_ALLOW_CIDR`, `CERT_EMAIL` in `env/prod.env`; start services; `bash nginx/certs.sh` (temporary certificate → Let's Encrypt for both names → reload; renewal is then automatic); smoke test `/health/ready` everywhere and `tools/security/probes.py` gateway probes (`GW_URL`, `GW_HOST`). Staging server blocks (LAN-only, §3.2) join when staging is provisioned: the production nginx must not depend on the on-demand staging network.
 8. Prometheus/Alertmanager up (`provision.sh` runs `scripts/render-config.sh prod` first: `ALERT_EMAIL_TO`, `SMTP_HOST`, `SMTP_USER` from `env/prod.env`); send a test alert email. After changing those settings: `scripts/render-config.sh prod && docker compose -f compose.prod.yml up -d alertmanager`.

@@ -97,6 +97,32 @@ def test_customers_only_ever_get_public_fields(ctx: Ctx, who: dict[str, str] | N
     assert len(hidden["items"]) == 1
 
 
+@pytest.mark.parametrize("who", [None, USER], ids=["anonymous", "customer"])
+def test_shop_shows_only_met_and_radar_plus_pro_bono_of_any_type(ctx: Ctx, who: dict[str, str] | None) -> None:
+    met = ctx.create(name="Rain gauge", type="MET")
+    ctx.create(name="Radar part", type="RAD")
+    equip = ctx.create(name="Logger", type="EQUIP")
+    ctx.create(name="Cable", type="SUPP")
+    ctx.create(name="Free kit", type="PRO", probono=True)
+    ctx.create(name="Free logger", type="EQUIP", probono=True)
+    headers = who or {}
+
+    names = sorted(i["name"] for i in ctx.client.get(ctx.url("/products"), headers=headers).json()["items"])
+    assert names == ["Free kit", "Free logger", "Radar part", "Rain gauge"]
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "EQUIP"}).json()["items"]
+    assert [i["name"] for i in r] == ["Free logger"]
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "EQUIP", "probono": False}).json()
+    assert r["items"] == []  # another type is only ever visible as Pro Bono
+    r = ctx.client.get(ctx.url("/products"), headers=headers, params={"type": "MET"}).json()["items"]
+    assert [i["name"] for i in r] == ["Rain gauge"]
+    assert ctx.client.get(ctx.url(f"/products/{equip['id']}"), headers=headers).status_code == 404
+    assert ctx.client.get(ctx.url(f"/products/{met['id']}"), headers=headers).status_code == 200
+    # Search starts from the same PUBLIC_FILTER (mongomock has no $text; covered by the real-Mongo integration test).
+    # Staff still see every type.
+    staff = ctx.client.get(ctx.url("/products"), headers=STAFF).json()["items"]
+    assert len(staff) == 6
+
+
 def test_staff_see_everything_including_inactive_on_request(ctx: Ctx) -> None:
     ctx.create()
     ctx.create(name="Hidden", sellable=False)
@@ -186,3 +212,15 @@ def test_customers_cannot_write(ctx: Ctx) -> None:
         json={"name": "X", "type": "MET", "department": "D", "sellable": True, "probono": False, "threshold": 0},
     )
     assert r.status_code == 403
+
+
+def test_integers_beyond_mongodb_range_are_422_or_400_not_500(ctx: Ctx) -> None:
+    """Schemathesis found a 500: threshold 2**63 overflowed MongoDB's int64 (P9)."""
+    body = {"name": "X", "type": "MET", "department": "D", "sellable": True, "probono": False}
+    for field, value in [("threshold", 2**63), ("threshold", 1_000_001), ("unitquantity", 2**63),
+                         ("probonoMaxPerRequest", 2**63)]:  # fmt: skip
+        r = ctx.client.post(ctx.url("/products"), headers=STAFF, json={**body, "threshold": 0, field: value})
+        assert r.status_code == 422, (field, value, r.status_code)
+    p = ctx.create()
+    r = ctx.client.patch(ctx.url(f"/products/{p['id']}"), headers={**STAFF, "If-Match": str(2**63)}, json={"name": "Y"})
+    assert r.status_code == 400

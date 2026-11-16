@@ -3,7 +3,8 @@
 import { computed, ref, watch } from 'vue'
 
 const open = defineModel<boolean>({ default: false })
-const props = defineProps<{ title: string; text?: string; confirm: string; danger?: boolean; busy?: boolean }>()
+/** `dismiss`: label of the button that closes without acting (default "Back"; e.g. "Keep request" next to "Cancel request"). */
+const props = defineProps<{ title: string; text?: string; confirm: string; dismiss?: string; danger?: boolean; busy?: boolean }>()
 const emit = defineEmits<{ submit: [reason: string] }>()
 const reason = ref('')
 watch(open, (o) => o && (reason.value = ''))
@@ -28,7 +29,7 @@ const valid = computed(() => reason.value.trim().length >= 3)
       </v-card-text>
       <v-card-actions>
         <v-spacer />
-        <v-btn variant="text" @click="open = false">Back</v-btn>
+        <v-btn variant="text" @click="open = false">{{ props.dismiss ?? 'Back' }}</v-btn>
         <v-btn :color="props.danger ? 'error' : 'primary'" variant="flat" :disabled="!valid" :loading="busy" @click="emit('submit', reason.trim())">
           {{ confirm }}
         </v-btn>

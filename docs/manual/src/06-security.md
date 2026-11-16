@@ -264,7 +264,7 @@ Authoritative matrix: [API README §3](../api/README.md#3-roles-and-access). Sum
 
 ## Penetration test 2026-11
 
-Run by Claude on the local dev stack and a local copy of the staging gateway, under a scope the owner approved (staging and real data were out of scope). Method: OWASP ASVS L2, ZAP API scans of all five services, and 80 repeatable probes (`tools/security/probes.py`). Eight findings:
+Run by Claude on the local dev stack and a local copy of the staging gateway, under a scope the owner approved (staging and real data were out of scope). Method: OWASP ASVS L2, ZAP API scans of all five services, and 80 repeatable probes (`tools/security/probes.py`). Ten findings:
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
@@ -275,6 +275,8 @@ Run by Claude on the local dev stack and a local copy of the staging gateway, un
 | F-03 | S3 | Locking an account revealed that the email exists (different status and timing) | Fixed |
 | F-04 | S3 | Internal endpoints accepted any service, not just their callers | Fixed (per-route caller lists) |
 | F-08 | S4 | No `Cross-Origin-Resource-Policy` header | Fixed |
+| F-09 | S3 | Non-ASCII secrets, TOTP codes or CSRF tokens crashed a comparison (500) | Fixed (found by the contract tests) |
+| F-10 | S3 | Integers beyond MongoDB's range (product fields, If-Match) crashed writes (500) | Fixed (found by the contract tests) |
 | F-05 | S4 | Services trust `X-Real-IP` as sent (safe only behind the edge) | Accepted |
 
 Held: JWT forgery (alg none, HS256 with the public key, edited claims), refresh-token reuse, mass assignment, same-organisation rules, idempotency per caller, paging tampering, upload type checks, revocation failing closed, mobile token storage and pinning.

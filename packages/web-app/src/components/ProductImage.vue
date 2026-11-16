@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Product photo in a white 4:3 frame (DESIGN_BRIEF §9: real photos on white). Responsive WebP variants from
+ * Product photo in a 4:3 frame on the theme's `photo-ground` (DESIGN_BRIEF §9: real photos on white; dimmed in dark mode). Responsive WebP variants from
  * media-worker; a neutral icon when the product has no photo yet.
  */
 import { mdiImageOffOutline } from '@mdi/js'
@@ -15,7 +15,7 @@ const src = computed(() => (props.image ? imageVariant(props.image.url, props.sm
 </script>
 
 <template>
-  <div class="frame">
+  <div class="frame" :class="{ empty: !image }">
     <img
       v-if="image"
       :src="src"
@@ -34,7 +34,7 @@ const src = computed(() => (props.image ? imageVariant(props.image.url, props.sm
 <style scoped>
 .frame {
   aspect-ratio: 4 / 3;
-  background: #fff;
+  background: rgb(var(--v-theme-photo-ground));
   border-radius: 8px;
   overflow: hidden;
   display: flex;
@@ -45,7 +45,12 @@ img {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  mix-blend-mode: multiply; /* a photo's white background takes the ground's tone (dimmed in dark mode) */
   transition: transform 160ms ease-out;
+}
+/* No photo: no white ground to blend with, so the empty frame takes the quiet surface tone (a white box glared in dark). */
+.frame.empty {
+  background: rgb(var(--v-theme-surface-variant));
 }
 .none {
   color: #8a96a3;

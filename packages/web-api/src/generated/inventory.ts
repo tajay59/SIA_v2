@@ -374,7 +374,7 @@ export interface paths {
                     content: {
                         "application/json": {
                             barcodes: string[];
-                            /** @description Download via documents API. null until document-svc (P6) builds the label file; SIA renders the codes itself meanwhile */
+                            /** @description Label PDF (A4 sheet), download via the documents API. null if document-svc could not make it (fail-soft); SIA then prints the codes itself */
                             fileId: string | null;
                         };
                     };

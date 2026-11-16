@@ -4,7 +4,7 @@
  */
 import { vuetifyOptions } from '@cimh/web-ui'
 import { createPinia } from 'pinia'
-import { type Component, createApp } from 'vue'
+import { type Component, createApp, inject } from 'vue'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { createVuetify } from 'vuetify'
 import { aliases, mdi } from 'vuetify/iconsets/mdi-svg'
@@ -17,6 +17,10 @@ export interface BootOptions extends GuardOptions {
   routes: readonly RouteRecordRaw[]
   mount?: string
 }
+
+const APP_KEY = 'cimh:app'
+/** Which app a shared component runs in: SIA parts use the Graphite Console (web/sia/DESIGN.md), SHOP the brief. */
+export const useAppName = (): 'shop' | 'sia' => inject<'shop' | 'sia'>(APP_KEY, 'shop')
 
 const RELOAD_KEY = 'cimh:chunk-reload'
 
@@ -65,7 +69,7 @@ export function boot(opts: BootOptions) {
   const app = createApp(opts.root)
   const pinia = createPinia()
   const vuetify = createVuetify({
-    ...vuetifyOptions(opts.app, storedTheme()),
+    ...vuetifyOptions(opts.app, storedTheme(opts.app === 'sia' ? 'cimhDark' : undefined)),
     icons: { defaultSet: 'mdi', aliases, sets: { mdi } },
   })
   const router = createRouter({
@@ -93,6 +97,7 @@ export function boot(opts: BootOptions) {
     }
     window.location.assign(to.fullPath)
   })
+  app.provide(APP_KEY, opts.app)
   app.directive('scroll-region', vScrollRegion)
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)

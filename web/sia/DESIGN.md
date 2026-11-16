@@ -1,0 +1,387 @@
+---
+name: SIA (CIMH Stores staff app)
+description: Graphite Console. Persistent panels on graphite; colour only for state and the one primary action.
+colors:
+  graphite-ground: "#16191D"
+  graphite-panel: "#1C2026"
+  graphite-raised: "#22272E"
+  seam: "#30363D"
+  field-edge: "#6E7A87"
+  console-ink: "#E6EDF3"
+  console-ink-muted: "#9DA7B3"
+  action-blue: "#5CC2FF"
+  on-action: "#0D1117"
+  action-subtle: "#0B2A3D"
+  done-green: "#3FB950"
+  verify-amber: "#F2B13A"
+  expiring-red: "#F97066"
+  graphite-ground-light: "#F6F8FA"
+  graphite-panel-light: "#FFFFFF"
+  graphite-raised-light: "#EEF1F4"
+  seam-light: "#D0D7DE"
+  field-edge-light: "#7F8B98"
+  console-ink-light: "#14191F"
+  console-ink-muted-light: "#57606A"
+  action-blue-light: "#006FA8"
+  on-action-light: "#FFFFFF"
+  action-subtle-light: "#E6F4FB"
+  done-green-light: "#1A7F37"
+  verify-amber-light: "#B54708"
+  expiring-red-light: "#B42318"
+  logo-blue: "#0084C8"
+  probono-yellow: "#F5C400"
+  probono-ink: "#1A1A1A"
+typography:
+  page-title:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "28px"
+    fontWeight: 600
+    lineHeight: "36px"
+    letterSpacing: "-0.3px"
+  section-title:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "18px"
+    fontWeight: 600
+    lineHeight: "26px"
+  identity:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "20px"
+    fontWeight: 600
+    lineHeight: "26px"
+    letterSpacing: "-0.01em"
+  next-step:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "16px"
+    fontWeight: 600
+    lineHeight: "22px"
+  body:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 400
+    lineHeight: "20px"
+    fontFeature: "\"cv11\", \"ss01\""
+  label:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "13px"
+    fontWeight: 500
+    lineHeight: "18px"
+    letterSpacing: "0.1px"
+  button:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "14px"
+    fontWeight: 500
+    lineHeight: "20px"
+    letterSpacing: "0.00625em"
+  caption:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "12px"
+    fontWeight: 400
+    lineHeight: "16px"
+    letterSpacing: "0.1px"
+  panel-title:
+    fontFamily: "Inter Variable, Inter, system-ui, sans-serif"
+    fontSize: "11px"
+    fontWeight: 600
+    lineHeight: "16px"
+    letterSpacing: "0.08em"
+  mono:
+    fontFamily: "JetBrains Mono, ui-monospace, monospace"
+    fontSize: "13px"
+    fontWeight: 400
+    lineHeight: "20px"
+rounded:
+  control: "2px"
+  badge: "3px"
+  seam: "4px"
+  chip: "8px"
+  pill: "999px"
+spacing:
+  sp-1: "4px"
+  sp-2: "8px"
+  sp-3: "12px"
+  sp-4: "16px"
+  sp-6: "24px"
+  sp-8: "32px"
+  sp-12: "48px"
+components:
+  button-primary:
+    backgroundColor: "{colors.action-blue}"
+    textColor: "{colors.on-action}"
+    typography: "{typography.button}"
+    rounded: "{rounded.pill}"
+    padding: "0 24px"
+    height: "40px"
+  button-outlined:
+    backgroundColor: "transparent"
+    textColor: "{colors.action-blue}"
+    typography: "{typography.button}"
+    rounded: "{rounded.pill}"
+    padding: "0 24px"
+    height: "40px"
+  button-danger:
+    backgroundColor: "transparent"
+    textColor: "{colors.expiring-red}"
+    typography: "{typography.button}"
+    rounded: "{rounded.pill}"
+    padding: "0 24px"
+    height: "40px"
+  panel:
+    backgroundColor: "{colors.graphite-panel}"
+    rounded: "{rounded.seam}"
+  panel-head:
+    textColor: "{colors.console-ink-muted}"
+    typography: "{typography.panel-title}"
+    padding: "0 16px"
+    height: "44px"
+  queue-row:
+    textColor: "{colors.console-ink}"
+    typography: "{typography.body}"
+    padding: "0 16px"
+    height: "44px"
+  queue-row-hover:
+    backgroundColor: "{colors.graphite-raised}"
+  queue-row-selected:
+    backgroundColor: "{colors.action-subtle}"
+  nav-item:
+    textColor: "{colors.console-ink}"
+    typography: "{typography.body}"
+    padding: "0 16px"
+    height: "32px"
+  nav-item-active:
+    backgroundColor: "{colors.graphite-raised}"
+    textColor: "{colors.console-ink}"
+  stage-tab:
+    textColor: "{colors.console-ink-muted}"
+    typography: "{typography.label}"
+    padding: "0 16px"
+    height: "44px"
+  stage-tab-active:
+    backgroundColor: "{colors.action-subtle}"
+    textColor: "{colors.console-ink}"
+  status-chip:
+    typography: "{typography.label}"
+    rounded: "{rounded.chip}"
+    padding: "0 12px 0 8px"
+    height: "28px"
+  probono-badge:
+    backgroundColor: "{colors.probono-yellow}"
+    textColor: "{colors.probono-ink}"
+    rounded: "{rounded.badge}"
+    padding: "1px 6px"
+  scan-field:
+    backgroundColor: "{colors.graphite-panel}"
+    textColor: "{colors.console-ink}"
+    typography: "{typography.mono}"
+    rounded: "{rounded.control}"
+  next-step-well:
+    backgroundColor: "{colors.graphite-raised}"
+    rounded: "{rounded.seam}"
+    padding: "12px 16px 16px"
+---
+
+# Design System: SIA (CIMH Stores staff app)
+
+Scope: the staff app in `web/sia`, as built on 2026-11-12. Tokens come from `packages/web-ui/src/theme.ts` (`siaDark` / `siaLight`, which keep the theme names `cimhDark` / `cimhLight`), `packages/web-app/src/styles/base.css`, `web/sia/src/console.css` and the shell and request components. SHOP keeps the older `cimhLight` / `cimhDark` palette from `docs/DESIGN_BRIEF.md`; this file does not describe SHOP.
+
+## Overview
+
+**Creative North Star: "Graphite Console"**
+
+SIA is a working console, not a website. Panels sit on a graphite ground and stay put: the drawer, the work queue and the selected item's detail share the window, and navigating changes what the panels hold instead of replacing the page. Panels are cut apart by 1 px seams, not floated on shadows. Dark is the default (`storedTheme('cimhDark')`); the light theme mirrors it with white panels and pale seams.
+
+Colour is reserved. Action blue marks the one primary action, the selected row and the active place; amber, red and green mean state (verify, expiring or failed, done) and always travel with an icon and a word. Everything else is ink, muted ink and seams. Type is compact Inter at 13 to 14 px for rows and controls; codes, counts and ids are set in JetBrains Mono with tabular figures. Panels name themselves with a small uppercase header.
+
+Motion is quiet and functional: counts roll when they change, rows enter, leave and re-sort in place, the detail panel swaps in from the queue's side, and a View Transition morphs the request pane when it opens beside the queue or moves to its own page. Every motion has a reduced-motion path.
+
+**Key Characteristics:**
+- Persistent panels on graphite, separated by 1 px seams, 4 px corners.
+- Colour only for state and the primary action; state is never colour alone.
+- Compact Inter for UI, JetBrains Mono for codes, ids and figures.
+- Material 3 pill buttons beside square-cornered panels.
+- Dark by default, light as an equal mirror.
+
+## Colors
+
+A graphite neutral ladder with one blue for action and three state hues; the brand blue appears only in the mark.
+
+### Primary
+- **Action Blue** (`action-blue`, light `action-blue-light`): the filled primary button, outlined and text button labels, links, the active nav icon and its 2 px edge bar, the selected-row bar, the active stage-tab underline, the collapsed-rail count dot.
+- **Action Wash** (`action-subtle`, light `action-subtle-light`): background of the selected queue row, the active stage tab and the "Selected request" panel header.
+
+### Neutral
+- **Graphite Ground** (`graphite-ground`, light `graphite-ground-light`): app background behind the panels; also the open request view inside the desk.
+- **Graphite Panel** (`graphite-panel`, light `graphite-panel-light`): panels, drawer, app bar, filter bar, tab strip.
+- **Graphite Raised** (`graphite-raised`, light `graphite-raised-light`): row and nav hover, the active nav row, the Next step well; in dark mode also the drawer tooltip (theme `surface-bright`, which is white in light mode).
+- **Field Edge** (`field-edge`, light `field-edge-light`; theme `field-outline`, shared with SHOP): the 1 px resting edge of every input. At least 3:1 on the ground, a panel and a raised well (WCAG 1.4.11); the seam is too faint for that (about 1.5:1 on white).
+- **Seam** (`seam`, light `seam-light`): every 1 px divider and panel edge, outlined-button border, neutral status chip outline, kbd hint border, scrollbar thumb. Also Vuetify's `border-color`.
+- **Console Ink** (`console-ink`, light `console-ink-light`): body text and row text.
+- **Muted Ink** (`console-ink-muted`, light `console-ink-muted-light`): Vuetify `secondary`; panel and group titles, nav icons, counts, waiting time, fact labels, codes in compact rows. Medium-emphasis opacity is 0.74.
+
+### State
+- **Verify Amber** (`verify-amber`, light `verify-amber-light`): work that needs staff now (agreement to verify, overdue waiting time, urgent stage tab, Awaiting agreement chip).
+- **Expiring Red** (`expiring-red`, light `expiring-red-light`): quote expiring, failed or refused, the destructive outlined button.
+- **Done Green** (`done-green`, light `done-green-light`): completed states, full pick lines, a successful scan.
+- Info uses Action Blue (theme `info` = `primary`).
+
+### Brand
+- **Focus ring:** 2 px, offset 2 px, in the theme primary (Action Blue: #006FA8 light, #5CC2FF dark), from `base.css`.
+- **Logo Blue** (`logo-blue`): brand reference only; not for text (4.09:1 on white). The SIA mark (`packages/web-app/src/assets/brand/sia-mark.svg`) carries its own artwork blues and near-black and is used as supplied.
+- **Pro Bono Yellow** (`probono-yellow`, theme `accent-probono`) with **Pro Bono Ink** (`probono-ink`, CSS `--probono-ink`): the Pro Bono badge only, ink text only. One shared `.probono-badge` in `packages/web-app/src/styles/base.css` for SHOP and SIA.
+
+### Named Rules
+**The State-Only Colour Rule.** Amber, red and green appear only when something is in that state; a quiet queue is ink and seams. Stage tints and decorative colour were removed from the dashboard for this reason.
+
+**The Never-Colour-Alone Rule.** Every state colour carries an icon and a word: status chips (icon + sentence-case word), "Overdue" and "Expiring" in queue rows, the Next step sentence.
+
+## Typography
+
+**Display Font:** none; SIA has no display level in use (`t-display` is unused).
+**Body Font:** Inter Variable (self-hosted via `@fontsource-variable/inter`), with system-ui fallback; features `cv11`, `ss01`.
+**Label/Mono Font:** JetBrains Mono 400 and 500 (self-hosted via `@fontsource/jetbrains-mono`), ui-monospace fallback.
+
+**Character:** a compact, neutral grotesque for everything people read, and a monospace only where the content is a code, an id or a count that must line up.
+
+### Hierarchy
+- **Page title** (600, 28/36, -0.3px): the shell's `h1` above each page (`route.meta.title`).
+- **Section title** (600, 18/26): `t-h3`, the most-used heading inside pages; `t-h2` (22/30) appears on a few pages.
+- **Identity** (600, 20/26, -0.01em): the customer or organisation name heading the request detail.
+- **Next step** (600, 16/22): the one sentence that says what to do with the selected request.
+- **Body** (400, 14/20 in rows and nav; `t-body` 14/22 in running text): the default UI size.
+- **Label** (500, 13/18, 0.1px): status chips, stage tabs, field labels.
+- **Button** (500, 14/20, 0.00625em, no uppercase).
+- **Caption** (400, 12/16): fact labels, hints, secondary lines.
+- **Panel title** (600, 11/16, 0.08em, uppercase, muted ink): the heading of a panel or drawer group.
+- **Mono** (400, 13/20; 12/16 for full ids and counts): request ids, unit and shelf codes, counts, the scan field's input, kbd hints. Always with tabular figures.
+
+### Named Rules
+**The Codes-in-Mono Rule.** A value someone could scan, type or compare (ids, barcodes, counts) is set in JetBrains Mono with `tabular-nums`; prose and names never are.
+
+**The Panel-Names-Itself Rule.** A panel's heading is its own small uppercase header in the 44 px head bar; it is the heading, not a label above another heading.
+
+## Layout
+
+- **Shell:** a left navigation drawer (240 px; collapses to a 64 px icon rail, remembered per device) is permanent at 1280 px and wider. Below 1280 px a 56 px app bar opens it as a temporary drawer. There is no top navigation bar.
+- **Console panels:** queue and detail sit side by side in one bordered frame (`3fr` queue, `2fr` detail, detail at least 320 px). At 1280 px and wider the page fits the window and only the panels' bodies scroll. Below 1280 px they stack; below 600 px the detail panel is hidden (rows open the request page).
+- **Request open beside the desk:** the queue narrows to 280 to 340 px and the request fills the rest; below 900 px the request takes the full width.
+- **Content width:** the request desk caps at 1500 px, the page title block at 1440 px.
+- **Spacing:** a 4 px grid exposed as `--sp-1` to `--sp-12` (4, 8, 12, 16, 24, 32, 48). Panel heads and rows use 16 px side padding; gaps inside toolbars and rows are 8 to 12 px; page padding is 16 to 24 px.
+- **Density:** Vuetify `compact` globally (SIA), rows 44 px, nav rows 32 px (40 px in the rail).
+- **Breakpoints:** 600 px (phone), 900 px (open request takes the width), 1280 px (permanent drawer, side-by-side panels).
+
+## Elevation & Depth
+
+Flat by default. Depth comes from the tonal ladder (ground, panel, raised) and 1 px seams, not from shadows. Shadows exist only for transient lift and floating overlays: a level-1 shadow under a filled pill button on hover, a soft shadow under the drawer tooltip, and Vuetify's own elevation on menus, dialogs and snackbars. Inset 2 px bars mark selection and place; they are indicators, not elevation.
+
+### Shadow Vocabulary
+- **Button hover** (`box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 1px 3px 1px rgba(0,0,0,0.15)`): filled M3 buttons on hover only; outlined and text buttons never lift.
+- **Floating tooltip** (`box-shadow: 0 6px 18px rgba(0,0,0,0.28)`): the drawer's title + description tooltip.
+
+### Named Rules
+**The Seams-Not-Shadows Rule.** Panels at rest have no shadow; they are separated by a 1 px seam and a step on the tonal ladder. Shadow belongs to hover lift and floating overlays.
+
+## Shapes
+
+Square-ish containers, round controls. Panels, the stage-tab strip, the filter bar, the Next step well, tooltips and skeleton blocks use 4 px corners; the Pro Bono badge and kbd hints 3 px; status chips 8 px; console buttons and the filter count badge are full pills (999 px). Nav rows are square (`rounded="0"`). Vuetify defaults for SIA set buttons, cards and fields to `rounded: 'sm'`, which Vuetify 4 resolves to 2 px (built CSS `.rounded-sm`), not the 4 px `r-sm` of `tokens.ts`; buttons without the `m3` class keep that 2 px corner (none left on the sign-in pages, the 404 or the profile since 2026-11-14).
+
+## Components
+
+### Buttons
+Material 3 pills, calm until touched.
+- **Shape:** full pill (999 px), 40 px tall, 24 px side padding (16 px leading when there is an icon, 8 px icon gap).
+- **Primary:** filled Action Blue with `on-action` label; the detail panel shows the filled action for the request's current step (from its allowed actions), with secondary actions outlined.
+- **Hover / Focus:** state layer at 8% on hover and 12% on press or focus; filled buttons gain the level-1 shadow on hover (200 ms, `cubic-bezier(0.2, 0, 0, 1)`).
+- **Outlined:** 1 px seam outline, Action Blue label, no lift.
+- **Danger:** outlined with a 50% red outline and red label; placed alone, away from the primary action (detail footer: the way out on the left, Reject on the right).
+- **Text links in panels:** Action Blue, 600, underline on hover with the trailing arrow nudging 3 px.
+
+### Switches and dialogs
+- **Switch off:** outlined track (2 px `field-outline`) with an outline-coloured thumb, as Material 3 draws it; on keeps the filled primary track. Vuetify's default off state vanished on white panels.
+- **Dialog titles** wrap instead of being cut to one line.
+- **Narrow tables** (request Items): below 520 px of panel width each row becomes a block of label / value pairs.
+
+### Chips
+Status, never an action.
+- **Style:** 28 px tall, 8 px corners, 18 px filled icon, label 13/500. Tonal fill at 8% of the tone, 1 px outline at 32%, label = tone mixed 72% toward ink (AA on the tint); icon keeps the pure hue.
+- **Neutral:** outline only (seam), ink label, muted icon, so "nothing to do yet" reads quieter than states that need attention.
+- **Mapping:** one table for every app (`packages/web-ui/src/status.ts`): neutral, info, warning, success, error.
+
+### Cards / Containers (console panels)
+- **Corner Style:** 4 px on the outer frame.
+- **Background:** Graphite Panel.
+- **Shadow Strategy:** none (see Elevation & Depth).
+- **Border:** 1 px seam around the frame and between panels.
+- **Head:** 44 px bar, 16 px side padding, seam underneath, panel title left and controls right. The detail panel's head is washed in Action Wash with a blue title.
+- **Internal Padding:** 16 px; 20 px gaps between detail sections.
+
+### Inputs / Fields
+- **Style:** every Vuetify input (text field, select, autocomplete, combobox, textarea, file, number, OTP) is `solo-inverted` and flat (owner, 2026-11-12; set once in `packages/web-ui/src/theme.ts` defaults), compact density, 2 px corners (`rounded: 'sm'`). A field that must be the page's main target (Pick Order's Unit) adds a 2 px primary ring (`ScanField prominent`).
+- **Edge:** a solo-inverted field at rest has the colour of the panel it sits on, so every field carries a 1 px Field Edge (`base.css`, a `::after` on `.v-field`, because Vuetify's hover/focus overlay paints over the field's own box). Error: the edge turns red.
+- **Focus:** the edge becomes 2 px Action Blue on the raised fill; the global focus ring is suppressed inside fields.
+- **6-digit codes:** always six OTP boxes (`v-otp-input`: verify email, MFA, password reset), never a text field.
+- **Scan field:** a form around a solo-inverted field with a barcode icon, mono input text, a persistent hint and a tonal "Enter" button inside. Enter submits one scan, the field clears and keeps focus.
+
+### Sign-in card (`AuthCard`, shared with SHOP)
+On the met-enclosure photo. In SIA the card is always the dark console panel (`v-theme-provider` `cimhDark`, 4 px corners, seam edge) whatever theme is stored, and starts with the SIA mark, "SIA" and "CIMH Stores staff app" above a seam. Buttons are M3 pills (the shared forms carry the `m3` class, which has no rule in SHOP).
+
+### Profile (`ProfileView` + `ProfileSection`, shared with SHOP)
+In SIA each section is a console panel (seam, 4 px corners, 44 px head with the panel title); dividers inside are seams; actions are outlined pills, Save the filled pill, Ask to delete the danger pill. SHOP keeps cards.
+
+### Dialogs
+- **Only Vuetify `v-dialog`** for every modal in SHOP and SIA (owner, 2026-11-12): no native `<dialog>`, `window.confirm/alert/prompt` or hand-made overlays.
+- Theme defaults (`packages/web-ui/src/theme.ts`, `VDialog` nested defaults): the card inside a dialog is elevated on `surface` (cards elsewhere stay outlined and transparent), and fields inside a dialog take `surface-variant` so they stay visible on the card.
+- **Confirms** (2026-11-15): an action that can't be undone, or that emails someone, asks first: the dialog names the record and says what happens; the safe button says what it keeps ("Keep editing", "Keep issued"), the acting button repeats the verb ("Email the customer", "Return unit"). Red only for the irreversible ones (Erase, Merge, Remove).
+- **Submit, then mark:** submit pills are never disabled for missing input; pressing one runs `checkForm` (web-app `form.ts`), which marks every field and focuses the first. Disabled is kept for "nothing changed" (the save bar says "All changes saved") and while saving. Exception: small dialogs whose one field carries the hint (reason dialogs; Erase, where typing the email is the safeguard).
+- Anatomy: title + subtitle (the record's mono id and name), seam dividers, body, actions right-aligned (Back text, primary filled pill). Choices of 2-4 options are radio tiles (icon + radio + word), e.g. Record shipment (`ShipDialog.vue`).
+
+### Navigation
+- **Drawer:** brand mark row, groups Work / Stock / Reports / Admin with uppercase group titles, flat 32 px rows (20 px muted icon, 14 px label, mono count on the right), scan box and account/theme controls at the foot behind a seam.
+- **Hover:** Graphite Raised.
+- **Active:** Graphite Raised ground, label 600, blue icon, 2 px Action Blue bar on the row's right edge (`aria-current="page"`).
+- **Rail:** icons only, centred; counts become a 7 px blue dot; groups separated by seams; every item has a tooltip with title, count and a one-line description.
+
+### Stage tabs (request desk)
+One connected strip cut by seams, 44 px cells, 13/500 muted labels with a mono count. Active: Action Wash, ink label 600, 2 px Action Blue underline. A stage with urgent work turns its label and count amber.
+
+### Queue row
+Grid row, 44 px, seam below: mono id, customer (500) with Pro Bono badge, a reason line with icon + word, optional status chip (168 px column), waiting time right-aligned. Hover: Graphite Raised. Selected: Action Wash with a 2 px Action Blue bar on the left. Overdue waiting turns amber with the word "Overdue"; expiring quotes turn red. In compact mode (beside an open request) and on phones the row becomes two lines (who + wait, why + code).
+
+### Next step well
+The one decision in the detail panel: Graphite Raised well, 1 px seam, 4 px corners; an icon + sentence in 16/600 (amber when urgent, red when expiring, muted when waiting), then the inline actions as M3 buttons.
+
+### Pro Bono badge
+11/16, 600, 0.02em, 1 px × 6 px padding, 3 px corners, Pro Bono Yellow with Pro Bono Ink.
+
+### Motion
+- Easing `cubic-bezier(0.16, 1, 0.3, 1)` (`--ease-out`) for arrivals; `ease-in` for exits.
+- Queue rows: enter 220 ms with a 24 ms stagger (fade + 6 px rise), leave 140 ms fade, re-sort 280 ms.
+- Counts roll in over 320 ms; the detail body swaps in over 200 ms from 8 px to the right; skeletons shimmer over 1.4 s.
+- Request pane View Transition: 320 ms group morph, 120 ms out, 240 ms in.
+- `/pick`: the tab underline slides (260 ms, transform only); a tab fades in (180 ms); an opened request swaps in (220 ms); a unit landing on its line flashes the line (900 ms success wash), fills its bar (`scaleX`, 320 ms) and rolls the counts; scan results drop in (220 ms), a refusal nudges sideways once (280 ms), earlier results slide down (240 ms).
+- Products: the stock meter fills to its level (`scaleX`, 520 ms) when it appears and whenever the count changes, the count rolls only on change; list rows enter (capped 24 ms stagger), leave and re-sort like queue rows; the record morphs between beside the list and its own page (View Transition `product-pane` / `product-list`, same timing as the request pane) and swaps in when another row opens; one tab ink slides (260 ms) and the pane arrives from the previous tab's side (12 px, 220 ms); photos cross-fade; photo tiles scale in and out (0.96).
+- New product: the list's New product button and the `/products/new` page share the View Transition name `product-new`, so the button grows into the form and the form shrinks back into it (380 ms, snapshots clipped to the box on the page ground; old fades 100 ms, new fades in 220 ms after 90 ms).
+- Inventory (`/inventory`): one 2 px place marker glides through the Places tree to the open place (transform 340 ms, placed without motion the first time) while the place wash fades in; branches unfold out of their parent row (6 px + clip reveal, 220 ms; fold 120 ms); the record swaps in from the side on every place change; a unit card or QR label unrolls under its row; product counts roll; new shelf tiles and freshly made labels arrive in a capped stagger (30 / 24 ms). New product photos (`PhotoStager`) enter, leave and reorder as tiles.
+- Stock levels (`/reports/stock`): low-stock rows enter, leave and re-sort like queue rows; the stock record swaps in from 8 px on each product; meters fill (StockMeter) and shelf bars fill by count (`scaleX`).
+- Movement history (`/reports/history`): rows arrive with a capped 24 ms stagger (fade + 6 px rise) whenever the log loads or a filter changes.
+- Admin (`/admin`, `/admin/accounts`, `/admin/approvals`): account rows enter, leave and re-sort like queue rows; the account record swaps in from 8 px; a decided approval row leaves sideways (12 px); "Review all" / tool arrows nudge 3 px on hover.
+- Admin round 2 (`/admin/organisations`, `/admin/audit`, `/admin/settings`): organisation rows like account rows, record swaps in from 8 px; audit entries arrive with the capped 24 ms stagger; a settings section swaps in from 8 px (out 100 ms), fee and project rows enter and leave 4 px.
+- Admin motion pass (2026-11-13). Focal moment = **a decision landing on an account**: the new status chip or role arrives with a short Action Blue ring (scale 0.9 → 1, 420 ms), the Next step well hands over (old lifts 6 px away in 140 ms, the next settles in after 80 ms), and the new status-history entry drops in on a fading Action Wash (900 ms). Accounts list ↔ record beside it ↔ own page and organisations list ↔ record morph as View Transitions (`request-motion.ts`, names `product-list` / `product-pane`). Settings: one marker glides to the open section (300 ms; along the strip on narrow screens), the unsaved dot pops in, and the save bar (`SaveState.vue`, also in the organisation record) goes Unsaved changes → a check that draws itself + "Saved" (1.8 s) → All changes saved. Admin overview: waiting items arrive in order (30 ms stagger) and leave when handled.
+- Reduced motion: transforms and staggers drop to fades or nothing; the global rule cuts every duration to 0.01 ms.
+
+## Do's and Don'ts
+
+### Do:
+- **Do** separate panels with a 1 px seam and a step on the tonal ladder (ground, panel, raised).
+- **Do** keep the queue and the selected item's detail on screen together at 1280 px and wider.
+- **Do** give every state colour an icon and a word, using the shared status mapping.
+- **Do** make the current step's action the filled Action Blue pill and keep the rest outlined; put a destructive action outlined in red and apart from it.
+- **Do** set ids, codes and counts in JetBrains Mono with tabular figures.
+- **Do** head each panel with its own 11 px uppercase title in a 44 px head bar.
+- **Do** mark a selected row with Action Wash plus a 2 px Action Blue bar, and the current nav place with Graphite Raised plus the same bar.
+- **Do** give every animation a reduced-motion path.
+
+### Don't:
+- **Don't** put shadows on panels at rest; shadows are for hover lift and floating overlays (tooltips, menus, dialogs).
+- **Don't** use amber, red or green as decoration or as a stage tint.
+- **Don't** use Logo Blue for text, or Pro Bono Yellow with anything but ink text.
+- **Don't** round panels beyond 4 px or round nav rows into pills.
+- **Don't** hard-code colours that exist as theme tokens; read them from the Vuetify theme.

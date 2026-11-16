@@ -1,0 +1,307 @@
+/*
+ * Graphite Console shared pieces (surface brief web/sia): panels cut by 1 px seams, small-caps panel
+ * headers, Material 3 pill buttons, Pro Bono badge, motion primitives. Used by the dashboard (A-01), the
+ * request desk (A-02) and the shared RequestQueue / RequestDetail components.
+ */
+/* Below 1280 px a 56 px app bar sits on top of the page: anything scrolled into view (focus, find, links to
+   #ids, tests) stops below it instead of under it (WCAG 2.4.11 focus not obscured). */
+@media (max-width: 1279.98px) {
+  html {
+    scroll-padding-top: 64px;
+  }
+}
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ---- Panels: queue + detail side by side; one column below 1280 px; phones hide the detail. */
+.console-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
+}
+.console-panels > .request-detail {
+  border-left: 1px solid rgb(var(--v-theme-seam));
+}
+.console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.console-title {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--v-theme-secondary));
+}
+.console-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.console-retry {
+  font: inherit;
+  color: rgb(var(--v-theme-primary));
+  background: none;
+  border: 0;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+@media (min-width: 1280px) {
+  /* Wide screens: the page fits the window; only the panels' bodies scroll. */
+  .console-panels {
+    flex: 1 1 0;
+    min-height: 260px;
+  }
+  .console-panels > * {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .console-scroll {
+    flex: 1 1 0;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--v-theme-seam)) transparent;
+  }
+}
+@media (max-width: 1279.98px) {
+  .console-panels {
+    grid-template-columns: 1fr;
+    min-height: 420px;
+  }
+  .console-panels > .request-detail {
+    border-left: 0;
+    border-top: 1px solid rgb(var(--v-theme-seam));
+  }
+}
+@media (max-width: 599.98px) {
+  .console-panels > .request-detail {
+    display: none;
+  }
+}
+
+/* ---- Material 3 buttons: full pill, 40 px, label-large, state layer 8% hover / 12% press-focus,
+   level-1 elevation on hover (filled); outlined = 1 px outline, primary label, no elevation. */
+.v-btn.m3:not(.v-btn--icon):not(.v-tab) {
+  min-height: 40px;
+  height: auto;
+  padding: 0 24px 0 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+  text-transform: none;
+  box-shadow: none;
+  transition: box-shadow 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+.v-btn.m3:not(.v-btn--icon):not(.v-tab):not(:has(.v-btn__prepend)) {
+  padding: 0 24px;
+}
+.v-btn.m3 .v-btn__prepend {
+  margin-inline: 0 8px;
+}
+.v-btn.m3.bg-primary .v-btn__overlay {
+  background: rgb(var(--v-theme-on-primary));
+}
+.v-btn.m3:hover {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px 1px rgba(0, 0, 0, 0.15);
+}
+.v-btn.m3:hover .v-btn__overlay {
+  opacity: 0.08;
+}
+.v-btn.m3:active .v-btn__overlay,
+.v-btn.m3:focus-visible .v-btn__overlay {
+  opacity: 0.12;
+}
+.v-btn.m3.v-btn--variant-outlined:not([class*=' text-']),
+.v-btn.m3.v-btn--variant-text:not([class*=' text-']):not(.v-tab) {
+  color: rgb(var(--v-theme-primary));
+}
+.v-btn.m3.v-btn--variant-outlined:not([class*=' text-']) {
+  border: 1px solid rgb(var(--v-theme-seam));
+}
+.v-btn.m3.v-btn--variant-outlined:hover,
+.v-btn.m3.v-btn--variant-text:hover {
+  box-shadow: none;
+}
+.v-btn.m3.v-btn--variant-outlined .v-btn__overlay,
+.v-btn.m3.v-btn--variant-text .v-btn__overlay {
+  background: rgb(var(--v-theme-primary));
+}
+.v-btn.m3.v-btn--size-small:not(.v-btn--icon),
+.v-btn.m3.v-btn--size-x-small:not(.v-btn--icon) {
+  min-height: 32px;
+  padding: 0 12px;
+}
+.v-btn.m3.m3-danger {
+  border-color: rgba(var(--v-theme-error), 0.5);
+  color: rgb(var(--v-theme-error));
+}
+.v-btn.m3.m3-danger .v-btn__overlay {
+  background: rgb(var(--v-theme-error));
+}
+
+/* ---- Motion primitives */
+@keyframes console-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes console-swap-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+@keyframes console-roll-in {
+  from {
+    transform: translateY(60%);
+    opacity: 0;
+  }
+}
+@keyframes console-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+.console-skel {
+  background-image: linear-gradient(90deg, transparent 0%, rgba(var(--v-theme-on-surface), 0.06) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: console-shimmer 1.4s linear infinite;
+}
+.console-roll {
+  display: inline-block;
+  animation: console-roll-in 320ms var(--ease-out) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .console-skel {
+    animation: none;
+  }
+  .console-roll {
+    animation-name: console-fade-in;
+  }
+  .v-btn.m3 {
+    transition: none;
+  }
+}
+
+/* ---- Request motion (request-motion.ts): the request panel and the queue are named so a View Transition
+   morphs them when a request opens beside the queue, closes, or moves to / from its own page. */
+.console-panels > .request-queue {
+  view-transition-name: request-queue;
+}
+.console-panels > .request-detail,
+.req-page > .frame {
+  view-transition-name: request-pane;
+}
+::view-transition-group(request-pane),
+::view-transition-group(request-queue) {
+  animation-duration: 320ms;
+  animation-timing-function: var(--ease-out);
+}
+/* Content keeps its size and anchors top-left while the box resizes (no stretched text). */
+::view-transition-old(request-pane),
+::view-transition-new(request-pane),
+::view-transition-old(request-queue),
+::view-transition-new(request-queue) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-old(request-pane) {
+  animation: 120ms ease-in both console-fade-out;
+}
+::view-transition-new(request-pane) {
+  animation: 240ms 60ms var(--ease-out) both console-fade-in;
+}
+::view-transition-old(root) {
+  animation-duration: 120ms;
+}
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+@keyframes console-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+/* ---- Product motion (request-motion.ts): the product record morphs between beside the list (A-05) and its
+   own page (A-07); the list narrows or widens with it. Same timing as the request pane. */
+/* Admin accounts and organisations use the same pair (list .alist/.olist, record .record / .ar page). */
+.panels > .plist,
+.panels > .alist,
+.panels > .olist {
+  view-transition-name: product-list;
+}
+.panels > .record,
+.pp:not(.embedded),
+.ar:not(.embedded) {
+  view-transition-name: product-pane;
+}
+::view-transition-group(product-pane),
+::view-transition-group(product-list) {
+  animation-duration: 320ms;
+  animation-timing-function: var(--ease-out);
+}
+::view-transition-old(product-pane),
+::view-transition-new(product-pane),
+::view-transition-old(product-list),
+::view-transition-new(product-list) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-old(product-pane) {
+  animation: 120ms ease-in both console-fade-out;
+}
+::view-transition-new(product-pane) {
+  animation: 240ms 60ms var(--ease-out) both console-fade-in;
+}
+
+/* ---- New product (request-motion.ts movesNewProduct): the list's "New product" button is the same
+   container as the new-product page, so going there it grows into the form and coming back it shrinks
+   into the button (M3 container transform). The rest of the page cross-fades as root. */
+.v-btn.new-product,
+.np {
+  view-transition-name: product-new;
+}
+::view-transition-group(product-new) {
+  animation-duration: 380ms;
+  animation-timing-function: var(--ease-out);
+}
+/* Clip both snapshots to the morphing box (the form is far larger than the button) on the page ground. */
+::view-transition-image-pair(product-new) {
+  overflow: hidden;
+  clip-path: inset(0 round 8px);
+  background: rgb(var(--v-theme-background));
+}
+::view-transition-old(product-new),
+::view-transition-new(product-new) {
+  height: 100%;
+  object-fit: none;
+  object-position: left top;
+}
+::view-transition-old(product-new) {
+  animation: 100ms ease-in both console-fade-out;
+}
+::view-transition-new(product-new) {
+  animation: 220ms 90ms var(--ease-out) both console-fade-in;
+}

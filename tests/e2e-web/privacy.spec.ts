@@ -4,7 +4,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { activeCimhAccount, adminWithMfa, isRealPageError, nextTotpWindow, PASSWORD, totp } from './support'
+import { activeCimhAccount, adminWithMfa, isRealPageError, nextTotpWindow, PASSWORD, shot, totp } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -58,26 +58,28 @@ test.describe.serial('personal data: export and erasure', () => {
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
     await page.getByRole('textbox', { name: '6-digit code' }).fill(totp(admin.key))
-    await expect(page.getByText(/Good to see you/)).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible()
 
     await page.goto(`${SIA}/admin/accounts?erasure=1`)
-    const row = page.getByRole('row', { name: new RegExp(member.replace(/\./g, '\.')) })
+    const row = page.getByRole('link', { name: new RegExp(member.replace(/\./g, '\.')) })
     await expect(row.getByText('Delete requested')).toBeVisible()
-    // The list may re-render right after loading; retry until the detail page has opened.
+    // The list may re-render right after loading; retry until the record has opened (beside the list on
+    // wide screens, its own page on phones).
     await expect(async () => {
-      await row.getByRole('link').click({ timeout: 2000 })
-      await expect(page).toHaveURL(/\/admin\/accounts\/USR/, { timeout: 2000 })
+      await row.click({ timeout: 2000 })
+      await expect(page).toHaveURL(/\/admin\/accounts(\/USR|\?.*open=USR)/, { timeout: 2000 })
     }).toPass({ timeout: 15_000 })
     await expect(page.getByText(/asked to be deleted on/)).toBeVisible()
 
-    await page.getByRole('button', { name: 'Erase', exact: true }).click()
+    await shot(page, 'account-erasure-requested')
+    await page.getByRole('button', { name: 'Erase permanently…' }).click()
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByLabel('Reason')).toHaveValue('Asked by the account holder')
     await expect(dialog.getByRole('button', { name: 'Erase account' })).toBeDisabled()
     await dialog.getByLabel('Type the email address to confirm').fill(member)
     await dialog.getByRole('button', { name: 'Erase account' }).click()
     await expect(page.getByText('Account erased')).toBeVisible()
-    await expect(page).toHaveURL(/\/admin\/accounts$/)
+    await expect(page).toHaveURL(/\/admin\/accounts(\?erasure=1)?$/)
   })
 
   test('the erased login no longer works', async ({ page }) => {

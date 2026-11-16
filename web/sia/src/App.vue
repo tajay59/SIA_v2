@@ -1,49 +1,158 @@
 <script setup lang="ts">
 /**
- * SIA shell, same structure as the legacy SIA AppHeader: one horizontal header with the CIMH logo on the
- * left, the work areas as links in legacy order (Products, Requests (legacy Orders), Inventory, Pick, Stow),
- * Reports and Admin menus, then the scan box, theme and profile on the right. The scan box takes any
- * unit, shelf or product code (a handheld scanner types it and presses Enter) and opens Inventory →
- * Lookup on it (APD "global scan box"). Phones: a menu button opens the same links. Pages show their title as the page heading under the header (pages with
- * their own heading set `meta.ownHeading`). Bare layout (login, MFA setup…) shows no header.
+ * SIA shell, "Graphite Console" (surface brief web/sia): a left navigation drawer replaces the top bar
+ * (owner, 2026-11-11). Drawer = brand, Work / Stock / Reports / Admin groups with live counts, then the scan
+ * box, theme and profile at its foot. The scan box takes any unit, shelf or product code (a handheld scanner
+ * types it and presses Enter) and opens Inventory → Lookup on it (APD "global scan box").
+ * ≥ 1280 px the drawer is permanent; below, a slim top bar opens it ("Open navigation").
+ * Pages show their title as the page heading (pages with their own heading set `meta.ownHeading`).
+ * Bare layout (login, MFA setup…) shows no shell.
  */
 import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
-import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
-import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
-import { mdiAccountCircleOutline, mdiBarcodeScan, mdiChevronDown, mdiLogout, mdiMenu, mdiWeatherNight, mdiWhiteBalanceSunny } from '@mdi/js'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useDisplay } from 'vuetify'
+import siaMark from '@cimh/web-app/assets/brand/sia-mark.svg'
+import { markRaw } from 'vue'
+// Filled Material Symbols via Iconify (unplugin-icons): compiled in, nothing fetched at runtime.
+import IDashboard from '~icons/material-symbols/dashboard-rounded'
+import IRequests from '~icons/material-symbols/assignment-rounded'
+import IPick from '~icons/material-symbols/unarchive-rounded'
+import IStow from '~icons/material-symbols/archive-rounded'
+import IProducts from '~icons/material-symbols/category-rounded'
+import IInventory from '~icons/material-symbols/inventory-2-rounded'
+import IStockLevels from '~icons/material-symbols/bar-chart-rounded'
+import IWhoHas from '~icons/material-symbols/assignment-ind-rounded'
+import IHistory from '~icons/material-symbols/history-rounded'
+import IApprovals from '~icons/material-symbols/how-to-reg-rounded'
+import IAccounts from '~icons/material-symbols/group-rounded'
+import IOrgs from '~icons/material-symbols/corporate-fare-rounded'
+import IAudit from '~icons/material-symbols/policy-rounded'
+import ISettings from '~icons/material-symbols/settings-rounded'
+import ICollapse from '~icons/material-symbols/left-panel-close-rounded'
+import IExpand from '~icons/material-symbols/left-panel-open-rounded'
+import IScan from '~icons/material-symbols/barcode-scanner-rounded'
+import IAccount from '~icons/material-symbols/account-circle'
+import ILight from '~icons/material-symbols/light-mode-rounded'
+import IDark from '~icons/material-symbols/dark-mode-rounded'
+import ILogout from '~icons/material-symbols/logout-rounded'
+import IMenu from '~icons/material-symbols/menu-rounded'
+
+const i = {
+  dashboard: markRaw(IDashboard),
+  requests: markRaw(IRequests),
+  pick: markRaw(IPick),
+  stow: markRaw(IStow),
+  products: markRaw(IProducts),
+  inventory: markRaw(IInventory),
+  stockLevels: markRaw(IStockLevels),
+  whoHas: markRaw(IWhoHas),
+  history: markRaw(IHistory),
+  approvals: markRaw(IApprovals),
+  accounts: markRaw(IAccounts),
+  orgs: markRaw(IOrgs),
+  audit: markRaw(IAudit),
+  settings: markRaw(ISettings),
+  collapse: markRaw(ICollapse),
+  expand: markRaw(IExpand),
+  scan: markRaw(IScan),
+  account: markRaw(IAccount),
+  light: markRaw(ILight),
+  dark: markRaw(IDark),
+  logout: markRaw(ILogout),
+  menu: markRaw(IMenu),
+}
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
+import type { IconValue } from 'vuetify/lib/composables/icons.mjs'
+import { installRequestMotion } from './request-motion'
 import { pageSearch, shortcutHandler } from './shortcuts'
+import { type CountKey, countLabel, useWorkCounts } from './work-counts'
 
 const session = useSession()
 const route = useRoute()
 const router = useRouter()
+onBeforeUnmount(installRequestMotion(router))
 const { dark, toggle } = useThemeMode()
 const { lgAndUp: wide } = useDisplay()
-const brand = computed(() => (dark.value ? logoWhite : logo))
 const bare = computed(() => route.meta.layout === 'bare' || !session.isStaff || session.needsMfaSetup)
-const drawer = ref(false)
+const open = ref(false)
+const drawer = computed({
+  get: () => wide.value || open.value,
+  set: (v: boolean) => (open.value = v),
+})
+const { counts, refresh } = useWorkCounts()
 
-const work = computed(() => [
-  { title: 'Dashboard', to: '/', show: true },
-  { title: 'Products', to: '/products', show: true },
-  { title: 'Requests', to: '/requests', show: true },
-  { title: 'Inventory', to: '/inventory', show: true },
-  { title: 'Pick', to: '/pick', show: true },
-  { title: 'Stow', to: '/stow', show: true },
+// Desktop: the drawer collapses to an icon rail; the choice is remembered per device (storage may be blocked).
+const RAIL_KEY = 'sia.drawer.rail'
+const readRail = () => {
+  try {
+    return localStorage.getItem(RAIL_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+const railPref = ref(readRail())
+const rail = computed(() => wide.value && railPref.value)
+function toggleRail() {
+  railPref.value = !railPref.value
+  try {
+    localStorage.setItem(RAIL_KEY, railPref.value ? '1' : '0')
+  } catch {
+    // ignore
+  }
+}
+
+type Link = { title: string; to: string; icon: IconValue; desc: string; count?: CountKey; show?: boolean }
+const groups = computed<{ title: string; links: Link[] }[]>(() => [
+  {
+    title: 'Work',
+    links: [
+      { title: 'Dashboard', to: '/', icon: i.dashboard, desc: 'What needs staff now, and requests counted by status.' },
+      { title: 'Requests', to: '/requests', icon: i.requests, desc: 'The request desk: filter, quote, approve and track every request.', count: 'new' },
+      { title: 'Pick', to: '/pick', icon: i.pick, desc: 'Pick units for requests; stow and relocate, issue and return items.', count: 'fulfil' },
+    ],
+  },
+  {
+    title: 'Stock',
+    links: [
+      { title: 'Products', to: '/products', icon: i.products, desc: 'The catalogue: products, photos and Pro Bono limits.' },
+      { title: 'Inventory', to: '/inventory', icon: i.inventory, desc: 'Labels, locations and a lookup for any unit or shelf.', count: 'low' },
+    ],
+  },
+  {
+    title: 'Reports',
+    links: [
+      { title: 'Stock levels', to: '/reports/stock', icon: i.stockLevels, desc: 'Available, reserved and low stock for each product.' },
+      { title: 'Who has what', to: '/reports/assignments', icon: i.whoHas, desc: 'Units issued to people and not yet returned.' },
+      { title: 'Movement history', to: '/reports/history', icon: i.history, desc: 'Every stow, pick, move and issue: who and when.' },
+    ],
+  },
+  {
+    title: 'Admin',
+    links: ([
+      { title: 'Admin overview', to: '/admin', icon: i.dashboard, desc: 'What needs an administrator now, and every admin page.' },
+      { title: 'Pending accounts', to: '/admin/approvals', icon: i.approvals, desc: 'Approve or reject new customer sign-ups.', count: 'approvals', show: session.isAdmin },
+      { title: 'Accounts', to: '/admin/accounts', icon: i.accounts, desc: 'Find customers and staff; suspend, export or erase.' },
+      { title: 'Organisations', to: '/admin/organisations', icon: i.orgs, desc: 'Met services and agencies that customers belong to.' },
+      { title: 'Audit log', to: '/admin/audit', icon: i.audit, desc: 'Admin and security actions, searchable.', show: session.isAdmin },
+      { title: 'Settings', to: '/admin/settings', icon: i.settings, desc: 'Admin fee, reference data and staff email lists.', show: session.isAdmin },
+    ] as Link[]).filter((l) => l.show !== false),
+  },
 ])
-const reports = [
-  { title: 'Stock levels', to: '/reports/stock' },
-  { title: 'Who has what', to: '/reports/assignments' },
-  { title: 'Movement history', to: '/reports/history' },
-]
-const reportsActive = computed(() => route.path.startsWith('/reports'))
+const isActive = (to: string) => (to === '/' || to === '/admin' ? route.path.replace(/(.)\/$/, '$1') === to : route.path.startsWith(to))
+const badge = (k?: CountKey) => {
+  if (!k) return ''
+  const c = counts[k]
+  return c.failed || !c.n ? '' : countLabel(c)
+}
 
 const SCAN = 'input[aria-label="Scan or type a unit, shelf or product code"]'
 async function focusScan() {
+  if (rail.value) {
+    toggleRail()
+    await nextTick()
+  }
   if (!wide.value) {
-    drawer.value = true // phones/tablets: the scan box lives in the drawer
+    open.value = true
     await nextTick()
   }
   document.querySelector<HTMLInputElement>(SCAN)?.focus()
@@ -59,28 +168,30 @@ const onKey = shortcutHandler({
   go: (path) => void router.push(path),
 })
 const onKeyShell = (e: KeyboardEvent) => !bare.value && onKey(e) // not on login, MFA setup or staff-only
-onMounted(() => window.addEventListener('keydown', onKeyShell))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKeyShell))
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => {
+  window.addEventListener('keydown', onKeyShell)
+  timer = setInterval(() => !bare.value && document.visibilityState === 'visible' && void refresh(), 120_000)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeyShell)
+  clearInterval(timer)
+})
+watch(bare, (b) => !b && void refresh(), { immediate: true })
+watch(() => route.path, () => (open.value = false))
+// A page that refuses to be left (unsaved settings → "Keep editing") keeps its path: close the phone drawer too.
+router.afterEach((_to, _from, failure) => {
+  if (failure) open.value = false
+})
 
 const scanCode = ref('')
 function openScan() {
   const code = scanCode.value.trim()
   if (!code) return
   scanCode.value = ''
-  drawer.value = false
+  open.value = false
   void router.push({ path: '/inventory', query: { op: 'lookup', code } })
 }
-const admin = computed(() =>
-  [
-    { title: 'Pending accounts', to: '/admin/approvals', show: session.isAdmin },
-    { title: 'Accounts', to: '/admin/accounts', show: true },
-    { title: 'Organisations', to: '/admin/organisations', show: true },
-    { title: 'Audit log', to: '/admin/audit', show: session.isAdmin },
-    { title: 'Settings', to: '/admin/settings', show: session.isAdmin },
-  ].filter((x) => x.show),
-)
-const adminActive = computed(() => route.path.startsWith('/admin'))
-const isActive = (to: string) => (to === '/' ? route.path === '/' : route.path.startsWith(to))
 
 async function logout() {
   await session.logout()
@@ -92,89 +203,136 @@ async function logout() {
   <v-app>
     <a href="#main" class="skip-link">Skip to content</a>
     <template v-if="!bare">
-      <v-app-bar flat border="b" height="64" color="surface">
-        <div class="bar">
-          <router-link to="/" class="brand" aria-label="SIA home">
-            <img :src="brand" alt="CIMH" height="32" width="104" />
-            <span class="brand-name">SIA</span>
-          </router-link>
+      <v-app-bar v-if="!wide" flat border="b" height="56" color="surface">
+        <v-btn variant="text" :icon="i.menu" aria-label="Open navigation" @click="open = !open" />
+        <router-link to="/" class="brand compact" aria-label="SIA home">
+          <img :src="siaMark" alt="" height="32" width="36" />
+          <span class="brand-name">SIA</span>
+        </router-link>
+      </v-app-bar>
 
-          <nav v-if="wide" class="nav" aria-label="Main">
-            <router-link v-for="n in work.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link" :class="{ on: isActive(n.to) }">
-              {{ n.title }}
+      <v-navigation-drawer
+        v-model="drawer"
+        :permanent="wide"
+        :temporary="!wide"
+        :rail="rail"
+        width="240"
+        rail-width="64"
+        color="surface"
+        class="shell-drawer"
+        :class="{ 'is-rail': rail }"
+      >
+        <div class="drawer-col">
+          <div v-if="wide" class="brand-row">
+            <router-link to="/" class="brand" aria-label="SIA home">
+              <img :src="siaMark" alt="" height="32" width="36" />
+              <span v-if="!rail" class="brand-name">SIA</span>
             </router-link>
-            <v-menu location="bottom start">
-              <template #activator="{ props }">
-                <button v-bind="props" type="button" class="nav-link" :class="{ on: reportsActive }">
-                  Reports <v-icon :icon="mdiChevronDown" size="18" />
-                </button>
-              </template>
-              <v-list density="compact" min-width="220">
-                <v-list-item v-for="r in reports" :key="r.to" :to="r.to" :title="r.title" />
-              </v-list>
-            </v-menu>
-            <v-menu location="bottom start">
-              <template #activator="{ props }">
-                <button v-bind="props" type="button" class="nav-link" :class="{ on: adminActive }">
-                  Admin <v-icon :icon="mdiChevronDown" size="18" />
-                </button>
-              </template>
-              <v-list density="compact" min-width="220">
-                <v-list-item v-for="a in admin" :key="a.to" :to="a.to" :title="a.title" />
-              </v-list>
-            </v-menu>
+            <v-btn
+              v-if="!rail"
+              variant="text"
+              size="small"
+              :icon="i.collapse"
+              aria-label="Collapse navigation"
+              @click="toggleRail"
+            />
+          </div>
+          <v-btn
+            v-if="rail"
+            variant="text"
+            size="small"
+            class="expand"
+            :icon="i.expand"
+            aria-label="Expand navigation"
+            @click="toggleRail"
+          />
+
+          <nav aria-label="Main" class="nav">
+            <v-list v-for="g in groups" :key="g.title" nav density="compact" bg-color="transparent" class="grp" role="group" :aria-label="g.title">
+              <v-list-subheader class="grp-title console-title" :class="{ 'sr-only': rail }">{{ g.title }}</v-list-subheader>
+              <v-list-item
+                v-for="l in g.links"
+                :key="l.to"
+                :to="l.to"
+                :active="isActive(l.to)"
+                active-class="on"
+                :aria-current="isActive(l.to) ? 'page' : undefined"
+                :aria-label="rail ? l.title : undefined"
+                class="nav-item"
+                rounded="0"
+              >
+                <template #prepend>
+                  <v-icon :icon="l.icon" size="20" class="nav-icon" />
+                </template>
+                <v-list-item-title class="nav-text">{{ l.title }}</v-list-item-title>
+                <template v-if="badge(l.count)" #append>
+                  <span class="count" aria-hidden="true">{{ badge(l.count) }}</span>
+                </template>
+                <!-- Title + description. role="tooltip" sits on the overlay root, so the name goes there (axe aria-tooltip-name). -->
+                <v-tooltip
+                  activator="parent"
+                  location="end"
+                  :offset="rail ? 10 : 14"
+                  :open-delay="rail ? 120 : 450"
+                  transition="nav-tip"
+                  content-class="nav-tip"
+                  :aria-label="`${l.title}: ${l.desc}`"
+                  max-width="260"
+                >
+                  <span class="nav-tip-title">{{ l.title }}<span v-if="badge(l.count)" class="nav-tip-count">{{ badge(l.count) }}</span></span>
+                  <span class="nav-tip-desc">{{ l.desc }}</span>
+                </v-tooltip>
+              </v-list-item>
+            </v-list>
           </nav>
 
-          <div class="right">
-            <form v-if="wide" class="scanbox" role="search" @submit.prevent="openScan">
+          <div class="foot">
+            <v-btn
+              v-if="rail"
+              variant="text"
+              :icon="i.scan"
+              aria-label="Scan a code"
+              title="Scan a code (s)"
+              @click="focusScan"
+            />
+            <form v-else role="search" @submit.prevent="openScan">
               <v-text-field
                 v-model="scanCode"
-                density="compact"
-                variant="outlined"
                 hide-details
                 placeholder="Scan a code"
                 aria-label="Scan or type a unit, shelf or product code"
-                :prepend-inner-icon="mdiBarcodeScan"
+                :prepend-inner-icon="i.scan"
                 autocomplete="off"
                 spellcheck="false"
-              />
+              >
+                <template #append-inner><kbd class="kbd" aria-hidden="true">s</kbd></template>
+              </v-text-field>
             </form>
-            <v-btn
-              variant="text"
-              :icon="dark ? mdiWhiteBalanceSunny : mdiWeatherNight"
-              :aria-label="dark ? 'Use light theme' : 'Use dark theme'"
-              @click="toggle"
-            />
-            <v-menu location="bottom end">
-              <template #activator="{ props }">
-                <v-btn v-bind="props" variant="text" :prepend-icon="mdiAccountCircleOutline">{{ session.account?.firstname }}</v-btn>
-              </template>
-              <v-list density="compact" min-width="220">
-                <v-list-item :subtitle="session.account?.email" :title="session.displayName" />
-                <v-divider />
-                <v-list-item to="/profile" title="Profile" />
-                <v-list-item :prepend-icon="mdiLogout" title="Log out" @click="logout" />
-              </v-list>
-            </v-menu>
-            <v-btn v-if="!wide" variant="text" :icon="mdiMenu" aria-label="Open navigation" @click="drawer = !drawer" />
+            <div class="me" :class="{ stacked: rail }">
+              <v-menu location="top start">
+                <template #activator="{ props }">
+                  <v-btn v-if="rail" v-bind="props" variant="text" :icon="i.account" :aria-label="`Account: ${session.account?.firstname ?? ''}`" />
+                  <v-btn v-else v-bind="props" variant="text" class="me-btn" :prepend-icon="i.account">
+                    {{ session.account?.firstname }}
+                  </v-btn>
+                </template>
+                <v-list density="compact" min-width="220">
+                  <v-list-item :subtitle="session.account?.email" :title="session.displayName" />
+                  <v-divider />
+                  <v-list-item to="/profile" title="Profile" />
+                  <v-list-item :prepend-icon="i.logout" title="Log out" @click="logout" />
+                </v-list>
+              </v-menu>
+              <v-btn
+                variant="text"
+                size="small"
+                :icon="dark ? i.light : i.dark"
+                :aria-label="dark ? 'Use light theme' : 'Use dark theme'"
+                @click="toggle"
+              />
+            </div>
           </div>
         </div>
-      </v-app-bar>
-
-      <v-navigation-drawer v-if="!wide" v-model="drawer" temporary location="right" width="280">
-        <!-- Same landmark name as the desktop header nav: screen readers and tests find "Main" in both layouts. -->
-        <nav aria-label="Main">
-        <v-list nav density="comfortable" color="primary">
-          <form class="pa-2" role="search" @submit.prevent="openScan">
-            <v-text-field v-model="scanCode" density="compact" hide-details placeholder="Scan a code" aria-label="Scan or type a unit, shelf or product code" :prepend-inner-icon="mdiBarcodeScan" />
-          </form>
-          <v-list-item v-for="n in work.filter((x) => x.show)" :key="n.to" :to="n.to" :title="n.title" :exact="n.to === '/'" @click="drawer = false" />
-          <v-list-subheader>Reports</v-list-subheader>
-          <v-list-item v-for="r in reports" :key="r.to" :to="r.to" :title="r.title" @click="drawer = false" />
-          <v-list-subheader>Admin</v-list-subheader>
-          <v-list-item v-for="a in admin" :key="a.to" :to="a.to" :title="a.title" @click="drawer = false" />
-        </v-list>
-        </nav>
       </v-navigation-drawer>
     </template>
 
@@ -189,83 +347,206 @@ async function logout() {
 </template>
 
 <style scoped>
-.bar {
-  width: 100%;
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 0 var(--sp-4);
+.shell-drawer {
+  border-right: 1px solid rgb(var(--v-theme-seam)) !important;
+}
+.drawer-col {
   display: flex;
-  align-items: center;
-  gap: var(--sp-8);
+  flex-direction: column;
+  min-height: 100%;
+  padding: var(--sp-4) 0 var(--sp-3);
 }
 .brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  padding: 0 var(--sp-4) var(--sp-4);
   text-decoration: none;
   color: inherit;
+}
+.brand.compact {
+  padding: 0 var(--sp-2);
 }
 .brand img {
   height: 32px;
   width: auto;
 }
 .brand-name {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  opacity: 0.72;
+  font: 500 13px/1 'JetBrains Mono', ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  color: rgb(var(--v-theme-secondary));
 }
 .nav {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-6);
-  height: 100%;
+  flex: 1;
 }
-.nav-link {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  height: 64px;
-  padding: 0 2px;
-  font: inherit;
-  font-size: 15px;
-  font-weight: 500;
+/* v-list nav, restyled to the Graphite Console drawer: flat rows, no rounded pills, no Vuetify active
+   overlay; the active row gets the surface-variant ground, a blue icon and a 2 px blue bar on its RIGHT edge
+   (in the rail: to the right of the icon button). */
+.grp {
+  padding: 0;
+}
+.grp + .grp {
+  margin-top: var(--sp-3);
+}
+.grp-title {
+  min-height: 0 !important;
+  padding: var(--sp-2) var(--sp-4) var(--sp-1) !important;
+  opacity: 1; /* type from .console-title */
+}
+.nav-item.v-list-item {
+  min-height: 32px !important;
+  margin: 0 !important;
+  padding: 0 var(--sp-4) !important;
+  font-size: 14px;
   color: rgb(var(--v-theme-on-surface));
-  text-decoration: none;
-  background: none;
-  border: 0;
-  cursor: pointer;
+  transition:
+    background-color 120ms ease-out,
+    box-shadow 160ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.nav-link:hover {
-  color: rgb(var(--v-theme-primary));
+.nav-item :deep(.v-list-item__overlay) {
+  display: none;
 }
-.nav-link.on {
-  color: rgb(var(--v-theme-primary));
+.nav-item :deep(.v-list-item__prepend) {
+  width: auto;
+}
+.nav-item :deep(.v-list-item__prepend > .v-icon ~ .v-list-item__spacer) {
+  width: var(--sp-3);
+}
+.nav-item:hover {
+  background: rgb(var(--v-theme-surface-variant));
+}
+.nav-item.on {
+  background: rgb(var(--v-theme-surface-variant));
+  box-shadow: inset -2px 0 0 rgb(var(--v-theme-primary));
+}
+.nav-item.on .nav-text {
   font-weight: 600;
 }
-.nav-link.on::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 3px;
-  border-radius: 3px 3px 0 0;
-  background: rgb(var(--v-theme-primary));
+.nav-icon {
+  flex: none;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 1 !important;
 }
-.scanbox {
-  width: 200px;
+.nav-item.on .nav-icon {
+  color: rgb(var(--v-theme-primary));
 }
-.right {
-  margin-left: auto;
+.nav-text {
+  font-size: 14px !important;
+  line-height: 20px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.nav-item :deep(.v-list-item__append) {
+  padding-left: var(--sp-2);
+}
+.brand-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  padding-right: var(--sp-2);
+}
+.brand-row .brand {
+  padding-bottom: 0;
+}
+.brand-row {
+  padding-bottom: var(--sp-3);
+}
+.expand {
+  align-self: center;
+  margin-bottom: var(--sp-2);
+}
+/* Collapsed rail: icons only, centred; counts become a dot; group titles stay for screen readers. */
+.is-rail .brand {
+  justify-content: center;
+  padding: 0 0 var(--sp-2);
+  width: 100%;
+}
+.is-rail .brand-row {
+  justify-content: center;
+  padding: 0;
+}
+.is-rail .grp + .grp {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid rgb(var(--v-theme-seam));
+}
+.is-rail .nav-item.v-list-item {
+  position: relative;
+  justify-content: center;
+  min-height: 40px !important;
+  padding: 0 !important;
+  grid-template-columns: 1fr;
+}
+.is-rail .nav-item :deep(.v-list-item__prepend) {
+  justify-content: center;
+}
+.is-rail .nav-item :deep(.v-list-item__prepend .v-list-item__spacer),
+.is-rail .nav-item :deep(.v-list-item__content) {
+  display: none;
+}
+.is-rail .nav-item :deep(.v-list-item__append) {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.is-rail .count {
+  position: absolute;
+  top: 7px;
+  right: 14px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  font-size: 0;
+}
+.is-rail .foot {
+  align-items: center;
+  padding: var(--sp-2) 0 0;
+}
+.me.stacked {
+  flex-direction: column;
   gap: var(--sp-1);
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+.count {
+  font: 500 12px/1 'JetBrains Mono', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--v-theme-secondary));
+}
+.foot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) 0;
+  border-top: 1px solid rgb(var(--v-theme-seam));
+  margin-top: var(--sp-4);
+}
+.me {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.me-btn {
+  text-transform: none;
+  letter-spacing: 0;
+}
+.kbd {
+  font: 500 11px/1 'JetBrains Mono', ui-monospace, monospace;
+  padding: 2px 5px;
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 3px;
+  color: rgb(var(--v-theme-secondary));
 }
 .page-title {
   max-width: 1440px;
-  margin: 0 auto;
   padding: var(--sp-6) var(--sp-6) 0;
 }
 .skip-link {
@@ -279,5 +560,46 @@ async function logout() {
 }
 .skip-link:focus {
   left: 8px;
+}
+</style>
+
+<style>
+/* Drawer tooltips (teleported, so not scoped): title + one-line description, slides in from the drawer. */
+.v-tooltip > .v-overlay__content.nav-tip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface-bright));
+  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgb(var(--v-theme-seam));
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.nav-tip-title {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-weight: 600;
+}
+.nav-tip-count {
+  font: 500 12px 'JetBrains Mono', ui-monospace, monospace;
+  color: rgb(var(--v-theme-primary));
+}
+.nav-tip-desc {
+  color: rgb(var(--v-theme-secondary));
+}
+.nav-tip-enter-active {
+  transition: opacity 160ms cubic-bezier(0.16, 1, 0.3, 1), transform 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.nav-tip-leave-active {
+  transition: opacity 90ms ease-in, transform 90ms ease-in;
+}
+.nav-tip-enter-from,
+.nav-tip-leave-to {
+  opacity: 0;
+  transform: translateX(-6px) scale(0.98);
 }
 </style>

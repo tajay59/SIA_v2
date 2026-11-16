@@ -29,7 +29,31 @@ PUBLIC_FIELDS: tuple[str, ...] = (
     "images",
     "inStock",
 )
-PUBLIC_FILTER: dict[str, Any] = {"sellable": True, "active": True}
+# SHOP shows only meteorological and radar items, plus Pro Bono items of any type (owner, 2026-11-16).
+# Staff views ignore this; it binds every customer/anonymous answer and the `xuser` view.
+SHOP_TYPES = ("MET", "RAD")
+PUBLIC_FILTER: dict[str, Any] = {
+    "sellable": True,
+    "active": True,
+    "$or": [{"type": {"$in": list(SHOP_TYPES)}}, {"probono": True}],
+}
+
+
+def public_filter(filters: dict[str, Any]) -> dict[str, Any]:
+    """PUBLIC_FILTER for a customer query, without the `$or` when the query names a type (TR-DATA-5: the `$or`
+    made type-filtered lists sort in memory and type-filtered search examine every text match).
+    MET/RAD: plain type match. Any other type: only its Pro Bono items. No type: the full `$or`.
+    Callers apply their own `type`/`probono` filters first; this result is merged last and wins."""
+    t = filters.get("type")
+    if not t:
+        return dict(PUBLIC_FILTER)
+    base = {"sellable": True, "active": True, "type": t}
+    if t in SHOP_TYPES:
+        return base
+    # Other types are visible only as Pro Bono; asking for non-Pro Bono items of such a type finds nothing.
+    return {**base, "probono": {"$in": []} if filters.get("probono") is False else True}
+
+
 XUSER_PIPELINE: list[dict[str, Any]] = [
     {"$match": PUBLIC_FILTER},
     {"$project": {"_id": 0, **dict.fromkeys(PUBLIC_FIELDS, 1)}},

@@ -7,8 +7,8 @@ import { mdiBarcodeScan } from '@mdi/js'
 import { nextTick, onMounted, ref } from 'vue'
 
 const props = withDefaults(
-  defineProps<{ label: string; hint?: string; loading?: boolean; autofocus?: boolean; keep?: boolean }>(),
-  { hint: 'Scan the code, or type it and press Enter', loading: false, autofocus: false, keep: false },
+  defineProps<{ label: string; hint?: string; placeholder?: string; loading?: boolean; autofocus?: boolean; keep?: boolean; prominent?: boolean }>(),
+  { hint: 'Scan the code, or type it and press Enter', placeholder: undefined, loading: false, autofocus: false, keep: false, prominent: false },
 )
 const emit = defineEmits<{ scan: [code: string] }>()
 const value = ref('')
@@ -29,13 +29,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <form class="scan" @submit.prevent="submit">
+  <form class="scan" :class="{ prominent }" @submit.prevent="submit">
     <v-text-field
       ref="field"
       v-model="value"
       :label="label"
       :hint="hint"
-      persistent-hint
+      :placeholder="placeholder"
+      :persistent-placeholder="!!placeholder"
+      :color="prominent ? 'primary' : undefined"
+
+      :persistent-hint="!!hint"
       :prepend-inner-icon="mdiBarcodeScan"
       :loading="loading"
       autocomplete="off"
@@ -54,5 +58,18 @@ onMounted(() => {
 /* Codes in the mono face (DESIGN_BRIEF), on the input only: on the whole field it shifts the label. */
 .scan :deep(input) {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+</style>
+<style scoped>
+/* The page's main target: a 2 px primary ring in place of the 1 px resting edge every field has (base.css). */
+.scan.prominent :deep(.v-field) {
+  box-shadow: 0 0 0 2px rgb(var(--v-theme-primary));
+}
+.scan.prominent :deep(.v-field)::after {
+  content: none;
+}
+.scan.prominent :deep(input) {
+  font-size: 1.0625rem;
+  min-height: 60px;
 }
 </style>

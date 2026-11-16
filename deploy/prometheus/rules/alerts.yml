@@ -1,5 +1,5 @@
-# TR-OBS-3 alert rules. Security-event alerts (failed logins, token reuse, ClamAV) are added
-# with identity-svc / document-svc in P2/P6, once those metrics exist.
+# TR-OBS-3 alert rules. Security events come from security_events_total (identity-svc, document-svc),
+# unexpected errors from unhandled_exceptions_total (every service), certificates from the blackbox exporter.
 groups:
   - name: services
     rules:
@@ -23,6 +23,44 @@ groups:
         for: 10m
         labels: { severity: warning }
         annotations: { summary: "{{ $labels.service }} p95 latency above 500 ms" }
+
+  - name: security
+    rules:
+      - alert: FailedLoginsHigh
+        expr: sum(rate(security_events_total{event="login_failed"}[2m])) * 60 > 20
+        for: 2m
+        labels: { severity: warning }
+        annotations: { summary: "More than 20 failed logins per minute ({{ $value | humanize }}/min): password guessing?" }
+      - alert: AdminLockedOut
+        expr: sum(increase(security_events_total{event="account_locked",role="admin"}[5m])) > 0
+        labels: { severity: critical }
+        annotations: { summary: "An administrator account was locked after repeated failed logins" }
+      - alert: AdminLoginNewIp
+        expr: sum(increase(security_events_total{event="admin_login_new_ip"}[5m])) > 0
+        labels: { severity: warning }
+        annotations: { summary: "An administrator signed in from a new IP address (check the audit log, A-20)" }
+      - alert: RefreshTokenReuse
+        expr: sum(increase(security_events_total{event="token_reuse"}[5m])) > 0
+        labels: { severity: warning }
+        annotations: { summary: "A refresh token was reused: possible stolen session (the session family was revoked)" }
+      - alert: MalwareUploaded
+        expr: sum(increase(security_events_total{event="malware_detected"}[5m])) > 0
+        labels: { severity: critical }
+        annotations: { summary: "ClamAV found malware in an upload; the file is quarantined (document-svc)" }
+      - alert: NewExceptionType
+        # A (service, exception type) pair that did not exist a day ago.
+        expr: count by (service, type) (unhandled_exceptions_total) unless count by (service, type) (unhandled_exceptions_total offset 1d)
+        labels: { severity: warning }
+        annotations: { summary: "New unhandled error {{ $labels.type }} in {{ $labels.service }}" }
+      - alert: CertExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) < 14 * 86400
+        labels: { severity: warning }
+        annotations: { summary: "Certificate for {{ $labels.instance }} expires in {{ $value | humanizeDuration }}: is certbot renewing?" }
+      - alert: SiteUnreachable
+        expr: probe_success{job="blackbox"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations: { summary: "{{ $labels.instance }} is not reachable over HTTPS" }
 
   - name: messaging
     rules:

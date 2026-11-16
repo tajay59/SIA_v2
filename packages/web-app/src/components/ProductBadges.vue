@@ -41,8 +41,8 @@ defineProps<{ product: Product; showLimit?: boolean }>()
   height: 24px;
   padding: 0 8px;
   border-radius: 4px;
-  background: #f5c400;
-  color: #0f1a24; /* ink on yellow only (contrast-checked in the Design Brief) */
+  background: rgb(var(--v-theme-accent-probono));
+  color: var(--probono-ink); /* ink on yellow only (contrast-checked in the Design Brief) */
   font-size: 12px;
   font-weight: 600;
 }

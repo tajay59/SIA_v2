@@ -1,129 +1,251 @@
 <script setup lang="ts">
 /**
- * Sign-in pages (login, sign-up, verify, password reset), same structure as the legacy Login/Signup pages:
- * full-screen photo of a meteorological enclosure (dimmed), the CIMH logo and the page heading on the
- * left, the form in a card on the right. On phones the logo and heading sit on top of the card.
- * There is no top bar on these pages (legacy), so the logo links home.
+ * Sign-in pages ("Reception desk + pass", impeccable 2026-11-16; brief packages/web-app/.impeccable/surfaces/
+ * src-components-authcard-vue.md). Left: the reception wall saying where you are (CIMH crest, page title, one
+ * line, and an optional `wall` slot, e.g. the steps to an approved account). Right: the pass you are handed,
+ * on the page ground. SHOP issues a white visitor pass on a navy wall; SIA a navy staff card on a graphite wall,
+ * so the two apps never look alike. Phones: the wall becomes a header band above the pass. No top bar on these
+ * pages, so the crest links home.
  */
-import { useDisplay } from 'vuetify'
-import photo from '../assets/legacy/met-enclosure.webp'
-import photoSmall from '../assets/legacy/met-enclosure-800.webp'
 import logoWhite from '../assets/cimh-logo-white.webp'
+import siaMark from '../assets/brand/sia-mark.svg'
+import { useAppName } from '../bootstrap'
 
 defineProps<{ title: string; subtitle?: string; width?: number }>()
-const { mdAndUp } = useDisplay()
+const sia = useAppName() === 'sia'
 </script>
 
 <template>
-  <div class="auth">
-    <img class="auth-photo" :src="photo" :srcset="`${photoSmall} 800w, ${photo} 1600w`" sizes="100vw" alt="" />
-    <div class="auth-shade" />
-    <div class="auth-inner">
-      <div class="auth-intro">
-        <router-link to="/" aria-label="Home"><img :src="logoWhite" alt="CIMH" width="220" height="68" class="auth-logo" /></router-link>
-        <h1 class="auth-title">{{ title }}</h1>
-        <p v-if="subtitle && mdAndUp" class="auth-sub">{{ subtitle }}</p>
+  <div class="desk" :class="{ sia }">
+    <section class="wall" aria-labelledby="auth-title">
+      <router-link to="/" class="crest-link" aria-label="Home"><img :src="logoWhite" alt="CIMH" width="200" height="62" class="crest" /></router-link>
+      <div class="wall-text">
+        <h1 id="auth-title" class="wall-title">{{ title }}</h1>
+        <p v-if="subtitle" class="wall-sub">{{ subtitle }}</p>
       </div>
-      <v-card class="auth-card" :style="{ maxWidth: `${width ?? 440}px` }" variant="flat" color="surface" elevation="8">
-        <p v-if="subtitle && !mdAndUp" class="t-body muted mb-4">{{ subtitle }}</p>
-        <div class="auth-body">
-          <slot />
-        </div>
-        <div v-if="$slots.footer" class="auth-foot t-body">
-          <slot name="footer" />
-        </div>
-      </v-card>
+      <div v-if="$slots.wall" class="wall-extra"><slot name="wall" /></div>
+    </section>
+
+    <div class="ground">
+      <!-- The pass carries its own theme: SHOP white visitor pass, SIA navy staff card, whatever theme is stored. -->
+      <v-theme-provider :theme="sia ? 'cimhDark' : 'cimhLight'">
+        <article class="pass" :class="sia ? 'v-theme--cimhDark' : 'v-theme--cimhLight'" :style="{ maxWidth: `${width ?? 460}px` }">
+          <div class="stamp">
+            <template v-if="sia">
+              <img :src="siaMark" alt="" width="28" height="28" />
+              <span class="stamp-kind">Staff card</span>
+              <span class="stamp-app">SIA · CIMH Stores staff app</span>
+            </template>
+            <template v-else>
+              <span class="stamp-kind">Visitor pass</span>
+              <span class="stamp-app">CIMH Stores</span>
+            </template>
+          </div>
+          <div class="pass-body">
+            <slot />
+          </div>
+          <div v-if="$slots.footer" class="pass-foot">
+            <slot name="footer" />
+          </div>
+        </article>
+      </v-theme-provider>
     </div>
   </div>
 </template>
 
 <style scoped>
-.auth {
-  position: relative;
+.desk {
+  --wall: #0a2e4a;
+  --wall-rule: #0084c8;
+  /* Resolved here, in the page theme: the slot shows the ground through the pass whatever theme the pass has. */
+  --ground: rgb(var(--v-theme-surface-variant));
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  overflow: hidden;
-}
-.auth-photo {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.auth-shade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, rgba(5, 12, 20, 0.78) 0%, rgba(5, 12, 20, 0.45) 55%, rgba(5, 12, 20, 0.3) 100%);
-}
-.auth-inner {
-  position: relative;
-  width: 100%;
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: var(--sp-12, 48px) var(--sp-6);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 460px);
-  gap: var(--sp-12, 48px);
-  align-items: center;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  background: rgb(var(--v-theme-surface-variant));
 }
-@media (max-width: 959px) {
-  .auth-inner {
-    grid-template-columns: minmax(0, 1fr);
-    justify-items: center;
-    gap: var(--sp-6);
-    padding: var(--sp-8) var(--sp-4);
-  }
+.desk.sia {
+  --wall: #0d1117;
+  --wall-rule: #30363d;
 }
-.auth-intro {
+
+/* The wall: where you are. */
+.wall {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--wall);
   color: #fff;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  padding: var(--sp-12, 48px) clamp(24px, 4vw, 64px);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
+  gap: var(--sp-10, 40px);
 }
-@media (max-width: 959px) {
-  .auth-intro {
-    align-items: center;
-    text-align: center;
-  }
+.wall::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: url('../assets/legacy/gears.webp') center bottom / 160% auto no-repeat;
+  filter: invert(1);
+  mix-blend-mode: screen;
+  opacity: 0.2;
 }
-.auth-logo {
-  width: 220px;
+.sia .wall::before {
+  opacity: 0.1;
+}
+.crest {
+  width: 200px;
   height: auto;
+  display: block;
 }
-.auth-title {
-  font-size: clamp(30px, 4vw, 48px);
+.crest-link {
+  align-self: flex-start;
+  border-radius: 4px;
+}
+.crest-link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+.wall-text {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.wall-title {
+  font-size: clamp(30px, 3.4vw, 46px);
   line-height: 1.1;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
-  max-width: 16ch;
+  max-width: 14ch;
+  text-wrap: balance;
 }
-.auth-sub {
-  font-size: 18px;
-  line-height: 1.55;
-  max-width: 46ch;
+.wall-sub {
   margin: 0;
-  color: rgba(255, 255, 255, 0.86);
+  max-width: 40ch;
+  font-size: 17px;
+  line-height: 26px;
+  color: rgba(255, 255, 255, 0.84);
 }
-.auth-card {
+.wall-extra {
+  margin-bottom: auto;
+}
+
+/* The ground and the pass you are handed. */
+.ground {
+  display: grid;
+  place-items: center;
+  padding: var(--sp-12, 48px) var(--sp-6);
+}
+.pass {
+  position: relative;
   width: 100%;
-  justify-self: end;
-  padding: var(--sp-8) var(--sp-6);
   border-radius: 16px;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  box-shadow: 0 18px 40px -20px rgba(15, 26, 36, 0.35), 0 2px 6px -2px rgba(15, 26, 36, 0.12);
+  padding: 44px var(--sp-8) var(--sp-8);
 }
-@media (max-width: 959px) {
-  .auth-card {
-    justify-self: center;
-  }
+/* The lanyard slot cut through the top of the pass. */
+.pass::before {
+  content: '';
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  width: 56px;
+  height: 8px;
+  margin-left: -28px;
+  border-radius: 8px;
+  background: var(--ground);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25);
 }
-.auth-foot {
+.sia .pass {
+  background: #0a2e4a;
+  border-color: #1f4b6e;
+}
+.stamp {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-3);
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-6);
+  border-bottom: 1px dashed rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.sia .stamp {
+  border-bottom-color: #1f4b6e;
+}
+.stamp-kind {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #0a2e4a;
+  color: #fff;
+}
+.sia .stamp-kind {
+  background: #0084c8;
+  color: #0d1117;
+}
+.stamp-app {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+.pass-foot {
   margin-top: var(--sp-6);
   padding-top: var(--sp-4);
   border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
+  font-size: 15px;
+  line-height: 22px;
+}
+.sia .pass-foot {
+  border-top-color: #1f4b6e;
+}
+
+/* Tablets and phones: the wall becomes a header band above the pass. */
+@media (max-width: 959.98px) {
+  .desk {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+  .wall {
+    border-right: 0;
+    border-bottom: 4px solid var(--wall-rule);
+    padding: var(--sp-6) var(--sp-4) var(--sp-8);
+    gap: var(--sp-6);
+  }
+  .crest {
+    width: 150px;
+  }
+  .wall-text {
+    margin-top: 0;
+  }
+  .wall-extra {
+    display: none;
+  }
+  .ground {
+    place-items: start center;
+    padding: var(--sp-6) var(--sp-4) var(--sp-10, 40px);
+  }
+}
+@media (max-width: 599.98px) {
+  .pass {
+    padding: 40px var(--sp-4) var(--sp-6);
+  }
+  .wall-sub {
+    font-size: 15px;
+    line-height: 22px;
+  }
 }
 </style>

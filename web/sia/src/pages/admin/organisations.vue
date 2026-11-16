@@ -1,197 +1,393 @@
 <script setup lang="ts">
-/** A-18 organisations: search, create/edit (admin), merge a duplicate into another (admin). Staff read. */
-import {
-  ApiError,
-  call,
-  countries,
-  countryName,
-  identity,
-  ifMatch,
-  type Organisation,
-  useCursorList,
-  useNotify,
-  useSession,
-} from '@cimh/web-app'
-import { mdiMagnify, mdiPlus } from '@mdi/js'
-import { onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import OrganisationPicker from '../../components/OrganisationPicker.vue'
+/**
+ * A-18 organisations, list beside record: search, the organisation list, and the open organisation
+ * (`?open=<id>`, `?open=new` to create) beside it on wide screens; narrow screens show the record alone with a
+ * way back. Admins edit, create and merge; staff read.
+ */
+import { call, countryName, identity, type Organisation, useCursorList, useSession } from '@cimh/web-app'
+import { mdiArrowLeft, mdiMagnify, mdiPlus } from '@mdi/js'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
+import { useRoute, useRouter } from 'vue-router'
+import OrganisationRecord from '../../components/OrganisationRecord.vue'
+import { orgTypeTitle } from '../../organisations'
 
-definePage({ meta: { guard: 'staff', title: 'Organisations' } })
+definePage({ meta: { guard: 'staff', title: 'Organisations', ownHeading: true } })
 
+const route = useRoute()
+const router = useRouter()
+const display = useDisplay()
 const session = useSession()
-const notify = useNotify()
-const q = ref('')
+const str = (v: unknown) => (typeof v === 'string' && v ? v : null)
+const q = ref(str(route.query.q) ?? '')
+const openId = computed(() => str(route.query.open))
+const isNew = computed(() => openId.value === 'new')
+
 const list = useCursorList<Organisation>((cursor) =>
   call(() => identity.GET('/organisations', { params: { query: { q: q.value.trim() || undefined, cursor, limit: 50 } } })),
 )
 onMounted(list.reload)
+
+function queryFor(open: string | null) {
+  const query: Record<string, string> = {}
+  if (q.value.trim()) query.q = q.value.trim()
+  if (open) query.open = open
+  return query
+}
 let timer: ReturnType<typeof setTimeout> | undefined
 // A pending debounce must not fire after the page is left (router.replace would navigate back here).
 onBeforeUnmount(() => clearTimeout(timer))
 watch(q, () => {
   clearTimeout(timer)
-  timer = setTimeout(() => void list.reload(), 250)
+  timer = setTimeout(() => {
+    void router.replace({ query: queryFor(openId.value) })
+    void list.reload()
+  }, 250)
 })
 
-const TYPES = [
-  { value: 'met_service', title: 'Meteorological service' },
-  { value: 'hydro_service', title: 'Hydrological service' },
-  { value: 'government', title: 'Government' },
-  { value: 'academic', title: 'Academic' },
-  { value: 'other', title: 'Other' },
-]
-const typeTitle = (t?: string | null) => TYPES.find((x) => x.value === t)?.title ?? '—'
-
-// create / edit
-const editOpen = ref(false)
-const editing = ref<Organisation | null>(null)
-const form = reactive({ name: '', country: 'BB', type: 'met_service' as Organisation['type'], emailDomains: [] as string[], aliases: [] as string[], active: true })
-const formValid = ref(false)
-const busy = ref(false)
-function openEdit(o: Organisation | null) {
-  editing.value = o
-  Object.assign(form, {
-    name: o?.name ?? '',
-    country: o?.country ?? 'BB',
-    type: o?.type ?? 'met_service',
-    emailDomains: [...(o?.emailDomains ?? [])],
-    aliases: [...(o?.aliases ?? [])],
-    active: o?.active ?? true,
-  })
-  editOpen.value = true
+const wide = computed(() => display.width.value >= 1280)
+const open = (id: string) => void router.replace({ query: queryFor(id) })
+const close = () => void router.replace({ query: queryFor(null) })
+function onRowKey(e: KeyboardEvent, i: number) {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+  e.preventDefault()
+  const items = list.items.value
+  const next = items[Math.max(0, Math.min(items.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)))]
+  if (!next) return
+  document.getElementById(`orow-${next.id}`)?.focus()
+  if (wide.value && openId.value) open(next.id)
 }
-async function save() {
-  busy.value = true
-  const body = { ...form, name: form.name.trim(), emailDomains: form.emailDomains.map((d) => d.trim().toLowerCase()).filter(Boolean) }
-  try {
-    const o = editing.value
-    if (o)
-      await call(() =>
-        identity.PATCH('/organisations/{organisationId}', {
-          params: { path: { organisationId: o.id }, header: { 'If-Match': ifMatch(o.version) } },
-          body,
-        }),
-      )
-    else await call(() => identity.POST('/organisations', { body }))
-    notify.toast(o ? 'Organisation saved' : 'Organisation created', 'success')
-    editOpen.value = false
-    void list.reload()
-  } catch (e) {
-    if (e instanceof ApiError && e.code === 'DUPLICATE') notify.toast('An organisation with this name already exists.', 'warning')
-    else notify.report(e, { retry: list.reload })
-  } finally {
-    busy.value = false
-  }
+function onSaved(o: Organisation, created: boolean) {
+  const i = list.items.value.findIndex((x) => x.id === o.id)
+  if (i >= 0) list.items.value.splice(i, 1, { ...o, memberCount: o.memberCount ?? list.items.value[i]!.memberCount })
+  else list.items.value = [o, ...list.items.value]
+  if (created) open(o.id)
 }
-
-// merge
-const mergeOpen = ref(false)
-const source = ref<Organisation | null>(null)
-const mergeTarget = ref<Organisation | null>(null)
-function openMerge(o: Organisation) {
-  source.value = o
-  mergeTarget.value = null
-  mergeOpen.value = true
+function onMerged() {
+  close()
+  void list.reload()
 }
-async function merge() {
-  const s = source.value
-  const t = mergeTarget.value
-  if (!s || !t) return
-  busy.value = true
-  try {
-    await call(() => identity.POST('/organisations/{organisationId}/merge', { params: { path: { organisationId: s.id } }, body: { targetId: t.id } }))
-    notify.toast(`${s.name} merged into ${t.name}`, 'success')
-    mergeOpen.value = false
-    void list.reload()
-  } catch (e) {
-    notify.report(e)
-  } finally {
-    busy.value = false
-  }
-}
-
-const headers = [
-  { title: 'Name', key: 'name', sortable: false },
-  { title: 'Type', key: 'type', sortable: false },
-  { title: 'Country', key: 'country', sortable: false },
-  { title: 'Email domains', key: 'emailDomains', sortable: false },
-  { title: 'Members', key: 'memberCount', sortable: false, align: 'end' as const },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
-]
+const summary = computed(() => {
+  if (!list.loaded.value) return 'Loading…'
+  const n = list.items.value.length
+  return `${n}${list.nextCursor.value ? '+' : ''} ${n === 1 ? 'organisation' : 'organisations'}`
+})
 </script>
 
 <template>
-  <div class="page">
-    <div class="page-header">
-      <v-text-field v-model="q" data-page-search :prepend-inner-icon="mdiMagnify" label="Search organisations" clearable hide-details class="search" @click:clear="q = ''" />
-      <span class="spacer" />
-      <v-btn v-if="session.isAdmin" color="primary" :prepend-icon="mdiPlus" @click="openEdit(null)">New organisation</v-btn>
+  <div class="orgs" :class="{ alone: !wide && openId }">
+    <div class="top">
+      <h1 class="t-h1">Organisations</h1>
     </div>
-    <v-card>
-      <v-data-table :headers="headers" :items="list.items.value" :loading="list.loading.value" item-value="id" :items-per-page="-1" hide-default-footer>
-        <template #[`item.name`]="{ item }">
-          <div class="stack-sm py-2">
-            <span class="t-body">{{ item.name }} <v-chip v-if="item.active === false" size="x-small" class="ml-1">Inactive</v-chip></span>
-            <span v-if="item.aliases?.length" class="t-caption muted">Also: {{ item.aliases.join(', ') }}</span>
-          </div>
-        </template>
-        <template #[`item.type`]="{ item }">{{ typeTitle(item.type) }}</template>
-        <template #[`item.country`]="{ item }">{{ countryName(item.country) }}</template>
-        <template #[`item.emailDomains`]="{ item }"><span class="t-mono">{{ (item.emailDomains ?? []).join(', ') || '—' }}</span></template>
-        <template #[`item.memberCount`]="{ item }"><span class="tnum">{{ item.memberCount ?? 0 }}</span></template>
-        <template #[`item.actions`]="{ item }">
-          <div v-if="session.isAdmin" class="row-end">
-            <v-btn size="small" variant="text" @click="openEdit(item)">Edit</v-btn>
-            <v-btn size="small" variant="text" @click="openMerge(item)">Merge…</v-btn>
-          </div>
-        </template>
-        <template #no-data><p class="t-body pa-6">No organisations found.</p></template>
-      </v-data-table>
-      <div v-if="list.nextCursor.value" class="row-end pa-4">
-        <v-btn variant="outlined" :loading="list.loading.value" @click="list.loadMore">Load more</v-btn>
-      </div>
-    </v-card>
 
-    <v-dialog v-model="editOpen" max-width="560" scrollable>
-      <v-card>
-        <v-card-title class="t-h3">{{ editing ? 'Edit organisation' : 'New organisation' }}</v-card-title>
-        <v-card-text>
-          <v-form v-model="formValid" class="stack" @submit.prevent="save">
-            <v-text-field v-model="form.name" label="Name" :rules="[(v: string) => !!v.trim() || 'Required', (v: string) => v.length <= 200 || 'At most 200 characters']" />
-            <div class="grid-2">
-              <v-autocomplete v-model="form.country" label="Country" :items="countries()" />
-              <v-select v-model="form.type" label="Type" :items="TYPES" />
+    <div class="strip">
+      <v-text-field
+        v-model="q"
+        data-page-search
+        :prepend-inner-icon="mdiMagnify"
+        label="Search organisations"
+        clearable
+        hide-details
+        class="search"
+        @click:clear="q = ''"
+      />
+      <!-- In the search strip, not the title row: at 360 px the title + button pushed the page sideways. -->
+      <span class="spacer" />
+      <v-btn v-if="session.isAdmin" class="m3 new-org" color="primary" variant="flat" :prepend-icon="mdiPlus" @click="open('new')">New organisation</v-btn>
+    </div>
+
+    <div class="console-panels panels" :class="{ split: wide && openId }">
+      <section v-if="wide || !openId" class="olist" aria-label="Organisations">
+        <div class="console-head">
+          <h2 class="console-title" aria-live="polite">{{ summary }}</h2>
+        </div>
+        <div class="console-scroll">
+          <div v-if="!list.loaded.value && list.loading.value" class="skel-rows">
+            <div v-for="i in 8" :key="i" class="console-skel skel-row" />
+          </div>
+          <div v-else-if="list.loaded.value && !list.items.value.length" class="empty">
+            <p class="t-body">{{ q.trim() ? `No organisation matches “${q.trim()}”.` : 'No organisations yet.' }}</p>
+            <div class="row">
+              <v-btn v-if="q.trim()" class="m3" variant="outlined" @click="q = ''">Clear search</v-btn>
+              <v-btn v-if="session.isAdmin" class="m3" variant="outlined" :prepend-icon="mdiPlus" @click="open('new')">New organisation</v-btn>
             </div>
-            <v-combobox v-model="form.emailDomains" label="Email domains" multiple chips closable-chips hint="Press Enter after each, e.g. barbados.gov.bb" persistent-hint />
-            <v-combobox v-model="form.aliases" label="Other names (aliases)" multiple chips closable-chips hint="Help match sign-ups that spell it differently" persistent-hint />
-            <v-switch v-model="form.active" label="Active" color="primary" hide-details inset />
-          </v-form>
-        </v-card-text>
-        <v-card-actions class="row-end">
-          <v-btn variant="text" @click="editOpen = false">Cancel</v-btn>
-          <v-btn color="primary" :loading="busy" :disabled="!formValid" @click="save">Save</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+          </div>
+          <TransitionGroup v-else tag="ul" name="orow" class="rows">
+            <li v-if="!(wide && openId)" key="head" class="row-h" aria-hidden="true">
+              <span>Name</span>
+              <span class="c-type">Type</span>
+              <span class="c-country">Country</span>
+              <span class="c-dom">Email domains</span>
+              <span class="c-n">Members</span>
+            </li>
+            <li v-for="(o, i) in list.items.value" :key="o.id" :style="{ '--i': Math.min(i, 12) }">
+              <a
+                :id="`orow-${o.id}`"
+                :href="`/admin/organisations?open=${o.id}`"
+                class="orow"
+                :class="{ on: openId === o.id, off: o.active === false }"
+                :aria-current="openId === o.id ? 'true' : undefined"
+                @click.prevent="open(o.id)"
+                @keydown="onRowKey($event, i)"
+              >
+                <span class="c-name">
+                  <span class="oname">{{ o.name }}<span v-if="o.active === false" class="inactive">Inactive</span></span>
+                  <span v-if="o.aliases?.length" class="sub">Also: {{ o.aliases.join(', ') }}</span>
+                  <span v-if="wide && openId" class="sub">{{ countryName(o.country) }}</span>
+                </span>
+                <span class="c-type">{{ orgTypeTitle(o.type) }}</span>
+                <span class="c-country">{{ countryName(o.country) }}</span>
+                <span class="c-dom console-mono">{{ (o.emailDomains ?? []).join(', ') || '—' }}</span>
+                <span class="c-n console-mono">{{ o.memberCount ?? 0 }}</span>
+              </a>
+            </li>
+          </TransitionGroup>
+          <div v-if="list.nextCursor.value" class="load-more">
+            <v-btn class="m3" variant="outlined" :loading="list.loading.value" @click="list.loadMore">Load more</v-btn>
+          </div>
+        </div>
+      </section>
 
-    <v-dialog v-model="mergeOpen" max-width="520">
-      <v-card>
-        <v-card-title class="t-h3">Merge {{ source?.name }}</v-card-title>
-        <v-card-text class="stack">
-          <p class="t-body muted">Members and request visibility move to the organisation you choose. {{ source?.name }} becomes inactive. This can't be undone.</p>
-          <OrganisationPicker v-model="mergeTarget" label="Merge into" :exclude-id="source?.id" />
-        </v-card-text>
-        <v-card-actions class="row-end">
-          <v-btn variant="text" @click="mergeOpen = false">Cancel</v-btn>
-          <v-btn color="error" :loading="busy" :disabled="!mergeTarget" @click="merge">Merge</v-btn>
-        </v-card-actions>
-      </v-card>
-    </v-dialog>
+      <section v-if="openId" class="record" :aria-label="isNew ? 'New organisation' : 'Selected organisation'">
+        <div class="console-head">
+          <v-btn v-if="!wide" variant="text" size="small" class="m3" :prepend-icon="mdiArrowLeft" @click="close">All organisations</v-btn>
+          <h2 v-else class="console-title">{{ isNew ? 'New organisation' : 'Selected organisation' }}</h2>
+          <v-btn v-if="wide" variant="text" size="small" class="m3" @click="close">Close</v-btn>
+        </div>
+        <div class="console-scroll">
+          <OrganisationRecord :key="openId" :organisation-id="isNew ? null : openId" @saved="onSaved" @merged="onMerged" />
+        </div>
+      </section>
+    </div>
   </div>
 </template>
 
 <style scoped>
+.orgs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-width: 1600px;
+  margin-inline: auto;
+  padding: var(--sp-4) var(--sp-6) var(--sp-6);
+  font-size: 14px;
+}
+@media (min-width: 1280px) {
+  .orgs {
+    height: 100dvh;
+    min-height: 560px;
+  }
+  .orgs > :not(.panels) {
+    flex-shrink: 0;
+  }
+}
+.top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.spacer {
+  flex: 1;
+}
+.strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
 .search {
-  max-width: 420px;
+  flex: 1 1 240px;
+  max-width: 480px;
+}
+.alone .strip {
+  display: none;
+}
+.panels {
+  grid-template-columns: minmax(0, 1fr);
+}
+.panels.split {
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+}
+.record {
+  background: rgb(var(--v-theme-background));
+  min-width: 0;
+}
+.split .record {
+  border-left: 1px solid rgb(var(--v-theme-seam));
+}
+.rows {
+  list-style: none;
+  position: relative;
+  margin: 0;
+  padding: 0;
+}
+.row-h,
+.orow {
+  display: grid;
+  grid-template-columns: minmax(220px, 2.4fr) minmax(150px, 1.2fr) minmax(110px, 1fr) minmax(140px, 1.4fr) 80px;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4);
+}
+.split .orow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.split .c-type,
+.split .c-country,
+.split .c-dom {
+  display: none;
+}
+.row-h {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  height: 36px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-secondary));
+  background: rgb(var(--v-theme-surface));
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.orow {
+  min-height: 52px;
+  padding-block: 8px;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+  transition: background-color 120ms ease;
+}
+.orow:hover {
+  background: rgb(var(--v-theme-surface-variant));
+}
+.orow.on {
+  background: rgba(var(--v-theme-primary), 0.14);
+  box-shadow: inset 2px 0 rgb(var(--v-theme-primary));
+}
+.orow:focus-visible {
+  outline-offset: -2px;
+}
+.orow.off .oname {
+  color: rgb(var(--v-theme-secondary));
+}
+.c-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.oname {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-weight: 500;
+  line-height: 20px;
+}
+.inactive {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+  padding: 0 6px;
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 8px;
+  color: rgb(var(--v-theme-secondary));
+}
+.sub,
+.c-type,
+.c-country,
+.c-dom {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sub {
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
+.c-dom {
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
+.c-n {
+  justify-self: end;
+  font-size: 13px;
+}
+.skel-rows {
+  padding: var(--sp-2) var(--sp-4);
+}
+.skel-row {
+  height: 36px;
+  margin: 12px 0;
+  border-radius: 4px;
+}
+.empty {
+  padding: var(--sp-8) var(--sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.load-more {
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-4);
+}
+@media (max-width: 1099.98px) {
+  .row-h,
+  .orow {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) 72px;
+  }
+  .c-type,
+  .c-dom {
+    display: none;
+  }
+}
+@media (max-width: 599.98px) {
+  .orgs {
+    padding: var(--sp-3) var(--sp-4) var(--sp-6);
+  }
+  .row-h,
+  .orow {
+    grid-template-columns: minmax(0, 1fr) 56px;
+  }
+  .c-country {
+    display: none;
+  }
+  .search {
+    max-width: none;
+  }
+  .strip .spacer {
+    display: none;
+  }
+}
+.orow-enter-active {
+  transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
+  transition-delay: calc(var(--i, 0) * 24ms);
+}
+.orow-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.orow-leave-active {
+  position: absolute;
+  width: 100%;
+  transition: opacity 140ms ease-in;
+}
+.orow-leave-to {
+  opacity: 0;
+}
+.orow-move {
+  transition: transform 280ms var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .orow-enter-active {
+    transition: opacity 160ms ease;
+    transition-delay: 0ms;
+  }
+  .orow-enter-from {
+    transform: none;
+  }
+  .orow-move {
+    transition: none;
+  }
 }
 </style>

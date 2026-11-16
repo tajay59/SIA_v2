@@ -211,7 +211,7 @@ Authoritative matrix: [API README §3](api/README.md#3-roles-and-access). Summar
 | Patch windows | Monthly (OS, Docker, images); critical within 72 h | Ops |
 | Security review gate | Pre-launch | Checklist = every T-xx row ✅ or accepted ⚠ with sign-off |
 
-**Pen test 2026-11 (local dev stack, owner-approved scope):** [security/PENTEST-2026-11.md](security/PENTEST-2026-11.md), findings in [security/PENTEST-2026-11-findings.md](security/PENTEST-2026-11-findings.md). 8 findings; all fixed (F-01, the production edge, built in P9; live check at the first deploy) except F-05 (accepted). Repeatable probes: `tools/security/probes.py`. A rerun against staging-sized infrastructure and a fresh-context review (R7) remain.
+**Pen test 2026-11 (local dev stack, owner-approved scope):** [security/PENTEST-2026-11.md](security/PENTEST-2026-11.md), findings in [security/PENTEST-2026-11-findings.md](security/PENTEST-2026-11-findings.md). 10 findings; all fixed (F-01, the production edge, built in P9; live check at the first deploy; F-09/F-10 found afterwards by the contract tests) except F-05 (accepted). Repeatable probes: `tools/security/probes.py`. A rerun against staging-sized infrastructure and a fresh-context review (R7) remain.
 
 ## 12. Residual risks and decisions
 

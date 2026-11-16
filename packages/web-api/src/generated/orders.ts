@@ -1395,6 +1395,8 @@ export interface components {
             organisationName?: string | null;
             currency?: components["schemas"]["Currency"] | null;
             lineCount: number;
+            /** @description Name of the first line, so lists can title a request by what was asked for */
+            firstItemName?: string | null;
             /** Format: date-time */
             quoteExpiresAt?: string | null;
             submittedAt: components["schemas"]["Timestamp"];

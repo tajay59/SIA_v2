@@ -33,7 +33,7 @@ For: the person who keeps CIMH Stores running day to day. Commands run on `sia-h
 | Read logs | `$C logs --since 30m <service>`: JSON lines with `traceId`; the `X-Trace-Id` response header ties a user report to the log |
 | Change alert email / SMTP | edit `env/prod.env`, then `scripts/render-config.sh prod && $C up -d alertmanager` |
 | Unlock an account | locks expire by themselves (15 min, longer after repeats); there is no admin unlock |
-| Admin lost the TOTP device | **No admin MFA-reset function exists yet** (gap, P10 backlog). Until then: with the Mongo root user, `$unset` the admin's `mfa` field in `accounts` and suspend/reactivate them to revoke sessions; they enrol again at next login. Record it in the incident log. Keep at least two admins (`LAST_ADMIN` guard) |
+| Admin lost the TOTP device | Another admin: A-17 → **Reset two-step verification** (reason; audited `account.mfa_reset`; signs them out). They sign in with the password and must enrol again before any admin page works. Check who is asking first (phone call, in person). Keep at least two admins (`LAST_ADMIN` guard) |
 | Run the migration again (staging) | `tools/migrate/` README; never against production after cut-over |
 
 ## Secrets rotation (yearly, or at once after a leak)

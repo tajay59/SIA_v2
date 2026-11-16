@@ -23,6 +23,9 @@ export default defineConfig({
     vue(),
     vuetify({ autoImport: true }),
   ],
+  // One copy of each runtime (as in web/sia): a second vue-router in the build left useRoute() undefined in
+  // App.vue, so production builds rendered a blank page.
+  resolve: { dedupe: ['vue', 'vue-router', 'pinia', 'vuetify'] },
   server: { port: 15173, strictPort: true, proxy },
   preview: { port: 15173, strictPort: true, proxy, headers: { 'Content-Security-Policy': csp } },
   build: {

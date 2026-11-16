@@ -34,6 +34,14 @@ describe('contrast (DESIGN_BRIEF §3)', () => {
     expect(contrast(color.light.ink, color.light['accent-probono'])).toBeGreaterThan(10)
     expect(contrast('#FFFFFF', color.light['accent-probono'])).toBeLessThan(AA)
   })
+  it.each(['light', 'dark'] as const)('%s: the field edge is a 3:1 boundary on every ground a field sits on (WCAG 1.4.11)', (mode) => {
+    const c = color[mode]
+    const sia = vuetifyOptions('sia').theme.themes[mode === 'light' ? 'cimhLight' : 'cimhDark'].colors
+    expect(sia['field-outline']).toBe(c['field-outline'])
+    for (const ground of [c.surface, c.bg, c['surface-2'], sia.surface, sia.background, sia['surface-variant']]) {
+      expect(contrast(c['field-outline'], ground)).toBeGreaterThanOrEqual(3)
+    }
+  })
   it('primary text on primary-subtle meets AA', () => {
     expect(contrast(color.light.primary, color.light['primary-subtle'])).toBeGreaterThanOrEqual(AA)
   })
@@ -48,6 +56,17 @@ describe('theme', () => {
     const o = vuetifyOptions('shop')
     expect(Object.keys(o.theme.themes)).toEqual(['cimhLight', 'cimhDark'])
     expect(o.theme.themes.cimhDark.dark).toBe(true)
+  })
+  it('text on filled status colours (toasts, filled chips) meets AA in every theme', () => {
+    for (const app of ['shop', 'sia'] as const) {
+      for (const t of Object.values(vuetifyOptions(app).theme.themes)) {
+        const c = t.colors as Record<string, string>
+        for (const s of ['success', 'warning', 'error', 'info']) {
+          // Vuetify picks white or black when on-<s> is unset; light themes rely on white over dark hues.
+          expect(contrast(c[`on-${s}`] ?? '#FFFFFF', c[s]!), `${app} ${t.dark ? 'dark' : 'light'} ${s}`).toBeGreaterThanOrEqual(4.5)
+        }
+      }
+    }
   })
   it('emits css variables', () => {
     const css = cssVariables('dark')

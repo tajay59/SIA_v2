@@ -41,6 +41,15 @@ class ServiceMetrics:
             ["service", "collection"],
             registry=self.registry,
         )
+        # TR-OBS-3 security alerts (deploy/prometheus/rules/alerts.yml). `role` is bounded: user, staff, admin,
+        # unknown or "-"; never an id, so the label set stays small.
+        self.security = Counter(
+            "security_events_total", "Security-relevant events", ["service", "event", "role"], registry=self.registry
+        )
+        self.unhandled = Counter(
+            "unhandled_exceptions_total", "Exceptions that reached the error handler", ["service", "type"],
+            registry=self.registry,
+        )  # fmt: skip
         self.service = service
         self.scrape_hooks: list[ScrapeHook] = []
 
@@ -49,6 +58,9 @@ class ServiceMetrics:
         route = getattr(request.scope.get("route"), "path", "unmatched")
         self.requests.labels(self.service, request.method, route, str(status)).inc()
         self.latency.labels(self.service, request.method, route).observe(seconds)
+
+    def security_event(self, event: str, role: str = "-") -> None:
+        self.security.labels(self.service, event, role if role in ("user", "staff", "admin", "unknown") else "-").inc()
 
     async def collect(self) -> None:
         """Run the scrape-time hooks (e.g. outbox backlog); a failing hook never breaks /metrics."""

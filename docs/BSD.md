@@ -82,7 +82,7 @@ Other users:
 | Other accounts | ✗ | Name, email, organisation, role, status | All except secrets | |
 | Organisations | Own organisation's name only | Read | Read/write | |
 | Audit log | ✗ | ✗ | Read | |
-| Product: public fields | Read (sellable only, via `xuser`) | Read | Read | |
+| Product: public fields | Read (sellable, MET/RAD or Pro Bono; via `xuser`) | Read | Read | |
 | Product: `cost`, `threshold`, `sn`, `sn1`, internal notes | ✗ | Read/write | Read/write | Never in customer responses |
 | Storage units, locations, history | ✗ | Read/write | Read/write | |
 | Stock availability | "In stock" / "On request" flag only | Exact counts | Exact counts | |
@@ -298,11 +298,11 @@ Short-lived verification and reset codes.
 
 ### 5.6 `xuser` (view, catalog-svc)
 
-The customer-facing product view. Redefined in v2 so `cost` and staff-only fields can never leak. catalog-svc creates or redefines it at start-up from the same field list (`PUBLIC_FIELDS`) its public API uses, so the view, the API and the snapshot tests can't drift apart:
+The customer-facing product view. SHOP shows **only MET and RAD** products plus **Pro Bono items of any type** (owner, 2026-11-16; `SHOP_TYPES` in `store.py`); staff see every type. Redefined in v2 so `cost` and staff-only fields can never leak. catalog-svc creates or redefines it at start-up from the same field list (`PUBLIC_FIELDS`) its public API uses, so the view, the API and the snapshot tests can't drift apart:
 
 ```js
 db.createView("xuser", "product", [
-  { $match: { sellable: true, active: true } },
+  { $match: { sellable: true, active: true, $or: [ { type: { $in: ["MET", "RAD"] } }, { probono: true } ] } },
   { $project: { _id: 0, id: 1, name: 1, description: 1, details: 1, make: 1, modelname: 1, modelnumber: 1,
                 type: 1, department: 1, project: 1, probono: 1, probonoMaxPerRequest: 1, unitquantity: 1,
                 weight: 1, dimension: 1, images: 1, inStock: 1 } }

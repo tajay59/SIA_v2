@@ -45,6 +45,16 @@ export function scan(path: ScanPath, body: Record<string, unknown>, key: string 
   return call(() => inventory.POST(path as any, { params, body } as any)) as Promise<Unit>
 }
 
+/**
+ * The key for a Retry: the same key when the first try may not have reached the server (no connection, 408,
+ * 429, 5xx), so it is never applied twice; a new key after a refusal (other 4xx), because the server replays
+ * the stored refusal for a key it has already answered.
+ */
+export function retryKey(e: unknown, key: string): string {
+  if (!(e instanceof ApiError)) return key
+  return e.isNetwork || e.status === 408 || e.status === 429 || e.status >= 500 ? key : newScanKey()
+}
+
 /** A short, human answer for a failed scan (shown in the scan list). */
 export function scanError(e: unknown): string {
   if (!(e instanceof ApiError)) return 'Something went wrong'
@@ -87,7 +97,7 @@ const pending = new Set<string>()
 
 export function useAccountNames() {
   function load(id: string) {
-    if (!id || names.has(id) || pending.has(id) || id.startsWith('svc:')) return
+    if (!id || names.has(id) || pending.has(id) || id.startsWith('svc:') || id === 'system') return
     pending.add(id)
     call(() => identity.GET('/admin/accounts/{accountId}', { params: { path: { accountId: id } } }))
       .then((a) => names.set(id, `${a.firstname} ${a.lastname}`.trim() || a.email))

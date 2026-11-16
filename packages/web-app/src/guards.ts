@@ -61,7 +61,12 @@ export function installGuards(router: Router, opts: GuardOptions): void {
     }
     if (guard === 'customer' && !session.isCustomer) return { path: opts.home }
     if (guard === 'staff' && !session.isStaff) return { path: opts.home }
-    if (guard === 'admin' && !session.isAdmin) return { path: opts.home }
+    if (guard === 'admin' && !session.isAdmin) {
+      // Say why instead of a silent jump to the dashboard (staff following a shared admin link).
+      const page = to.meta.title ? `“${to.meta.title}”` : 'That page'
+      useNotify().toast(`${page} is for administrators only. Ask an administrator if you need something there.`, 'info')
+      return { path: opts.home }
+    }
     return true
   })
 

@@ -33,7 +33,13 @@ function startCooldown(seconds = 60) {
 onBeforeUnmount(() => clearInterval(timer))
 
 async function verify() {
-  if (rule(codeSchema)(code.value) !== true) return
+  if (busy.value) return
+  if (rule(codeSchema)(code.value) !== true) {
+    // Never a disabled button: a press without the full code says so.
+    error.value = 'Enter the 6-digit code from the email.'
+    codeField.value?.focus()
+    return
+  }
   error.value = null
   busy.value = true
   try {
@@ -91,12 +97,12 @@ async function resend() {
       @finish="verify"
     />
     <v-alert v-if="error" type="error" variant="tonal" density="compact" role="alert">{{ error }}</v-alert>
-    <v-btn type="submit" color="primary" size="large" block :loading="busy" :disabled="code.length !== 6">
+    <v-btn type="submit" color="primary" size="large" class="m3" block :loading="busy">
       {{ submitLabel ?? 'Verify email' }}
     </v-btn>
     <div v-if="!noResend" class="row t-body">
       <span class="muted">No code?</span>
-      <v-btn variant="text" density="compact" :disabled="cooldown > 0 || !address" @click="resend">
+      <v-btn variant="text" density="compact" class="m3" :disabled="cooldown > 0 || !address" @click="resend">
         {{ cooldown > 0 ? `Resend in ${cooldown} s` : 'Send a new code' }}
       </v-btn>
     </div>

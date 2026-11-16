@@ -46,7 +46,7 @@ body {
 .page-header { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-6); }
 
 :focus-visible {
-  outline: 2px solid #0084c8;
+  outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 2px;
 }
 
@@ -75,6 +75,38 @@ a:where(:not(.v-btn, .v-chip, .v-list-item, .v-tab)):hover {
   outline: none;
 }
 
+/* Inputs are solo-inverted: at rest the field is the colour of the card it sits on, so it needs an edge of
+   its own (WCAG 1.4.11, 3:1). Focus turns the edge to the primary colour, an error to the error colour.
+   The edge is a pseudo-element on top of the field: Vuetify's focus/hover overlay is a positioned child, so it
+   paints over the field's own shadow or outline. :where() keeps the specificity at zero so a component can
+   still replace the edge (ScanField prominent). */
+:where(.v-field--variant-solo-inverted)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgb(var(--v-theme-field-outline));
+  border-radius: inherit;
+  pointer-events: none;
+}
+:where(.v-field--variant-solo-inverted.v-field--focused)::after {
+  border: 2px solid rgb(var(--v-theme-primary));
+}
+:where(.v-field--variant-solo-inverted.v-field--error)::after {
+  border-color: rgb(var(--v-theme-error));
+}
+
+/* Outlined cards and dividers: Vuetify draws both in currentColor (cards) or at --v-border-opacity in the text
+   colour (dividers), and our themes set that opacity to 1, so every edge came out in full ink. They take the
+   theme border colour (hairline-strong; SIA: seam) instead. A card or divider given a colour (text-* class)
+   keeps it. Unlayered + :where() = beats Vuetify's layer, still overridable by any component rule. */
+:where(.v-card--variant-outlined:not([class*='text-'])) {
+  border-color: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+:where(.v-divider:not([class*='text-'])) {
+  color: rgb(var(--v-border-color));
+  opacity: 1;
+}
+
 @media (max-width: 599.98px) {
   .hide-xs {
     display: none !important;
@@ -84,4 +116,55 @@ a:where(:not(.v-btn, .v-chip, .v-list-item, .v-tab)):hover {
   .show-xs {
     display: none !important;
   }
+}
+
+/* Pro Bono badge, one definition for SHOP and SIA: theme yellow (accent-probono) with ink text only. */
+:root { --probono-ink: #1a1a1a; }
+.probono-badge {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.02em;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgb(var(--v-theme-accent-probono));
+  color: var(--probono-ink);
+}
+
+/* Line breaks (critique 2026-11-15 detector: stragglers and unbalanced headings at 360 px):
+   headings balance their lines, running text avoids a lone last word. Ignored where unsupported. */
+h1, h2, h3, h4, .t-h1, .t-h2, .t-h3 {
+  text-wrap: balance;
+}
+p, li, .t-body, .t-body-lg {
+  text-wrap: pretty;
+}
+
+/* Switches when off: Vuetify's track (surface-variant at 60 %) and white thumb vanished on a white card
+   (WCAG 1.4.11; seen on the Dark theme switch at 360 px). Off = an outlined track with an outline-coloured
+   thumb, as Material 3 draws it; on keeps Vuetify's filled colour. */
+:where(.v-selection-control:not(.v-selection-control--dirty)) .v-switch__track {
+  opacity: 1;
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-field-outline));
+}
+:where(.v-selection-control:not(.v-selection-control--dirty)) .v-switch__thumb {
+  background-color: rgb(var(--v-theme-field-outline));
+}
+
+/* Dialog titles wrap: Vuetify cuts card titles to one line, which hid what a dialog asks on phones
+   ("Verify the agreement, t…"). */
+.v-dialog .v-card-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Toasts never block what is under them (e2e 2026-11-16: on phones the "created" toast sat over the Images
+   tab's buttons, and hovering it paused its timer, so it never left). Text lets taps through; actions stay. */
+.v-snackbar .v-snackbar__wrapper,
+.v-snackbar .v-snackbar__content {
+  pointer-events: none;
+}
+.v-snackbar .v-snackbar__actions {
+  pointer-events: auto;
 }

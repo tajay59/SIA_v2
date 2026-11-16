@@ -35,6 +35,11 @@ endpoints:
     - service
     ownership: service
     note: notification-svc (staff email lists)
+  GET /api/catalog/v1/internal/fees:
+    roles:
+    - service
+    ownership: service
+    note: order-svc; admin fee
   GET /api/catalog/v1/internal/places:
     roles:
     - service
@@ -45,11 +50,6 @@ endpoints:
     - service
     ownership: service
     note: service token; inventory-svc only
-  GET /api/catalog/v1/internal/fees:
-    roles:
-    - service
-    ownership: service
-    note: order-svc; admin fee
   POST /api/catalog/v1/internal/products/summaries:
     roles:
     - service
@@ -173,11 +173,6 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin; generated documents cannot be deleted
-  POST /api/documents/v1/internal/labels:
-    roles:
-    - service
-    ownership: service
-    note: inventory-svc only (label PDFs)
   GET /api/documents/v1/files/{fileId}:
     roles: *id002
     ownership: same_org
@@ -196,6 +191,11 @@ endpoints:
     - staff
     - admin
     ownership: public
+  POST /api/documents/v1/internal/labels:
+    roles:
+    - service
+    ownership: service
+    note: inventory-svc only (label PDFs)
   GET /api/hello/v1/greeting:
     roles:
     - anonymous
@@ -255,6 +255,11 @@ endpoints:
     ownership: admin
     note: admin; reason required; not yourself or the last admin
   GET /api/identity/v1/admin/accounts/{accountId}/export:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  POST /api/identity/v1/admin/accounts/{accountId}/mfa/reset:
     roles:
     - admin
     ownership: admin
@@ -611,16 +616,16 @@ endpoints:
     - staff
     - admin
     ownership: public
-  GET /api/orders/v1/internal/requests/{requestId}/access:
-    roles:
-    - service
-    ownership: service
-    note: document-svc; service token
   GET /api/orders/v1/internal/requests/{requestId}:
     roles:
     - service
     ownership: service
     note: document-svc renders PDFs from the staff view
+  GET /api/orders/v1/internal/requests/{requestId}/access:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; service token
   POST /api/orders/v1/internal/requests/{requestId}/files:
     roles:
     - service

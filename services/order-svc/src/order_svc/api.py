@@ -81,12 +81,12 @@ class Choice(Strict):
 
 
 class AgreementIn(Strict):
-    quoteVersion: int
+    quoteVersion: int = Field(ge=1, le=10_000)
     choices: list[Choice] = Field(max_length=200)
 
 
 class AcceptIn(Strict):
-    quoteVersion: int
+    quoteVersion: int = Field(ge=1, le=10_000)
     signedAgreementFileId: Id
 
 
@@ -159,7 +159,7 @@ class FileIn(Strict):
     ]
     name: str = Field(min_length=1, max_length=255)
     mime: str = Field(min_length=1, max_length=100)
-    size: int = Field(ge=0)
+    size: int = Field(ge=0, le=50 * 1024 * 1024)
     uploadedAt: str | None = None
     url: str | None = None
     sha256: str | None = None
@@ -183,9 +183,12 @@ def if_match(value: str | None) -> int:
     if not value:
         raise ProblemError(428, "PRECONDITION_REQUIRED", "If-Match header with the current version is required")
     try:
-        return int(value.strip().removeprefix("W/").strip('"'))
+        version = int(value.strip().removeprefix("W/").strip('"'))
     except ValueError as exc:
         raise ProblemError(400, None, "If-Match must be a version number") from exc
+    if not 0 <= version < 2**31:  # MongoDB stores int64; larger values were a 500
+        raise ProblemError(400, None, "If-Match must be a version number")
+    return version
 
 
 def with_etag(body: dict[str, Any], status: int = 200) -> JSONResponse:

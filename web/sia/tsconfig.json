@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
-    "types": ["vite/client", "vue-router/auto-routes"],
+    "types": ["vite/client", "vue-router/auto-routes", "unplugin-icons/types/vue"],
     "noEmit": true
   },
   "include": ["src/**/*.ts", "src/**/*.vue", "vite.config.ts", "e2e/**/*.ts"]

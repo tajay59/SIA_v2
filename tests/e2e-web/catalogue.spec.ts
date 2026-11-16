@@ -32,22 +32,35 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     await page.getByRole('button', { name: 'Log in' }).click()
     await siaGo(page, 'Products')
     await page.getByRole('link', { name: 'New product' }).click()
+    // The button grows into the form (View Transition); the page takes no clicks until it ends.
+    await page.waitForFunction(() => !document.getAnimations().some((x) => String((x.effect as KeyframeEffect | null)?.pseudoElement ?? '').startsWith('::view-transition')))
 
     await page.getByLabel('Name', { exact: true }).fill(name)
-    await page.getByRole('combobox', { name: 'Type' }).click({ force: true }) // Vuetify keeps the real input visually hidden
+    // Click the visible field (not the hidden input with force): Playwright then waits until nothing, e.g. the
+    // phone app bar, covers it.
+    await page.locator('.v-field', { has: page.getByRole('combobox', { name: 'Type' }) }).click()
     await page.getByRole('option', { name: /\(PRO\)/ }).click()
     await page.getByRole('combobox', { name: 'Department' }).fill('Hydrology')
     await page.getByLabel('Model number').fill('RG-E2E')
     await page.getByLabel('Cost (BBD, staff only)').fill('125')
-    // Pro Bono has no default: the item can't be created until someone chooses (PRD C5).
-    await expect(page.getByRole('button', { name: 'Create product' })).toBeDisabled()
+    // Pro Bono has no default: the item can't be created until someone chooses (PRD C5). Create is never
+    // disabled: pressing it marks what is missing.
+    await page.getByRole('button', { name: 'Create product' }).click()
+    await expect(page.getByText('Choose Yes or No')).toBeVisible()
+    await expect(page.getByText('Fix the fields marked in red.')).toBeVisible()
+    await expect(page).toHaveURL(/\/products\/new/)
     await page.getByRole('radio', { name: 'Yes' }).check()
     await page.getByLabel('Max per request (optional)').fill('2')
+    // Photos on the new-product form (A-06): staged in the browser, uploaded on Create, primary first.
+    await page.getByLabel('Photos to add').setInputFiles([`${fixtures}photo-a.jpg`, `${fixtures}photo-b.png`])
+    const staged = page.getByRole('list', { name: 'Photos to upload' })
+    await expect(staged.getByRole('img')).toHaveCount(2)
+    await staged.getByRole('button', { name: 'Make primary' }).click() // photo-b becomes the first (primary)
+    await expect(staged.getByRole('img').first()).toHaveAccessibleName(/photo-b\.png/)
     await page.getByRole('button', { name: 'Create product' }).click()
 
-    await expect(page).toHaveURL(/\/products\/PRO[0-9a-f]{32}\?tab=images/)
+    await expect(page).toHaveURL(/\/products\/PRO[0-9a-f]{32}\?tab=images&processing=2/)
     productUrl = page.url().replace(SIA, '').split('?')[0]!
-    await page.getByLabel('Photos to upload').setInputFiles([`${fixtures}photo-a.jpg`, `${fixtures}photo-b.png`])
     // Processing tiles, then the photos from media-worker (polling).
     await expect(page.getByRole('button', { name: 'Remove photo' })).toHaveCount(2, { timeout: 90_000 })
     await expect(page.getByText('Primary', { exact: true })).toHaveCount(1)

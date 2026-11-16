@@ -1,6 +1,7 @@
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 import vuetify from 'vite-plugin-vuetify'
+import Icons from 'unplugin-icons/vite'
 import VueRouter from 'vue-router/vite'
 
 // Same Content-Security-Policy as staging/production (deploy/staging-lite/gateway.conf), so the browser
@@ -23,7 +24,12 @@ export default defineConfig({
     VueRouter({ routesFolder: 'src/pages', dts: 'src/typed-router.d.ts' }),
     vue(),
     vuetify({ autoImport: true }),
+    // Iconify icons (filled Material Symbols) compiled into the bundle: nothing fetched at runtime (CSP).
+    Icons({ compiler: 'vue3' }),
   ],
+  // One copy of each runtime: a second vue-router in the build gave App a different injection key than the
+  // router boot() installs (useRouter() undefined → blank page in production builds only).
+  resolve: { dedupe: ['vue', 'vue-router', 'pinia', 'vuetify'] },
   server: { port: 15174, strictPort: true, proxy },
   preview: { port: 15174, strictPort: true, proxy, headers: { 'Content-Security-Policy': csp } },
   build: {

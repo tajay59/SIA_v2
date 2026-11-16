@@ -4,6 +4,7 @@
  * Admins without MFA can use nothing else (API 403 MFA_REQUIRED). After confirming, the current token
  * still says "no MFA", so the admin logs in again with a code.
  */
+import { mdiCheck, mdiContentCopy } from '@mdi/js'
 import QRCode from 'qrcode'
 import { computed, onMounted, ref } from 'vue'
 import { ApiError, call, identity } from '../api'
@@ -36,8 +37,23 @@ async function start() {
 }
 onMounted(start)
 
+const copied = ref(false)
+async function copyKey() {
+  try {
+    await navigator.clipboard.writeText(secret.value.replace(/ /g, ''))
+    copied.value = true
+    setTimeout(() => (copied.value = false), 2000)
+  } catch {
+    /* clipboard blocked: the key stays selectable (user-select: all) */
+  }
+}
+
 async function confirm() {
-  if (code.value.length !== 6) return
+  if (busy.value || !uri.value) return
+  if (code.value.length !== 6) {
+    error.value = 'Enter the 6-digit code your authenticator app shows.'
+    return
+  }
   busy.value = true
   error.value = null
   try {
@@ -67,12 +83,15 @@ async function confirm() {
       <div v-if="secret" class="stack-sm">
         <span class="t-label">Key</span>
         <code class="t-mono key">{{ secret }}</code>
+        <v-btn variant="tonal" size="small" class="m3 copy" :prepend-icon="copied ? mdiCheck : mdiContentCopy" @click="copyKey">
+          {{ copied ? 'Copied' : 'Copy key' }}
+        </v-btn>
       </div>
     </div>
     <form class="stack" @submit.prevent="confirm">
       <v-otp-input v-model="code" length="6" type="number" :error="!!error" aria-label="6-digit code" @finish="confirm" />
       <v-alert v-if="error" type="error" variant="tonal" density="compact" role="alert">{{ error }}</v-alert>
-      <v-btn type="submit" color="primary" size="large" block :loading="busy" :disabled="code.length !== 6 || !uri">
+      <v-btn type="submit" color="primary" size="large" class="m3" block :loading="busy || !uri">
         Turn on two-step verification
       </v-btn>
     </form>
@@ -97,6 +116,9 @@ async function confirm() {
   border-radius: 8px;
   background: #fff;
   padding: 8px;
+}
+.copy {
+  align-self: flex-start;
 }
 .key {
   word-break: break-all;

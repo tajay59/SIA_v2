@@ -8,6 +8,7 @@ withDefaults(defineProps<{ label?: string }>(), { label: 'Person' })
 const items = ref<AccountSummary[]>([])
 const search = ref('')
 const loading = ref(false)
+const error = ref('')
 let timer: ReturnType<typeof setTimeout> | undefined
 
 watch(search, (q) => {
@@ -16,11 +17,13 @@ watch(search, (q) => {
   if (text.length < 2 || (model.value && text === title(model.value))) return
   timer = setTimeout(async () => {
     loading.value = true
+    error.value = ''
     try {
       const page = await call(() => identity.GET('/admin/accounts', { params: { query: { q: text, status: 'ACTIVE', limit: 20 } } }))
       items.value = page.items
     } catch {
       items.value = []
+      error.value = 'Search failed. Check the connection and type again.'
     } finally {
       loading.value = false
     }
@@ -42,6 +45,7 @@ function title(a: AccountSummary): string {
     return-object
     :label="label"
     :loading="loading"
+    :error-messages="error"
     no-filter
     hide-no-data
     hint="Type at least 2 letters of the name or email"

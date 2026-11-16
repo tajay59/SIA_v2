@@ -22,7 +22,7 @@ function print() {
       <v-btn :prepend-icon="mdiPrinterOutline" variant="outlined" @click="print">Print labels</v-btn>
     </div>
     <div class="sheet" :aria-label="heading ?? 'Labels'">
-      <figure v-for="i in items" :key="i.value" class="label">
+      <figure v-for="(i, n) in items" :key="i.value" class="label" :style="{ '--i': n }">
         <QrCode :value="i.value" :size="96" />
         <figcaption>
           <span class="t-mono title">{{ i.title }}</span>
@@ -56,6 +56,19 @@ function print() {
   background: #fff;
   color: #000;
   break-inside: avoid;
+  animation: label-in 280ms var(--ease-out) both;
+  animation-delay: calc(min(var(--i, 0), 12) * 24ms);
+}
+@keyframes label-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+@media (prefers-reduced-motion: reduce), print {
+  .label {
+    animation: none;
+  }
 }
 .label figcaption {
   display: flex;

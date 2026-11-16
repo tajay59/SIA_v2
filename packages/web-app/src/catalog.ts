@@ -29,6 +29,8 @@ export interface Reference {
 export const catalog = catalogClient()
 
 export const PRODUCT_TYPES: ProductType[] = ['MET', 'RAD', 'EQUIP', 'SUPP', 'MISC', 'PRO']
+/** Types customers see in SHOP (plus Pro Bono items of any type); catalog-svc enforces it (SHOP_TYPES, owner 2026-11-16). */
+export const SHOP_TYPES: ProductType[] = ['MET', 'RAD']
 
 export function isStaffProduct(p: Product): p is ProductStaff {
   return 'version' in p

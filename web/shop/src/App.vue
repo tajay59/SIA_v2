@@ -2,13 +2,14 @@
 /**
  * SHOP shell, same structure as the legacy SHOP (App.vue, TopAppBar, BottomNavBar, Footer):
  * desktop = top bar (brand left, main navigation centred, account + theme right); phones = no top bar,
- * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page. The sign-in pages
- * (login, sign-up, verify, password) have no top bar, as in legacy. Customers get the cart (with a count)
+ * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page but the sign-in pages.
+ * The sign-in pages (login, sign-up, verify, password) show only their card: no top bar, bottom bar or
+ * footer; the logo links home. Customers and visitors get the cart (with a count; visitors log in first)
  * in both bars, as in legacy.
  */
 import { AppNotifier, useCart, useSession, useThemeMode } from '@cimh/web-app'
-import logo from '@cimh/web-app/assets/cimh-logo-blue.webp'
-import logoWhite from '@cimh/web-app/assets/cimh-logo-white.webp'
+import logo from '@cimh/web-app/assets/brand/stores-wordmark.svg'
+import logoWhite from '@cimh/web-app/assets/brand/stores-wordmark-dark.svg'
 import {
   mdiAccountCircleOutline,
   mdiCartOutline,
@@ -35,6 +36,8 @@ const { dark, toggle } = useThemeMode()
 const brand = computed(() => (dark.value ? logoWhite : logo))
 const SIGN_IN_PAGES = ['/login', '/signup', '/verify', '/pending-approval', '/forgot-password', '/reset-password']
 const signInPage = computed(() => SIGN_IN_PAGES.includes(route.path))
+// Cart and request pages are tasks: a slim footer, not the four-column directory (critique 2026-11-15).
+const flowPage = computed(() => route.path === '/cart' || route.path.startsWith('/requests'))
 const loginQuery = computed(() => (route.path === '/' || signInPage.value ? {} : { returnTo: route.fullPath }))
 const menu = ref(false)
 const cart = useCart()
@@ -43,6 +46,10 @@ watch(
   (yes) => (yes ? void cart.load().catch(() => undefined) : cart.reset()),
   { immediate: true },
 )
+
+// Cart for customers and for visitors (it asks them to log in first, then opens); CIMH accounts cannot request.
+const showCart = computed(() => session.isCustomer || !session.isLoggedIn)
+const cartTo = computed(() => (session.isLoggedIn ? '/cart' : { path: '/login', query: { returnTo: '/cart' } }))
 
 const nav = computed(() => [
   { to: '/catalogue', title: 'Catalogue', icon: mdiViewGridOutline, show: true },
@@ -63,14 +70,13 @@ async function logout() {
     <v-app-bar v-if="mdAndUp && !signInPage" flat border="b" height="72" color="surface">
       <div class="bar">
         <router-link to="/" class="brand" aria-label="CIMH Stores home">
-          <img :src="brand" alt="CIMH" height="36" width="117" />
-          <span class="brand-name">Stores</span>
+          <img :src="brand" alt="CIMH Stores" height="30" width="206" />
         </router-link>
         <nav class="nav" aria-label="Main">
           <router-link v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" class="nav-link">{{ n.title }}</router-link>
         </nav>
         <div class="right">
-          <v-btn v-if="session.isCustomer" to="/cart" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
+          <v-btn v-if="showCart" :to="cartTo" variant="text" icon :aria-label="`Cart, ${cart.count} items`">
             <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary">
               <v-icon :icon="mdiCartOutline" />
             </v-badge>
@@ -101,10 +107,10 @@ async function logout() {
     <v-main id="main">
       <AppNotifier />
       <router-view />
-      <ShopFooter />
+      <ShopFooter v-if="!signInPage" :slim="flowPage" />
     </v-main>
 
-    <v-bottom-navigation v-if="!mdAndUp" grow height="64" border="t" color="primary" aria-label="Main">
+    <v-bottom-navigation v-if="!mdAndUp && !signInPage" grow height="64" border="t" color="primary" aria-label="Main">
       <v-menu v-model="menu" location="top start" :close-on-content-click="false">
         <template #activator="{ props }">
           <v-btn v-bind="props" :prepend-icon="mdiMenu" stacked>Menu</v-btn>
@@ -125,7 +131,7 @@ async function logout() {
       </v-menu>
       <!-- Accessible names match the desktop bar (the visible short label is part of each name, WCAG 2.5.3). -->
       <v-btn v-for="n in nav.filter((x) => x.show)" :key="n.to" :to="n.to" :prepend-icon="n.icon" :aria-label="n.title" stacked>{{ n.short ?? n.title }}</v-btn>
-      <v-btn v-if="session.isCustomer" to="/cart" :aria-label="`Cart, ${cart.count} items`" stacked>
+      <v-btn v-if="showCart" :to="cartTo" :aria-label="`Cart, ${cart.count} items`" stacked>
         <v-badge :model-value="cart.count > 0" :content="cart.count" color="primary"><v-icon :icon="mdiCartOutline" /></v-badge>
         Cart
       </v-btn>
@@ -153,7 +159,7 @@ async function logout() {
   justify-self: start;
 }
 .brand img {
-  height: 36px;
+  height: 30px;
   width: auto;
 }
 .brand-name {
@@ -207,5 +213,17 @@ async function logout() {
 }
 .skip-link:focus {
   left: 8px;
+}
+</style>
+
+<style>
+/* Phones: five bottom-nav items at Vuetify's 80 px minimum overflowed 360 px ("Menu" cut, "Pro Bono" on two lines). */
+.v-bottom-navigation .v-btn {
+  min-width: 0;
+  padding: 0 2px;
+}
+.v-bottom-navigation .v-btn__content {
+  white-space: nowrap;
+  font-size: 12px;
 }
 </style>
