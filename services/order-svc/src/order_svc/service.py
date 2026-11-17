@@ -809,7 +809,8 @@ class OrderService:
                     d.rate(rate_s)
                 except ValueError:
                     raise invalid(
-                        f"supplierQuotes[{i}].exchangeRate", "The exchange rate must be more than 0",
+                        f"supplierQuotes[{i}].exchangeRate",
+                        "The exchange rate must be more than 0",
                         "EXCHANGE_RATE_REQUIRED",
                     ) from None
             quotes.append(
