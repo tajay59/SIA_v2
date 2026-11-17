@@ -6,7 +6,9 @@ SRC=${1:?dir}
 docker run --rm -v sia-staging_media:/srv/sia-data -v "$SRC/media:/in:ro" alpine:3.20 sh -c \
   'cp -R /in/. /srv/sia-data/ && chown -R 10001:10001 /srv/sia-data/public /srv/sia-data/protected &&
    find /srv/sia-data/public /srv/sia-data/protected -type d -exec chmod 755 {} + &&
-   find /srv/sia-data/public -type f -exec chmod 644 {} + && find /srv/sia-data/protected -type f -exec chmod 640 {} +'
+   find /srv/sia-data/public /srv/sia-data/protected -type f -exec chmod 644 {} +'
+# protected/ files must be readable by the gateway (nginx uid 101) for X-Accel-Redirect, as document-svc
+# writes them (0644); /_protected/ is an internal location, so clients never reach them directly.
 docker cp "$SRC/apply.js" sia-staging-mongo-1:/tmp/apply.js
 docker exec sia-staging-mongo-1 mongosh --quiet inventory /tmp/apply.js
 docker exec sia-staging-mongo-1 rm -f /tmp/apply.js

@@ -97,19 +97,27 @@ def main() -> None:
             (media / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, media / rel)
             data = (media / rel).read_bytes()
-            files.append(
-                {
-                    "id": fid,
-                    "kind": f["kind"],
-                    "name": f["name"],
-                    "mime": mimetypes.guess_type(src.name)[0] or "application/octet-stream",
-                    "size": len(data),
-                    "sha256": hashlib.sha256(data).hexdigest(),
-                    "path": rel,
-                    "uploadedBy": MIGRATE,
-                    "uploadedAt": NOW,
-                }
-            )
+            entry = {
+                "id": fid,
+                "kind": f["kind"],
+                "name": f["name"],
+                "mime": mimetypes.guess_type(src.name)[0] or "application/octet-stream",
+                "size": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+                "path": rel,
+                "uploadedBy": MIGRATE,
+                "uploadedAt": NOW,
+            }
+            files.append(entry)
+            # document-svc finds a file only through its sidecar (no collection), else 404.
+            meta = {k: v for k, v in entry.items() if k != "path"} | {
+                "requestId": o["id"],
+                "uploadedAt": NOW.isoformat(),
+                "generated": f["kind"] in ("invoice", "probono_invoice"),
+            }
+            meta_path = media / "protected" / "meta" / f"{fid}.json"
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+            meta_path.write_text(json.dumps(meta), encoding="utf-8")
         if files:
             rep["done"].append(f"order {o['id']}: {len(files)} file(s)")
             updates.append({"c": "orders", "q": {"id": o["id"]}, "u": {"$set": {"files": files}}})
