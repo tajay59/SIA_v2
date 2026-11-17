@@ -118,10 +118,9 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('link', { name: 'Build quote' }).click()
     await page.getByRole('button', { name: 'Add supplier' }).click()
     await page.getByLabel('Supplier name').fill('Campbell Scientific')
+    await page.getByLabel(`Unit price for ${paidName}`).fill('180.00') // typing a price gives the line to this supplier
+    await page.getByRole('tab', { name: /CIMH stock/ }).click()
     await page.getByRole('checkbox', { name: 'Offer' }).check()
-    await page.getByRole('combobox', { name: `Supplier for ${paidName}` }).click({ force: true }) // Vuetify hides the real input
-    await page.getByRole('option', { name: 'Campbell Scientific' }).click()
-    await page.getByLabel(`Unit price for ${paidName}`).fill('180.00')
     await expect(page.getByText('Draft saved')).toBeVisible()
     await page.getByRole('button', { name: 'Send quote' }).click()
     // Nothing is emailed before the confirm, which restates the recipient and the total.

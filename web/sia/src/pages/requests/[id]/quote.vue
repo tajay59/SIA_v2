@@ -1,22 +1,23 @@
 <script setup lang="ts">
 /**
- * A-04 quote builder (staff; QUOTING, or revising a QUOTED request), Graphite Console.
- *   Suppliers: name + their quote files (document-svc `supplier_quote`). Each supplier has a local key, so
- *   renaming one keeps its prices; two suppliers may not share a name.
- *   Lines: offer from CIMH stock (only lines fully in stock; the server prices them from the catalogue cost,
- *   converted with the exchange rate for USD) and/or one supplier with a unit price.
- *   Summary: CIMH price (estimate from the catalogue cost), supplier totals, the admin fee (once), and the
- *   range the customer's agreement total can fall in, before anything is sent.
- * The draft saves itself (PUT quote-draft, If-Match) shortly after each change; a failed save never stops
- * later saves; a version conflict re-reads the version and saves the same draft again (local edits win).
- * Leaving the page saves a pending change first. "Send quote" saves, then sends; the customer is emailed.
+ * A-04 quote builder (staff; QUOTING, or revising a QUOTED request), Graphite Console, "supplier tabs with viewer".
+ *   One tab per supplier, plus CIMH stock. A supplier tab shows its quote files as large tiles and the selected file
+ *   open on the left (QuoteDocument: pdf.js / img), and every request line on the right: typing a price gives the
+ *   line to this supplier, a line another supplier holds says so and can be moved here. Every quote is in BBD; a
+ *   supplier may quote in USD with its own BBD-per-USD rate.
+ *   CIMH stock tab: offer lines that are fully in stock (the server prices them from the catalogue cost).
+ *   Footer: supplier prices, CIMH estimate, admin fee (once), the agreement total or its range, what is missing,
+ *   Send quote (confirm dialog; the customer is emailed).
+ * Each supplier has a local key, so renaming one keeps its prices; two suppliers may not share a name.
+ * The draft saves itself (PUT quote-draft, If-Match) shortly after each change; a failed save never stops later
+ * saves; a version conflict re-reads the version and saves the same draft again (local edits win). Leaving the
+ * page saves a pending change first.
  */
 import {
   act,
   ApiError,
   call,
   catalog,
-  fileUrl,
   getRequest,
   type OrderRequest,
   saveQuoteDraft,
@@ -25,11 +26,19 @@ import {
   ShortRef,
 } from '@cimh/web-app'
 import { formatMoney } from '@cimh/web-ui'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import IPdf from '~icons/material-symbols/picture-as-pdf-rounded'
+import IImage from '~icons/material-symbols/image-rounded'
+import IUpload from '~icons/material-symbols/upload-file-rounded'
+import IClose from '~icons/material-symbols/close-rounded'
+import IStock from '~icons/material-symbols/shelves-rounded'
+import IWarn from '~icons/material-symbols/error-rounded'
+import QuoteDocument from '../../../components/quote/QuoteDocument.vue'
 import { BTN } from '../../../request-queue'
 
 definePage({ meta: { guard: 'staff', title: 'Quote builder', ownHeading: true } })
+const ICON = { pdf: markRaw(IPdf), image: markRaw(IImage), upload: markRaw(IUpload), close: markRaw(IClose), stock: markRaw(IStock), warn: markRaw(IWarn) }
 const route = useRoute('/requests/[id]/quote')
 const router = useRouter()
 const notify = useNotify()
@@ -43,9 +52,25 @@ type Draft = { supplierQuotes: { supplier: string; currency?: 'BBD' | 'USD'; exc
 const suppliers = ref<Supplier[]>([])
 const lines = reactive<Record<string, LineState>>({})
 const exchangeRate = ref('')
-const fileNames = reactive<Record<string, string>>({})
+const fileMeta = reactive<Record<string, { name: string; mime: string }>>({})
 let nextKey = 1
 let ready = false
+
+// ---- tabs: a supplier key, or 'cimh'
+const tab = ref<number | 'cimh'>('cimh')
+const openFile = reactive<Record<number, string>>({})
+const current = computed(() => (typeof tab.value === 'number' ? suppliers.value.find((s) => s.key === tab.value) ?? null : null))
+const anyCimhAvailable = computed(() => r.value?.lines.some((l) => l.cimhAvailable) ?? false)
+/** Arrow keys, Home and End move between tabs (WAI-ARIA tabs pattern, automatic activation). */
+function onTabKey(e: KeyboardEvent) {
+  const order: (number | 'cimh')[] = [...suppliers.value.map((s) => s.key), ...(anyCimhAvailable.value || anyCimh.value ? ['cimh' as const] : [])]
+  const i = order.indexOf(tab.value)
+  const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: order.length - 1 }[e.key]
+  if (to === undefined || !order.length) return
+  e.preventDefault()
+  tab.value = order[(to + order.length) % order.length]!
+  void nextTick(() => document.getElementById(`tab-${tab.value}`)?.focus())
+}
 
 // ---- money (cents as integers; USD conversion half-up like the server)
 const MONEY = /^\d{1,12}\.\d{2}$/
@@ -114,7 +139,7 @@ async function load() {
   }
   const x = r.value
   if (!x.allowedActions?.includes('quote-draft')) return void router.replace(`/requests/${x.id}`)
-  for (const f of x.files ?? []) fileNames[f.id] = f.name
+  for (const f of x.files ?? []) fileMeta[f.id] = { name: f.name, mime: f.mime }
   const draft = (x as unknown as { quoteDraft?: Draft }).quoteDraft
   const latest = Math.max(0, ...(x.quotes ?? []).map((q) => q.version))
   // Start from the draft, else from the last sent quote (revising), else empty.
@@ -125,6 +150,7 @@ async function load() {
   const cimhIds = draft?.cimh?.lineIds ?? x.cimhQuote?.lines.map((l) => l.lineId) ?? []
   suppliers.value = sq.map((s) => ({ key: nextKey++, name: s.supplier, fileIds: [...s.fileIds], uploading: false,
     currency: s.currency ?? 'BBD', rate: s.exchangeRate ?? '' }))  // prettier-ignore
+  for (const s of suppliers.value) if (s.fileIds[0]) openFile[s.key] = s.fileIds[0]
   for (const l of x.lines) {
     const i = sq.findIndex((s) => s.lines.some((y) => y.lineId === l.lineId))
     lines[l.lineId] = {
@@ -134,6 +160,7 @@ async function load() {
     }
   }
   exchangeRate.value = draft?.cimh?.exchangeRate ?? x.cimhQuote?.exchangeRate ?? ''
+  tab.value = suppliers.value[0]?.key ?? 'cimh'
   void loadReference(x)
   await nextTick()
   ready = true
@@ -162,8 +189,9 @@ const rateError = computed(() => {
   return ''
 })
 const dupes = computed(() => suppliers.value.some(dupName))
+const unnamed = computed(() => suppliers.value.filter((s) => !s.name.trim() && usedBy(s)).length)
 // A supplier quoted in USD (BBD requests only) needs its own BBD-per-USD rate.
-const supUsd = (s: Supplier | undefined) => !usd.value && s?.currency === 'USD'
+const supUsd = (s: Supplier | undefined | null) => !usd.value && s?.currency === 'USD'
 const supRateError = (s: Supplier) => {
   if (!supUsd(s)) return ''
   if (!s.rate) return 'Required for a USD quote'
@@ -172,8 +200,8 @@ const supRateError = (s: Supplier) => {
 }
 const ratesMissing = computed(() => suppliers.value.filter((s) => supRateError(s)).length)
 const supOf = (key: number | null) => suppliers.value.find((s) => s.key === key)
-/** The currency staff type a line's price in: the supplier's on BBD requests, else the request's. */
-const priceCur = (lineId: string) => (supUsd(supOf(lines[lineId]?.supplier ?? null)) ? 'USD' : cur.value)
+/** The currency staff type a supplier's prices in: its own on BBD requests, else the request's. */
+const typeCur = (s: Supplier) => (supUsd(s) ? 'USD' : cur.value)
 
 // ---- draft body: only valid, unique suppliers and valid prices travel; the rest stays on screen
 function draftBody(): Draft {
@@ -245,7 +273,7 @@ const statusText = computed(() => {
   const t = savedAt.value?.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
   if (saveState.value === 'saving') return 'Saving…'
   if (saveState.value === 'error') return 'Not saved'
-  if (saveState.value === 'saved') return `Draft saved ${t}${unsavedPrices.value ? ` · ${unsavedPrices.value} price${unsavedPrices.value > 1 ? 's' : ''} to fix` : ''}`
+  if (saveState.value === 'saved') return `Draft saved ${t}`
   return ''
 })
 // Leaving with a change still waiting: save it first; closing the tab: ask.
@@ -263,8 +291,10 @@ onBeforeUnmount(() => {
 
 // ---- suppliers
 function addSupplier() {
-  suppliers.value.push({ key: nextKey++, name: '', fileIds: [], uploading: false, currency: 'BBD', rate: '' })
-  void nextTick(() => (document.querySelector('.sup:last-of-type input') as HTMLInputElement | null)?.focus())
+  const s: Supplier = { key: nextKey++, name: '', fileIds: [], uploading: false, currency: 'BBD', rate: '' }
+  suppliers.value.push(s)
+  tab.value = s.key
+  void nextTick(() => (document.getElementById(`sup-name-${s.key}`) as HTMLInputElement | null)?.focus())
 }
 const usedBy = (s: Supplier) => Object.values(lines).filter((v) => v.supplier === s.key).length
 const removing = ref<Supplier | null>(null)
@@ -273,23 +303,26 @@ function askRemove(s: Supplier) {
   else removeSupplier(s)
 }
 function removeSupplier(s: Supplier) {
+  const i = suppliers.value.indexOf(s)
   suppliers.value = suppliers.value.filter((x) => x !== s)
-  for (const v of Object.values(lines)) if (v.supplier === s.key) v.supplier = null
+  for (const v of Object.values(lines)) if (v.supplier === s.key) Object.assign(v, { supplier: null, unitPrice: '' })
   removing.value = null
+  tab.value = suppliers.value[Math.max(0, i - 1)]?.key ?? 'cimh'
 }
-function useForUnassigned(s: Supplier) {
-  for (const l of r.value?.lines ?? []) if (lines[l.lineId]!.supplier === null) lines[l.lineId]!.supplier = s.key
-}
-const unassigned = computed(() => Object.values(lines).filter((v) => v.supplier === null).length)
-async function attach(s: Supplier, files: File | File[] | null) {
-  const list = files ? (Array.isArray(files) ? files : [files]) : []
+
+// ---- files: large tiles; the selected one opens in the viewer
+const dragging = ref(false)
+const isPdf = (id: string) => fileMeta[id]?.mime === 'application/pdf'
+async function attach(s: Supplier, files: FileList | File[] | null) {
+  const list = files ? Array.from(files) : []
   if (!r.value || !list.length) return
   s.uploading = true
   try {
     for (const f of list) {
       const ref = await uploadRequestFile(r.value.id, 'supplier_quote', f)
-      fileNames[ref.id] = ref.name || f.name
+      fileMeta[ref.id] = { name: ref.name || f.name, mime: f.type || 'application/pdf' }
       s.fileIds.push(ref.id)
+      openFile[s.key] = ref.id
     }
   } catch (e) {
     notify.report(e)
@@ -297,22 +330,64 @@ async function attach(s: Supplier, files: File | File[] | null) {
     s.uploading = false
   }
 }
-const supplierItems = computed(() => [
-  { title: 'None', value: null as number | null },
-  ...suppliers.value.filter((s) => s.name.trim()).map((s) => ({ title: s.name.trim(), value: s.key as number | null })),
-])
-
-// ---- keyboard: Enter in a price moves down the column; the missing list jumps to the row
-function nextPrice(lineId: string) {
-  const ids = r.value?.lines.map((l) => l.lineId) ?? []
-  const next = ids[ids.indexOf(lineId) + 1]
-  if (next) (document.getElementById(`price-${next}`) as HTMLInputElement | null)?.focus()
+function onDrop(s: Supplier, e: DragEvent) {
+  dragging.value = false
+  void attach(s, e.dataTransfer?.files ?? null)
 }
-function jumpTo(lineId: string) {
-  const row = document.getElementById(`row-${lineId}`)
-  row?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  const target = lines[lineId]?.supplier !== null ? `price-${lineId}` : `sup-${lineId}`
-  ;(document.getElementById(target) as HTMLInputElement | null)?.focus({ preventScroll: true })
+function detach(s: Supplier, id: string) {
+  s.fileIds = s.fileIds.filter((x) => x !== id)
+  if (openFile[s.key] === id) openFile[s.key] = s.fileIds[0] ?? ''
+}
+
+// ---- prices in a supplier tab: typing gives the line to this supplier, clearing it frees the line
+function priceFor(s: Supplier, lineId: string) {
+  const v = lines[lineId]
+  return v?.supplier === s.key ? v.unitPrice : ''
+}
+function setPrice(s: Supplier, lineId: string, value: string) {
+  const v = lines[lineId]
+  if (!v) return
+  const t = value.trim()
+  if (t) Object.assign(v, { supplier: s.key, unitPrice: t })
+  else if (v.supplier === s.key) Object.assign(v, { supplier: null, unitPrice: '' })
+}
+function moveHere(s: Supplier, lineId: string) {
+  const v = lines[lineId]
+  if (!v) return
+  Object.assign(v, { supplier: s.key, unitPrice: '' })
+  void nextTick(() => (document.getElementById(`price-${s.key}-${lineId}`) as HTMLInputElement | null)?.focus())
+}
+const holder = (lineId: string) => {
+  const v = lines[lineId]
+  return v?.supplier !== null && v?.supplier !== undefined ? supOf(v.supplier) ?? null : null
+}
+/** A line held by another supplier: its own currency, plus BBD when it quoted in USD. */
+function heldPrice(lineId: string) {
+  const v = lines[lineId]
+  const s = holder(lineId)
+  if (!v?.unitPrice || !s) return '—'
+  const own = `${typeCur(s)} ${v.unitPrice}`
+  const u = supUnit(lineId)
+  return supUsd(s) && u !== null ? `${own} (${fmt(u)})` : own
+}
+const linesOf = (s: Supplier) => r.value?.lines.filter((l) => lines[l.lineId]?.supplier === s.key).length ?? 0
+
+// ---- keyboard: Enter in a price moves down the column; the missing list jumps to the line
+function nextPrice(s: Supplier, lineId: string) {
+  const ids = r.value?.lines.map((l) => l.lineId) ?? []
+  for (const id of ids.slice(ids.indexOf(lineId) + 1)) {
+    const el = document.getElementById(`price-${s.key}-${id}`) as HTMLInputElement | null
+    if (el) return el.focus()
+  }
+}
+async function jumpTo(lineId: string) {
+  const v = lines[lineId]
+  tab.value = v?.supplier ?? current.value?.key ?? suppliers.value[0]?.key ?? 'cimh'
+  await nextTick()
+  const id = typeof tab.value === 'number' ? `price-${tab.value}-${lineId}` : `offer-${lineId}`
+  const el = document.getElementById(id) as HTMLInputElement | null
+  el?.closest('.lrow')?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  el?.focus({ preventScroll: true })
 }
 
 // ---- figures
@@ -373,10 +448,18 @@ const totals = computed(() => {
 
 // ---- send
 const sending = ref(false)
-const canSend = computed(() => !missing.value.length && !needsRate.value && !dupes.value && !unsavedPrices.value && !ratesMissing.value)
+const problems = computed(
+  () => missing.value.length + (needsRate.value ? 1 : 0) + (dupes.value ? 1 : 0) + unsavedPrices.value + ratesMissing.value + unnamed.value,
+)
 const confirmSend = ref(false)
 const nextVersion = computed(() => Math.max(0, ...(r.value?.quotes ?? []).map((q) => q.version)) + 1)
 const pricedLines = computed(() => (r.value?.lines.length ?? 0) - missing.value.length)
+/** Never disabled for missing input: a press says what is missing and goes to the first gap. */
+function askSend() {
+  if (!problems.value) return void (confirmSend.value = true)
+  if (missing.value[0]) void jumpTo(missing.value[0].lineId)
+  else document.querySelector<HTMLElement>('.qfoot-problems')?.focus()
+}
 async function send() {
   if (!r.value || sending.value) return
   sending.value = true
@@ -397,7 +480,8 @@ async function send() {
 
 <template>
   <div class="qb">
-    <nav class="crumbs" aria-label="Breadcrumb">
+    <!-- The way back sits in the title row once loaded: every pixel of height goes to the quote document. -->
+    <nav v-if="!r" class="crumbs" aria-label="Breadcrumb">
       <v-btn :to="`/requests/${route.params.id}`" variant="text" class="m3" :prepend-icon="BTN.back">Request</v-btn>
     </nav>
 
@@ -409,10 +493,16 @@ async function send() {
 
     <template v-else>
       <header class="qb-head">
-        <div>
-          <h1 class="qb-title">{{ r.status === 'QUOTED' ? 'Revise quote' : 'Build quote' }}</h1>
+        <nav class="crumbs" aria-label="Breadcrumb">
+          <v-btn :to="`/requests/${route.params.id}`" variant="text" class="m3" :prepend-icon="BTN.back">Request</v-btn>
+        </nav>
+        <div class="qb-id">
+          <h1 class="qb-title">
+            {{ r.status === 'QUOTED' ? 'Revise quote' : 'Build quote' }} · {{ r.lines.length }} item{{ r.lines.length > 1 ? 's' : '' }}
+            for {{ r.organisationName || r.customerName }}
+          </h1>
           <p class="qb-sub">
-            {{ r.organisationName || r.customerName }} · <span class="console-mono"><ShortRef :id="r.id" /></span> · prices in
+            <span class="console-mono"><ShortRef :id="r.id" /></span> · the customer sees
             <strong class="console-mono">{{ r.currency }}</strong>
           </p>
         </div>
@@ -422,216 +512,297 @@ async function send() {
         </p>
       </header>
 
-      <div class="qb-grid">
-        <div class="qb-main">
-          <section class="panel">
-            <header class="console-head">
-              <h2 class="console-title">Suppliers</h2>
-              <span class="t-caption muted">Quote files are kept with the request</span>
-            </header>
-            <div class="sups">
-              <p v-if="!suppliers.length" class="t-body muted">No supplier yet. Add one to price lines that CIMH stock can't cover.</p>
-              <div v-for="s in suppliers" :key="s.key" class="sup">
-                <v-text-field
-                  v-model="s.name"
-                  label="Supplier name"
-                  density="compact"
-                  hide-details="auto"
-                  :error-messages="dupName(s) ? 'Another supplier has this name' : undefined"
-                  class="sup-name"
-                />
-                <v-file-input
-                  label="Quote file (PDF or image)"
-                  :prepend-icon="BTN.attach"
-                  accept=".pdf,.jpg,.jpeg,.png"
-                  multiple
-                  hide-details
-                  density="compact"
-                  :loading="s.uploading"
-                  :model-value="[]"
-                  class="sup-file"
-                  @update:model-value="(f: File | File[] | null) => attach(s, f)"
-                />
-                <div v-if="!usd" class="sup-cur">
-                  <v-btn-toggle v-model="s.currency" mandatory density="compact" variant="outlined" divided :aria-label="`Currency of ${s.name || 'this supplier'}'s quote`">
-                    <v-btn value="BBD" size="small">BBD</v-btn>
-                    <v-btn value="USD" size="small">USD</v-btn>
-                  </v-btn-toggle>
-                  <v-text-field
-                    v-if="s.currency === 'USD'"
-                    v-model="s.rate"
-                    label="BBD per 1 USD"
-                    density="compact"
-                    inputmode="decimal"
-                    class="sup-rate"
-                    hide-details="auto"
-                    :error-messages="s.rate || ratesMissing ? supRateError(s) || undefined : undefined"
-                  />
-                  <span class="t-caption muted">{{ s.currency === 'USD' ? 'Type the USD prices; the customer sees BBD.' : 'Prices in BBD' }}</span>
-                </div>
-                <div class="sup-actions">
-                  <v-btn
-                    v-if="s.name.trim() && unassigned"
-                    variant="text"
-                    class="m3"
-                    size="small"
-                    @click="useForUnassigned(s)"
-                  >Use for {{ unassigned }} unassigned line{{ unassigned > 1 ? 's' : '' }}</v-btn>
-                  <v-btn variant="text" size="small" :icon="BTN.remove" :aria-label="`Remove ${s.name || 'supplier'}`" @click="askRemove(s)" />
-                </div>
-                <div v-if="s.fileIds.length" class="files">
-                  <v-chip
-                    v-for="f in s.fileIds"
-                    :key="f"
-                    :href="fileUrl(f)"
-                    target="_blank"
-                    size="small"
-                    label
-                    closable
-                    :close-label="`Remove ${fileNames[f] ?? 'file'} from this quote`"
-                    @click:close.prevent="s.fileIds = s.fileIds.filter((x) => x !== f)"
-                  >{{ fileNames[f] ?? 'Quote file' }}</v-chip>
-                </div>
-              </div>
-              <v-btn variant="outlined" class="m3 add" :prepend-icon="BTN.add" @click="addSupplier">Add supplier</v-btn>
-            </div>
-          </section>
+      <section class="frame" aria-label="Quote">
+        <div class="tabs">
+        <div class="tablist" role="tablist" aria-label="Offers" @keydown="onTabKey">
+          <button
+            v-for="s in suppliers"
+            :id="`tab-${s.key}`"
+            :key="s.key"
+            type="button"
+            role="tab"
+            class="tab"
+            :class="{ on: tab === s.key }"
+            :aria-selected="tab === s.key"
+            :tabindex="tab === s.key ? 0 : -1"
+            aria-controls="offer-panel"
+            @click="tab = s.key"
+          >
+            <span class="tab-name">{{ s.name.trim() || 'New supplier' }}</span>
+            <span class="tab-meta console-mono">{{ usd ? cur : s.currency }}<template v-if="supUsd(s) && !supRateError(s)">{{ ' at ' + s.rate }}</template> · {{ linesOf(s) }} of {{ r.lines.length }} priced</span>
+            <span v-if="dupName(s) || supRateError(s) || (!s.name.trim() && usedBy(s))" class="tab-flag" aria-label="needs attention" />
+          </button>
+          <button
+            v-if="anyCimhAvailable || anyCimh"
+            id="tab-cimh"
+            type="button"
+            role="tab"
+            class="tab"
+            :class="{ on: tab === 'cimh' }"
+            :aria-selected="tab === 'cimh'"
+            :tabindex="tab === 'cimh' ? 0 : -1"
+            aria-controls="offer-panel"
+            @click="tab = 'cimh'"
+          >
+            <span class="tab-name">CIMH stock</span>
+            <span class="tab-meta console-mono">{{ Object.values(lines).filter((v) => v.cimh).length }} of {{ r.lines.length }} offered</span>
+          </button>
+        </div>
+          <button type="button" class="tab tab-add" aria-label="Add supplier" @click="addSupplier">
+            <v-icon :icon="BTN.add" size="18" />Add<span class="add-word"> supplier</span>
+          </button>
+        </div>
 
-          <section class="panel">
-            <header class="console-head">
-              <h2 class="console-title">Prices</h2>
-              <span class="t-caption muted">Enter moves to the next price</span>
-            </header>
-            <div class="lines" role="table" :aria-label="`Prices in ${r.currency}`">
+        <!-- Supplier tab: settings strip, then the document beside the lines. -->
+        <!-- String key: v-if branches get automatic keys 0, 1, 2, and a numeric supplier key collided with them. -->
+        <div v-if="current" id="offer-panel" :key="`sup-${current.key}`" role="tabpanel" :aria-labelledby="`tab-${current.key}`" class="panel-body">
+          <div class="sup-strip">
+            <v-text-field
+              :id="`sup-name-${current.key}`"
+              v-model="current.name"
+              label="Supplier name"
+              hide-details="auto"
+              class="sup-name"
+              :error-messages="dupName(current) ? 'Another supplier has this name' : !current.name.trim() && usedBy(current) ? 'Name the supplier' : undefined"
+            />
+            <template v-if="!usd">
+              <v-btn-toggle v-model="current.currency" mandatory variant="outlined" divided class="sup-cur" :aria-label="`Currency of ${current.name || 'this supplier'}'s quote`">
+                <v-btn value="BBD">BBD</v-btn>
+                <v-btn value="USD">USD</v-btn>
+              </v-btn-toggle>
+              <v-text-field
+                v-if="current.currency === 'USD'"
+                v-model="current.rate"
+                label="BBD per 1 USD"
+                inputmode="decimal"
+                class="sup-rate mono-input"
+                hide-details="auto"
+                hint="Type the USD prices; the customer sees BBD"
+                :error-messages="current.rate || ratesMissing ? supRateError(current) || undefined : undefined"
+              />
+            </template>
+            <v-btn
+              variant="text"
+              color="error"
+              class="sup-remove"
+              :icon="BTN.remove"
+              :aria-label="`Remove ${current.name.trim() || 'this supplier'}`"
+              title="Remove supplier"
+              @click="askRemove(current)"
+            />
+          </div>
+
+          <div class="split">
+            <!-- Left: the quote files as large tiles, the selected one open below. -->
+            <div class="viewer" :class="{ drag: dragging }" @dragover.prevent="dragging = true" @dragleave.self="dragging = false" @drop.prevent="onDrop(current, $event)">
+              <ul v-if="current.fileIds.length" class="tiles" aria-label="Quote files">
+                <li v-for="f in current.fileIds" :key="f" class="tile-wrap">
+                  <button
+                    type="button"
+                    class="tile"
+                    :class="{ on: openFile[current.key] === f }"
+                    :aria-pressed="openFile[current.key] === f"
+                    :title="fileMeta[f]?.name"
+                    @click="openFile[current.key] = f"
+                  >
+                    <v-icon :icon="isPdf(f) ? ICON.pdf : ICON.image" size="56" class="tile-icon" />
+                    <span class="tile-name">{{ fileMeta[f]?.name ?? 'Quote file' }}</span>
+                    <span class="tile-kind">{{ isPdf(f) ? 'PDF' : 'Image' }}</span>
+                  </button>
+                  <button type="button" class="tile-x" :aria-label="`Remove ${fileMeta[f]?.name ?? 'file'} from this quote`" @click="detach(current, f)">
+                    <v-icon :icon="ICON.close" size="16" />
+                  </button>
+                </li>
+                <li class="tile-wrap">
+                  <label class="tile tile-add" :class="{ busy: current.uploading }">
+                    <input
+                      type="file"
+                      class="sr-only"
+                      accept=".pdf,.jpg,.jpeg,.png,.webp"
+                      multiple
+                      :disabled="current.uploading"
+                      @change="(e) => { attach(current!, (e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = '' }"
+                    />
+                    <v-progress-circular v-if="current.uploading" indeterminate size="40" width="3" color="primary" />
+                    <v-icon v-else :icon="ICON.upload" size="56" class="tile-icon" />
+                    <span class="tile-name">{{ current.uploading ? 'Uploading…' : 'Add quote file' }}</span>
+                    <span class="tile-kind">PDF or image</span>
+                  </label>
+                </li>
+              </ul>
+              <QuoteDocument
+                v-if="openFile[current.key] && fileMeta[openFile[current.key]!]"
+                :file-id="openFile[current.key]!"
+                :name="fileMeta[openFile[current.key]!]!.name"
+                :mime="fileMeta[openFile[current.key]!]!.mime"
+                class="viewer-doc"
+              />
+              <!-- No file yet: the whole pane is the one place to add it. -->
+              <label v-else-if="!current.fileIds.length" class="viewer-empty" :class="{ busy: current.uploading }">
+                <input
+                  type="file"
+                  class="sr-only"
+                  accept=".pdf,.jpg,.jpeg,.png,.webp"
+                  multiple
+                  :disabled="current.uploading"
+                  @change="(e) => { attach(current!, (e.target as HTMLInputElement).files); (e.target as HTMLInputElement).value = '' }"
+                />
+                <v-progress-circular v-if="current.uploading" indeterminate size="48" width="3" color="primary" />
+                <v-icon v-else :icon="ICON.upload" size="64" class="tile-icon" />
+                <span class="t-h3">{{ current.uploading ? 'Uploading…' : `Add ${current.name.trim() || 'the supplier'}'s quote file` }}</span>
+                <span class="t-body muted">Pick a PDF or image, or drop it here. It is kept with the request and opens here, beside the prices.</span>
+              </label>
+            </div>
+
+            <!-- Right: every request line, priced from this supplier or held by another offer. -->
+            <div class="lines" role="table" :aria-label="`Prices from ${current.name || 'this supplier'}`">
               <div class="lrow lhead" role="row">
                 <span role="columnheader">Item</span>
                 <span role="columnheader" class="num">Qty</span>
-                <span role="columnheader">CIMH stock</span>
-                <span role="columnheader">Supplier</span>
-                <span role="columnheader">Unit price</span>
+                <span role="columnheader">Unit price, {{ typeCur(current) }}</span>
                 <span role="columnheader" class="num">Line total</span>
               </div>
               <div
                 v-for="l in r.lines"
-                :id="`row-${l.lineId}`"
                 :key="l.lineId"
                 class="lrow"
-                :class="{ todo: !lineReady(l.lineId) }"
+                :class="{ mine: lines[l.lineId]?.supplier === current.key, todo: !lineReady(l.lineId) }"
                 role="row"
               >
                 <span role="cell" class="item">
                   <span class="item-name">{{ l.product.name }}</span>
+                  <span v-if="lines[l.lineId]?.cimh" class="item-note"><v-icon :icon="ICON.stock" size="14" />CIMH stock offered too</span>
                   <span v-if="!lineReady(l.lineId)" class="todo-word">No price yet</span>
                 </span>
                 <span role="cell" class="num console-mono qty"><span class="cell-label">Qty </span>{{ l.qty }}</span>
-                <span role="cell" class="cimh">
-                  <template v-if="l.cimhAvailable">
-                    <v-checkbox v-model="lines[l.lineId]!.cimh" label="Offer" hide-details density="compact" />
-                    <span class="cimh-price console-mono" :title="usd ? 'Catalogue cost converted at the exchange rate (estimate)' : 'Catalogue cost (estimate)'">
-                      {{ costBBD[l.productId] === undefined ? '…' : costBBD[l.productId] === null ? 'No cost' : fmt(cimhUnit(l.lineId)) }}
+                <span role="cell" class="price-cell">
+                  <template v-if="holder(l.lineId) && holder(l.lineId) !== current">
+                    <span class="held">
+                      <span>Priced by <strong>{{ holder(l.lineId)!.name.trim() || 'another supplier' }}</strong>
+                        · <span class="console-mono">{{ heldPrice(l.lineId) }}</span></span>
+                      <button type="button" class="console-retry held-move" :aria-label="`Price ${l.product.name} from ${current.name.trim() || 'this supplier'} instead`" @click="moveHere(current, l.lineId)">Price it here instead</button>
                     </span>
                   </template>
-                  <span v-else class="t-caption muted">Not fully in stock</span>
-                </span>
-                <span role="cell">
-                  <v-select
-                    :id="`sup-${l.lineId}`"
-                    v-model="lines[l.lineId]!.supplier"
-                    :items="supplierItems"
-                    density="compact"
-                    hide-details
-                    :aria-label="`Supplier for ${l.product.name}`"
-                  />
-                </span>
-                <span role="cell">
                   <v-text-field
-                    :id="`price-${l.lineId}`"
-                    v-model="lines[l.lineId]!.unitPrice"
-                    density="compact"
-                    placeholder="0.00"
+                    v-else
+                    :id="`price-${current.key}-${l.lineId}`"
+                    :model-value="priceFor(current, l.lineId)"
+                    placeholder="—"
                     inputmode="decimal"
-                    class="price"
-                    :disabled="lines[l.lineId]!.supplier === null"
-                    :error-messages="priceError(lines[l.lineId]!) || undefined"
+                    class="price mono-input"
+                    :prefix="typeCur(current)"
+                    :error-messages="lines[l.lineId]?.supplier === current.key ? priceError(lines[l.lineId]!) || undefined : undefined"
                     hide-details="auto"
-                    :aria-label="`Unit price for ${l.product.name} in ${priceCur(l.lineId)}`"
-                    :prefix="priceCur(l.lineId) === 'USD' && !usd ? 'USD' : undefined"
-                    @keydown.enter.prevent="nextPrice(l.lineId)"
+                    :aria-label="`Unit price for ${l.product.name} in ${typeCur(current)}`"
+                    @update:model-value="(v: string) => setPrice(current!, l.lineId, v ?? '')"
+                    @keydown.enter.prevent="nextPrice(current, l.lineId)"
                   />
                 </span>
-                <span role="cell" class="num console-mono total">{{ supTotal(l.lineId) === null ? '' : fmt(supTotal(l.lineId)) }}</span>
+                <span role="cell" class="num console-mono total">
+                  <template v-if="lines[l.lineId]?.supplier === current.key && supTotal(l.lineId) !== null">{{ fmt(supTotal(l.lineId)) }}</template>
+                </span>
               </div>
+              <p class="lines-hint t-caption muted">Enter moves to the next price. Leave a line empty if this supplier didn't quote it.</p>
             </div>
-          </section>
+          </div>
         </div>
 
-        <aside class="qb-side" aria-label="Quote summary">
-          <section class="panel summary">
-            <header class="console-head"><h2 class="console-title">What the customer sees</h2></header>
-            <div class="sum-body">
-              <v-text-field
-                v-if="usd"
-                v-model="exchangeRate"
-                label="Exchange rate (BBD per 1 USD)"
-                density="compact"
-                inputmode="decimal"
-                class="rate"
-                hide-details="auto"
-                :error-messages="rateError || undefined"
-                hint="CIMH-stock prices and the admin fee are in BBD"
-                persistent-hint
-              />
-              <dl class="sum">
-                <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
-                <div><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ anyCimh ? fmt(totals?.cimh ?? null) : '—' }}</dd></div>
-                <div>
-                  <dt>Admin fee, once</dt>
-                  <!-- 0.00 read like a mistake: say no fee is set (admins set it under Settings › Fees). -->
-                  <dd v-if="!feeKnown" class="console-mono">Unknown</dd>
-                  <dd v-else-if="feeCents === 0" class="muted">None set</dd>
-                  <dd v-else class="console-mono">{{ fmt(totals?.fee ?? null) }}</dd>
-                </div>
-                <!-- A range in this narrow panel wrapped over two lines: lowest and highest get a row each. -->
-                <template v-if="totals?.complete && totals.lo !== null && totals.lo !== totals.hi">
-                  <div class="grand"><dt>Agreement total, lowest</dt><dd class="console-mono">{{ fmt(totals.lo) }}</dd></div>
-                  <div class="grand"><dt>Agreement total, highest</dt><dd class="console-mono">{{ fmt(totals.hi) }}</dd></div>
-                </template>
-                <div v-else class="grand">
-                  <dt>Agreement total</dt>
-                  <dd class="console-mono">
-                    <template v-if="!totals?.complete || totals.lo === null">—</template>
-                    <template v-else>{{ fmt(totals.lo) }}</template>
-                  </dd>
-                </div>
-              </dl>
-              <p class="t-caption muted">
-                The customer picks CIMH stock or the supplier on each offered line; the range runs from the lowest to the
-                highest choices. The server sets the final CIMH prices from the catalogue when the quote is sent. Valid 30 days.
-              </p>
-              <p v-if="noCost.length" class="warn">
-                <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
-              </p>
-
-              <div v-if="missing.length" class="missing">
-                <p class="missing-title">{{ missing.length }} line{{ missing.length > 1 ? 's' : '' }} without a price</p>
-                <ul>
-                  <li v-for="l in missing" :key="l.lineId">
-                    <button type="button" class="console-retry" @click="jumpTo(l.lineId)">{{ l.product.name }}</button>
-                  </li>
-                </ul>
-              </div>
-              <p v-if="dupes" class="warn"><v-icon :icon="BTN.reject" size="16" />Two suppliers share a name.</p>
-              <p v-if="ratesMissing" class="warn"><v-icon :icon="BTN.reject" size="16" />Enter the exchange rate for each USD supplier quote.</p>
-              <p v-if="unsavedPrices" class="warn"><v-icon :icon="BTN.reject" size="16" />Fix the price{{ unsavedPrices > 1 ? 's' : '' }} marked in red.</p>
-
-              <v-btn color="primary" class="m3 send" :prepend-icon="BTN.verify" :disabled="!canSend" @click="confirmSend = true">
-                {{ r.status === 'QUOTED' ? 'Send revised quote…' : 'Send quote…' }}
-              </v-btn>
-              <p class="t-caption muted">You check it once more before the customer is emailed{{ r.status === 'QUOTED' ? ' the new version' : '' }}.</p>
+        <!-- CIMH stock tab: lines fully in stock can be offered from the shelves. -->
+        <div v-else-if="tab === 'cimh'" id="offer-panel" role="tabpanel" aria-labelledby="tab-cimh" class="panel-body">
+          <div class="sup-strip">
+            <p class="t-body">
+              Offer lines that CIMH stock covers in full. The server prices them from the catalogue cost when the quote is sent;
+              the customer chooses CIMH or the supplier per line.
+            </p>
+            <v-text-field
+              v-if="usd"
+              v-model="exchangeRate"
+              label="Exchange rate (BBD per 1 USD)"
+              inputmode="decimal"
+              class="sup-rate mono-input"
+              hide-details="auto"
+              :error-messages="rateError || undefined"
+            />
+          </div>
+          <div class="lines cimh-lines" role="table" aria-label="CIMH stock">
+            <div class="lrow lhead" role="row">
+              <span role="columnheader">Item</span>
+              <span role="columnheader" class="num">Qty</span>
+              <span role="columnheader">Offer from stock</span>
+              <span role="columnheader" class="num">Estimate</span>
             </div>
-          </section>
-        </aside>
-      </div>
+            <div v-for="l in r.lines" :key="l.lineId" class="lrow" :class="{ mine: lines[l.lineId]?.cimh }" role="row">
+              <span role="cell" class="item">
+                <span class="item-name">{{ l.product.name }}</span>
+                <span v-if="holder(l.lineId)" class="item-note">Supplier: {{ holder(l.lineId)!.name.trim() || 'unnamed' }}</span>
+              </span>
+              <span role="cell" class="num console-mono qty"><span class="cell-label">Qty </span>{{ l.qty }}</span>
+              <span role="cell">
+                <v-checkbox v-if="l.cimhAvailable" :id="`offer-${l.lineId}`" v-model="lines[l.lineId]!.cimh" label="Offer" hide-details density="compact" />
+                <span v-else class="t-caption muted">Not fully in stock</span>
+              </span>
+              <span role="cell" class="num console-mono total" :title="usd ? 'Catalogue cost converted at the exchange rate (estimate)' : 'Catalogue cost (estimate)'">
+                <template v-if="l.cimhAvailable">
+                  {{ costBBD[l.productId] === undefined ? '…' : costBBD[l.productId] === null ? 'No cost' : fmt(cimhTotal(l.lineId)) }}
+                </template>
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div v-else id="offer-panel" role="tabpanel" class="panel-body empty-tab">
+          <p class="t-body-lg">Add the first supplier to start pricing.</p>
+          <p class="t-body muted">Each supplier gets a tab with its quote file beside the request lines.</p>
+          <v-btn color="primary" class="m3" :prepend-icon="BTN.add" @click="addSupplier">Add supplier</v-btn>
+        </div>
+
+        <!-- What the customer sees, what is missing, Send. -->
+        <footer class="qfoot" aria-label="Quote summary">
+          <dl class="figs">
+            <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
+            <div><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ anyCimh ? fmt(totals?.cimh ?? null) : '—' }}</dd></div>
+            <div>
+              <dt>Admin fee, once</dt>
+              <dd v-if="!feeKnown" class="console-mono">Unknown</dd>
+              <dd v-else-if="feeCents === 0">None set</dd>
+              <dd v-else class="console-mono">{{ fmt(totals?.fee ?? null) }}</dd>
+            </div>
+            <div class="grand">
+              <dt>Agreement total</dt>
+              <dd class="console-mono">
+                <template v-if="!totals?.complete || totals.lo === null">—</template>
+                <template v-else-if="totals.lo === totals.hi">{{ fmt(totals.lo) }}</template>
+                <template v-else>{{ fmt(totals.lo) }} – {{ fmt(totals.hi) }}</template>
+              </dd>
+            </div>
+          </dl>
+          <div class="qfoot-problems" tabindex="-1">
+            <template v-if="problems">
+              <p v-if="missing.length" class="warn-line">
+                <v-icon :icon="ICON.warn" size="16" />
+                <span>{{ missing.length }} line{{ missing.length > 1 ? 's' : '' }} without a price:
+                  <template v-for="(l, i) in missing.slice(0, 3)" :key="l.lineId">
+                    <button type="button" class="console-retry" @click="jumpTo(l.lineId)">{{ l.product.name }}</button><template v-if="i < Math.min(missing.length, 3) - 1">, </template>
+                  </template>
+                  <template v-if="missing.length > 3"> and {{ missing.length - 3 }} more</template>
+                </span>
+              </p>
+              <p v-if="dupes" class="err-line"><v-icon :icon="BTN.reject" size="16" />Two suppliers share a name.</p>
+              <p v-if="unnamed" class="err-line"><v-icon :icon="BTN.reject" size="16" />A supplier with prices has no name.</p>
+              <p v-if="ratesMissing" class="err-line"><v-icon :icon="BTN.reject" size="16" />Enter the BBD per USD rate for each USD supplier quote.</p>
+              <p v-if="needsRate" class="err-line"><v-icon :icon="BTN.reject" size="16" />Enter the exchange rate (CIMH stock tab).</p>
+              <p v-if="unsavedPrices" class="err-line"><v-icon :icon="BTN.reject" size="16" />Fix the price{{ unsavedPrices > 1 ? 's' : '' }} marked in red.</p>
+            </template>
+            <p v-else class="ok-line"><v-icon :icon="BTN.approve" size="16" />Every line priced. Valid 30 days once sent.</p>
+            <p v-if="noCost.length" class="err-line">
+              <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
+            </p>
+          </div>
+          <v-btn color="primary" size="large" class="m3 send" :prepend-icon="BTN.verify" @click="askSend">
+            {{ r.status === 'QUOTED' ? 'Send revised quote…' : 'Send quote…' }}
+          </v-btn>
+        </footer>
+      </section>
 
       <v-dialog v-model="confirmSend" max-width="520" :persistent="sending">
         <v-card>
@@ -643,6 +814,7 @@ async function send() {
               <div><dt>To</dt><dd>{{ r.customerName }}<template v-if="r.organisationName">, {{ r.organisationName }}</template></dd></div>
               <div><dt>Quote version</dt><dd class="console-mono">{{ nextVersion }}</dd></div>
               <div><dt>Lines priced</dt><dd class="console-mono">{{ pricedLines }} of {{ r.lines.length }}</dd></div>
+              <div><dt>Suppliers</dt><dd>{{ suppliers.filter((s) => usedBy(s)).map((s) => s.name.trim()).join(', ') || '—' }}</dd></div>
               <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
               <div v-if="anyCimh"><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ fmt(totals?.cimh ?? null) }}</dd></div>
               <div class="grand">
@@ -654,7 +826,7 @@ async function send() {
                 </dd>
               </div>
             </dl>
-            <p v-if="noCost.length" class="warn">
+            <p v-if="noCost.length" class="err-line">
               <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
             </p>
             <p class="t-body muted">
@@ -671,7 +843,7 @@ async function send() {
       <v-dialog :model-value="!!removing" max-width="440" @update:model-value="(v: boolean) => !v && (removing = null)">
         <v-card :title="`Remove ${removing?.name || 'this supplier'}?`">
           <v-card-text>
-            Their prices on {{ removing ? usedBy(removing) : 0 }} line{{ removing && usedBy(removing) > 1 ? 's' : '' }} are cleared.
+            Their prices on {{ removing ? usedBy(removing) : 0 }} line{{ removing && usedBy(removing) > 1 ? 's' : '' }} are cleared. Their files stay with the request.
           </v-card-text>
           <v-card-actions>
             <v-spacer />
@@ -687,7 +859,7 @@ async function send() {
 <style scoped>
 .qb {
   width: 100%;
-  max-width: 1500px;
+  max-width: 1600px;
   margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   display: flex;
@@ -708,15 +880,19 @@ async function send() {
   padding: var(--sp-8) 0;
 }
 .sk {
-  height: 420px;
+  height: 520px;
   border-radius: 4px;
 }
 .qb-head {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
   gap: var(--sp-2) var(--sp-4);
+}
+.qb-id {
+  flex: 1;
+  min-width: 0;
 }
 .qb-title {
   margin: 0;
@@ -724,6 +900,7 @@ async function send() {
   line-height: 28px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  text-wrap: balance;
 }
 .qb-sub {
   font-size: 14px;
@@ -739,92 +916,306 @@ async function send() {
   color: rgb(var(--v-theme-error));
   font-weight: 600;
 }
-.qb-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: var(--sp-4);
-  align-items: start;
-}
-.qb-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-  min-width: 0;
-}
-.qb-side {
-  position: sticky;
-  top: var(--sp-4);
-}
-.panel {
+
+/* One bordered frame: tabs, the open offer, the summary footer. */
+.frame {
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
   min-width: 0;
 }
+.tabs {
+  display: flex;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.tablist {
+  display: flex;
+}
+.tab {
+  position: relative;
+  flex: none; /* the strip scrolls; tabs never shrink to "OT…" */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  max-width: 260px;
+  padding: 10px 20px 12px;
+  border: 0;
+  background: none;
+  color: rgb(var(--v-theme-secondary));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 160ms ease-out, background-color 160ms ease-out;
+}
+.tab::after {
+  content: '';
+  position: absolute;
+  inset: auto 12px 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: rgb(var(--v-theme-primary));
+  transform: scaleX(0);
+  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+.tab:hover {
+  background: rgba(var(--v-theme-on-surface), 0.04);
+  color: rgb(var(--v-theme-on-surface));
+}
+.tab.on {
+  color: rgb(var(--v-theme-on-surface));
+}
+.tab.on::after {
+  transform: scaleX(1);
+}
+.tab-name {
+  max-width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tab-meta {
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
+.tab-flag {
+  position: absolute;
+  top: 10px;
+  right: 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-error));
+}
+/* Add supplier stays in reach while the tab strip scrolls (phones); the seam on its left marks the edge. */
+.tab-add {
+  position: sticky;
+  right: 0;
+  margin-left: auto;
+  background: rgb(var(--v-theme-surface));
+  border-left: 1px solid rgb(var(--v-theme-seam));
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-2);
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  white-space: nowrap;
+}
+.tab-add::after {
+  display: none;
+}
 
-.sups {
+.panel-body {
+  animation: tab-in 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes tab-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.sup-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.sup-strip {
+  flex-wrap: nowrap;
+}
+.sup-strip > .t-body {
+  flex: 1 1 420px;
+  max-width: 75ch;
+}
+.sup-name {
+  flex: 1 1 260px;
+  max-width: 420px;
+}
+.sup-rate {
+  flex: 0 1 200px;
+}
+.sup-remove {
+  margin-left: auto;
+}
+
+/* The document beside the lines: equal halves, the document stays in view while the lines scroll. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.viewer {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  padding: var(--sp-3);
+  border-right: 1px solid rgb(var(--v-theme-seam));
+  /* Recessed well, a step darker than the page ground, so a white quote page separates in light theme too. */
+  background: rgba(var(--v-theme-on-surface), 0.05);
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: min(calc(100vh - 96px), 980px);
+  transition: box-shadow 160ms ease-out;
 }
-.sup {
-  display: grid;
-  grid-template-columns: minmax(200px, 1fr) minmax(220px, 1fr) auto;
-  gap: var(--sp-3);
-  align-items: center;
-  padding-bottom: var(--sp-3);
-  border-bottom: 1px solid rgb(var(--v-theme-seam));
+.viewer.drag {
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-primary));
 }
-.sup-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-1);
+.viewer-doc {
+  flex: 1;
 }
-/* Currency of the supplier's own quote (BBD requests): toggle, rate when USD, a line saying what to type. */
-.sup-cur {
-  grid-column: 1 / -1;
+.viewer-empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--sp-3);
-  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+  border: 1px dashed rgb(var(--v-theme-field-outline));
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+  cursor: pointer;
+  transition: border-color 160ms ease-out;
 }
-.sup-rate {
-  flex: 0 1 180px;
+.viewer-empty:hover {
+  border-color: rgb(var(--v-theme-primary));
 }
-.files {
-  grid-column: 1 / -1;
-  display: flex;
-  gap: var(--sp-1);
-  flex-wrap: wrap;
+.viewer-empty:focus-within {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
-.add {
-  align-self: flex-start;
+.viewer-empty .t-body {
+  max-width: 44ch;
 }
 
-/* Price lines: a grid table; rows without a price carry the words "No price yet" (amber), not colour alone. */
+/* Large square file tiles: the file is the thing staff read from, so it is easy to find and hit. */
+.tiles {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  gap: var(--sp-3);
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.tile-wrap {
+  position: relative;
+  flex: none;
+}
+.tile {
+  width: 152px;
+  height: 152px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: var(--sp-3);
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 8px;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 160ms ease-out, background-color 160ms ease-out, transform 120ms ease-out;
+}
+.tile:hover {
+  border-color: rgb(var(--v-theme-primary));
+}
+.tile:active {
+  transform: scale(0.98);
+}
+.tile.on {
+  border: 2px solid rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary-subtle));
+}
+.tile-icon {
+  color: rgb(var(--v-theme-primary));
+  margin-bottom: 2px;
+}
+.tile-name {
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+  /* Two lines, broken anywhere: the quote number at the end is what tells two files apart. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.tile-kind {
+  font-size: 12px;
+  line-height: 16px;
+  color: rgb(var(--v-theme-secondary));
+}
+.tile-add {
+  border-style: dashed;
+  border-color: rgb(var(--v-theme-field-outline));
+}
+.tile-add:focus-within {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.tile-add.busy {
+  cursor: progress;
+}
+.tile-x {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-secondary));
+  cursor: pointer;
+}
+.tile-x:hover {
+  background: rgba(var(--v-theme-error), 0.12);
+  color: rgb(var(--v-theme-error));
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Lines */
 .lines {
   display: flex;
   flex-direction: column;
-  /* The line layout follows the panel, not the window: at 1440 px with the drawer and the summary the panel is
-     ~795 px, narrower than the six columns need (~840 px), and the line total was cut off. */
+  min-width: 0;
   container: qlines / inline-size;
 }
 .lrow {
   display: grid;
-  grid-template-columns: minmax(160px, 1.4fr) 48px minmax(150px, 1fr) minmax(160px, 1fr) minmax(130px, 0.8fr) minmax(100px, 0.7fr);
+  grid-template-columns: minmax(0, 1.5fr) 44px minmax(160px, 1fr) minmax(96px, 0.7fr);
   gap: var(--sp-3);
   align-items: center;
+  min-height: 56px;
   padding: var(--sp-2) var(--sp-4);
   border-bottom: 1px solid rgb(var(--v-theme-seam));
   font-size: 14px;
   line-height: 20px;
-  transition: background-color 160ms ease-out;
-}
-.lrow:last-child {
-  border-bottom: 0;
+  transition: background-color 240ms ease-out;
 }
 .lhead {
+  min-height: 0;
   font-size: 11px;
   line-height: 16px;
   font-weight: 600;
@@ -832,7 +1223,9 @@ async function send() {
   letter-spacing: 0.08em;
   color: rgb(var(--v-theme-secondary));
 }
-.lrow:target,
+.lrow.mine {
+  background: rgba(var(--v-theme-primary-subtle), 0.7);
+}
 .lrow:focus-within {
   background: rgb(var(--v-theme-primary-subtle));
 }
@@ -845,6 +1238,13 @@ async function send() {
   font-weight: 500;
   overflow-wrap: anywhere;
 }
+.item-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
 .todo-word {
   font-size: 12px;
   font-weight: 600;
@@ -856,31 +1256,124 @@ async function send() {
 .cell-label {
   display: none;
 }
-.cimh {
+.held {
   display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-}
-.cimh-price {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   font-size: 13px;
   color: rgb(var(--v-theme-secondary));
-  white-space: nowrap;
 }
-.price :deep(input),
-.rate :deep(input) {
+.held strong {
+  color: rgb(var(--v-theme-on-surface));
+}
+.held-move {
+  text-align: left;
+}
+.mono-input :deep(input) {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-variant-numeric: tabular-nums;
 }
 .total {
   white-space: nowrap;
 }
-
-.sum-body {
+.lines-hint {
+  padding: var(--sp-3) var(--sp-4);
+}
+.cimh-lines .lrow {
+  grid-template-columns: minmax(0, 1.5fr) 44px minmax(150px, 1fr) minmax(120px, 0.7fr);
+}
+.empty-tab {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-8) var(--sp-6);
 }
+.empty-tab .v-btn {
+  margin-top: var(--sp-2);
+}
+
+/* Summary footer */
+.qfoot {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: var(--sp-3) var(--sp-6);
+  align-items: center;
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid rgb(var(--v-theme-seam));
+  background: rgb(var(--v-theme-surface));
+  border-radius: 0 0 4px 4px;
+}
+.figs {
+  margin: 0;
+  display: flex;
+  gap: var(--sp-6);
+}
+.figs > div {
+  display: flex;
+  flex-direction: column;
+}
+.figs dt {
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
+.figs dd {
+  margin: 0;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.figs .grand dt {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 600;
+}
+.figs .grand dd {
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+}
+.qfoot-problems {
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  outline: none;
+}
+.warn-line,
+.err-line,
+.ok-line {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: flex-start;
+}
+.warn-line {
+  color: rgb(var(--v-theme-warning));
+}
+.warn-line .console-retry {
+  font-size: 13px;
+}
+.err-line {
+  color: rgb(var(--v-theme-error));
+}
+.ok-line {
+  color: rgb(var(--v-theme-success));
+  font-weight: 600;
+}
+.warn-line .v-icon,
+.err-line .v-icon,
+.ok-line .v-icon {
+  flex: none;
+  margin-top: 2px;
+}
+.send {
+  min-width: 200px;
+}
+
+/* Dialog figures */
 .sum {
   margin: 0;
   display: flex;
@@ -910,104 +1403,110 @@ async function send() {
 .sum .grand dt {
   color: rgb(var(--v-theme-on-surface));
 }
-.warn {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: flex-start;
-  font-size: 13px;
-  color: rgb(var(--v-theme-error));
-}
-.warn .v-icon {
-  flex: none;
-  margin-top: 1px;
-}
-.missing {
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 4px;
-}
-.missing-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-warning));
-}
-.missing ul {
-  margin: var(--sp-1) 0 0;
-  padding-left: var(--sp-4);
-  font-size: 13px;
-}
-.send {
-  align-self: stretch;
-}
 
-@media (max-width: 1099.98px) {
-  .qb-grid {
-    grid-template-columns: minmax(0, 1fr);
+/* One footer row down to 900 px, so the document keeps its height on a 720 px desk screen. */
+@media (max-width: 1439.98px) {
+  .qfoot {
+    gap: var(--sp-2) var(--sp-4);
   }
-  .qb-side {
-    position: static;
+  .figs {
+    gap: var(--sp-4);
   }
-}
-/* Mid-width panel: two rows per line (item, qty, CIMH stock / supplier, price, line total), labels in the cells. */
-@container qlines (max-width: 899.98px) {
-  .lhead {
-    display: none;
-  }
-  .lrow {
-    grid-template-columns: minmax(0, 1.3fr) 56px minmax(0, 1fr) minmax(0, 0.9fr);
-    grid-template-areas: 'item qty cimh cimh' 'sup sup price total';
-    row-gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-  }
-  .lrow > :nth-child(1) { grid-area: item; }
-  .lrow > :nth-child(2) { grid-area: qty; }
-  .lrow > :nth-child(3) { grid-area: cimh; }
-  .lrow > :nth-child(4) { grid-area: sup; }
-  .lrow > :nth-child(5) { grid-area: price; }
-  .lrow > :nth-child(6) { grid-area: total; align-self: center; }
-  .cell-label {
-    display: inline;
-    color: rgb(var(--v-theme-secondary));
+  .figs .grand dd {
+    font-size: 16px;
   }
 }
-/* Narrow: each line becomes a small card (item + qty, then CIMH, supplier, price, total). */
-@container qlines (max-width: 599.98px) {
-  .lhead {
-    display: none;
-  }
-  .lrow {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: 'item qty' 'cimh cimh' 'sup sup' 'price total';
-    row-gap: var(--sp-2);
-    padding: var(--sp-3) var(--sp-4);
-  }
-  .lrow > :nth-child(1) { grid-area: item; }
-  .lrow > :nth-child(2) { grid-area: qty; }
-  .lrow > :nth-child(3) { grid-area: cimh; }
-  .lrow > :nth-child(4) { grid-area: sup; }
-  .lrow > :nth-child(5) { grid-area: price; }
-  .lrow > :nth-child(6) { grid-area: total; align-self: center; }
-  .cell-label {
-    display: inline;
-    color: rgb(var(--v-theme-secondary));
-  }
-}
-/* The supplier list sits outside the lines panel: it still follows the window. */
-@media (max-width: 759.98px) {
-  .sup {
+@media (max-width: 899.98px) {
+  .qfoot {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .sup-file {
+  .figs {
     grid-column: 1 / -1;
-    grid-row: 2;
+    flex-wrap: wrap;
+  }
+}
+/* Narrower: the document sits above the lines (shorter), still beside nothing it would squeeze. */
+@media (max-width: 1099.98px) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .viewer {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid rgb(var(--v-theme-seam));
+  }
+  .viewer .viewer-doc {
+    flex: none;
+    height: min(60vh, 560px); /* its own scroll: a price field stays one swipe from the figure */
+  }
+  .sup-strip {
+    flex-wrap: wrap;
+  }
+}
+@container qlines (max-width: 479.98px) {
+  .lhead {
+    display: none;
+  }
+  .lrow,
+  .cimh-lines .lrow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'item qty' 'price total';
+    row-gap: var(--sp-2);
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .lrow > :nth-child(1) { grid-area: item; }
+  .lrow > :nth-child(2) { grid-area: qty; }
+  .lrow > :nth-child(3) { grid-area: price; }
+  .lrow > :nth-child(4) { grid-area: total; }
+  .cell-label {
+    display: inline;
+    color: rgb(var(--v-theme-secondary));
   }
 }
 @media (max-width: 599.98px) {
   .qb {
     padding: var(--sp-3) var(--sp-3) var(--sp-4);
   }
+  /* A pinned summary would take a third of a phone screen: it closes the page instead. */
+  .qfoot {
+    position: static;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .send {
+    width: 100%;
+  }
+  .sup-remove {
+    margin-left: 0;
+  }
+  .tile {
+    width: 132px;
+    height: auto;
+    min-height: 132px; /* grows so both lines of the file name show */
+  }
+  /* The way back goes above the title again: beside it the title had ~100 px. */
+  .qb-head {
+    flex-wrap: wrap;
+  }
+  .qb-head .crumbs {
+    flex-basis: 100%;
+  }
+  .qb-id {
+    flex-basis: 100%;
+  }
+  .add-word {
+    display: none;
+  }
+  .tab {
+    padding: 10px 14px 12px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
+  .panel-body {
+    animation: none;
+  }
+  .tab::after,
+  .tile,
   .lrow {
     transition: none;
   }
