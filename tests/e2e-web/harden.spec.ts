@@ -5,7 +5,7 @@
  */
 import { expect, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { adminWithMfa, auditDialog, customerAccount, nextTotpWindow, orderableProduct, PASSWORD, run, siaGo, staffAccount, totp } from './support'
+import { adminWithMfa, auditDialog, customerAccount, nextTotpWindow, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, totp } from './support'
 
 test.describe('harden: submits explain themselves, irreversible actions ask first', () => {
   test('SHOP: empty log in, cart without an address, removing an address', async ({ page }) => {
@@ -33,7 +33,8 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
 
     // Address dialog: Save marks the missing fields.
     await page.goto(`${SHOP}/account`)
-    await page.getByRole('button', { name: 'Add address' }).click()
+    await page.getByRole('button', { name: 'Manage' }).click() // addresses open in place
+    await page.getByRole('button', { name: 'Add an address' }).click()
     const dialog = page.getByRole('dialog')
     await dialog.getByRole('button', { name: 'Save address' }).click()
     await expect(dialog.getByText('Required').first()).toBeVisible()
@@ -45,17 +46,18 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     await dialog.getByLabel('City / town').fill('Bridgetown')
     await dialog.getByRole('button', { name: 'Save address' }).click()
     await expect(page.getByText('Address saved')).toBeVisible()
+    await shot(page, 'shop-account-addresses')
 
     // Removing it asks first; Keep address leaves it.
     await page.getByRole('button', { name: 'Remove address 1' }).click()
     await expect(dialog).toContainText('1 Husbands Road')
     await auditDialog(page, 'remove-address')
     await dialog.getByRole('button', { name: 'Keep address' }).click()
-    await expect(page.getByText('Casey Harden')).toBeVisible()
+    await expect(page.getByText('Casey Harden').first()).toBeVisible()
     await page.getByRole('button', { name: 'Remove address 1' }).click()
     await dialog.getByRole('button', { name: 'Remove', exact: true }).click()
     await expect(page.getByText('Address removed')).toBeVisible()
-    await expect(page.getByText('No saved addresses yet')).toBeVisible()
+    await expect(page.getByText(/None saved yet/)).toBeVisible()
   })
 
   test('SIA settings: one Save for Reference; leaving with unsaved changes asks first', async ({ page }) => {

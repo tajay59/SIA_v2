@@ -4339,10 +4339,10 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>S-19</td>
 <td><code>/account</code></td>
-<td>Profile</td>
+<td>Your account</td>
 <td>auth</td>
-<td>Name, phone, organisation (read-only + "contact admin"), addresses (max 10), change email, change password, theme, <strong>your data</strong></td>
-<td>Save ↺ (If-Match) · Change email ⧉ → code step · Remove address ⧉ (confirm; sent requests keep their copy) · Download my data · Ask to delete ⧉ (password) · Log out → S-01</td>
+<td><strong>Account checklist</strong> (impeccable 2026-11-16, owner's pick of three; brief <code>web/shop/.impeccable/surfaces/src-pages-account-vue.md</code>): navy band with name, email, organisation, role · status, Log out, and a checklist of where the account stands (email verified, approved by CIMH or "CIMH account", organisation linked by an administrator, saved addresses for customers, deletion requested); yellow ring = waiting on CIMH, dashed = for you. Below, one ruled row per section, read first (current values + one action): Personal details and Addresses (tiles, max 10, dashed Add tile) open in place, one at a time; Sign-in (change email, change password); Appearance (dark theme switch, this device); <strong>Your data</strong> (download, ask to delete). Logic: web-app <code>useProfile</code> (shared with SIA A-21)</td>
+<td>Edit → Save details ↺ (If-Match; disabled only while nothing changed) / Cancel · Manage → Add / Edit address ⧉ · Remove address ⧉ (confirm; sent orders keep their copy) · Change email ⧉ → code step · Change password ⧉ · Download my data · Ask to delete ⧉ (password) · Log out → S-01</td>
 </tr>
 <tr>
 <td>S-20</td>

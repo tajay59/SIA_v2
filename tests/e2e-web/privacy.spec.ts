@@ -47,7 +47,8 @@ test.describe.serial('personal data: export and erasure', () => {
     await dialog.getByLabel('Your password', { exact: true }).fill(PASSWORD)
     await dialog.getByRole('button', { name: 'Ask to delete' }).click()
     await expect(page.getByText('Request sent. An administrator will erase your account.')).toBeVisible()
-    await expect(page.getByText(/You asked for this on/)).toBeVisible()
+    await expect(page.getByText(/You asked for deletion on/)).toBeVisible()
+    await shot(page, 'shop-account-erasure')
   })
 
   test('admin finds the request and erases the account (A-17)', async ({ page }) => {
