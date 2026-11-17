@@ -7,7 +7,8 @@ Run inside the document-svc container (read-only rootfs: the script comes in wit
 stdin, one JSON object per line {"id", "files"} from mongosh):
 
     docker compose exec -T mongo mongosh inventory --quiet --eval \
-      'db.orders.find({"files.0": {$exists: true}}, {_id: 0, id: 1, files: 1}).forEach(o => print(EJSON.stringify(o, {relaxed: true})))' \
+      'db.orders.find({"files.0": {$exists: true}}, {_id: 0, id: 1, files: 1})
+         .forEach(o => print(EJSON.stringify(o, {relaxed: true})))' \
       > /tmp/orders-files.jsonl
     docker compose exec -T document-svc python -c "$(cat backfill_file_meta.py)" [--dry-run] < /tmp/orders-files.jsonl
 
