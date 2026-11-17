@@ -111,6 +111,11 @@ def convert_bbd(amount_bbd: Decimal, currency: str, exchange_rate: Decimal | Non
     return money(amount_bbd / exchange_rate)
 
 
+def usd_to_bbd(amount_usd: Decimal, exchange_rate: Decimal) -> Decimal:
+    """A supplier's USD price in BBD (rate = BBD per 1 USD), rounded to cents."""
+    return money(amount_usd * exchange_rate)
+
+
 def line_options(line_id: str, supplier_lines: dict[str, Any], cimh_lines: dict[str, Any]) -> list[str]:
     out = []
     if line_id in cimh_lines:

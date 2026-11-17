@@ -194,7 +194,8 @@ export interface paths {
          * Submit my cart as order request(s)
          * @description Validates every line against the catalogue, saves product snapshots, empties the cart.
          *     A cart with both paid and Pro Bono lines creates **two** requests (PAID + PROBONO).
-         *     `currency` is required when the cart contains paid lines.
+         *     Every new paid request is quoted in **BBD**; the server sets `currency`. A `currency` sent by an older
+         *     client is accepted and ignored. Supplier quotes in USD are converted per supplier (see `SupplierQuoteInput`).
          */
         post: {
             parameters: {
@@ -211,6 +212,10 @@ export interface paths {
             requestBody: {
                 content: {
                     "application/json": {
+                        /**
+                         * @deprecated
+                         * @description Ignored; new requests are always BBD
+                         */
                         currency?: components["schemas"]["Currency"];
                         shipTo: components["schemas"]["ShippingAddress"];
                         billTo?: components["schemas"]["ShippingAddress"];
@@ -1327,8 +1332,13 @@ export interface components {
         };
         SupplierQuoteInput: {
             supplier: string;
+            /** @description Currency of the supplier's prices (default BBD). USD prices are converted to BBD with `exchangeRate` when the quote is sent. Ignored on legacy USD requests (prices are then in the request currency). */
+            currency?: components["schemas"]["Currency"];
+            /** @description BBD per 1 USD; required (> 0) when currency is USD, else EXCHANGE_RATE_REQUIRED */
+            exchangeRate?: string | null;
             lines: {
                 lineId: string;
+                /** @description in the supplier currency */
                 unitPrice: components["schemas"]["Money"];
             }[];
             fileIds: string[];
@@ -1342,8 +1352,14 @@ export interface components {
                 lineId: string;
                 unitPrice: components["schemas"]["Money"];
                 total: components["schemas"]["Money"];
+                /** @description The supplier's own unit price when it was converted (in sourceCurrency) */
+                sourceUnitPrice?: components["schemas"]["Money"] | null;
             }[];
             total: components["schemas"]["Money"];
+            /** @description Currency of the supplier's uploaded quote, when it differs from the request currency */
+            sourceCurrency?: components["schemas"]["Currency"] | null;
+            /** @description BBD per 1 USD used for the conversion */
+            exchangeRate?: string | null;
             fileIds?: string[];
             expiresAt: components["schemas"]["Timestamp"];
             sentAt?: components["schemas"]["Timestamp"];

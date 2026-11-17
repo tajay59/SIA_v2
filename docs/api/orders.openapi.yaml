@@ -64,7 +64,8 @@ paths:
       description: |
         Validates every line against the catalogue, saves product snapshots, empties the cart.
         A cart with both paid and Pro Bono lines creates **two** requests (PAID + PROBONO).
-        `currency` is required when the cart contains paid lines.
+        Every new paid request is quoted in **BBD**; the server sets `currency`. A `currency` sent by an older
+        client is accepted and ignored. Supplier quotes in USD are converted per supplier (see `SupplierQuoteInput`).
       parameters:
         - { $ref: './common.yaml#/components/parameters/IdempotencyKey' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -77,7 +78,7 @@ paths:
               additionalProperties: false
               required: [shipTo]
               properties:
-                currency: { $ref: './common.yaml#/components/schemas/Currency' }
+                currency: { $ref: './common.yaml#/components/schemas/Currency', deprecated: true, description: 'Ignored; new requests are always BBD' }
                 shipTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
                 billTo: { $ref: './common.yaml#/components/schemas/ShippingAddress' }
                 notes: { type: [string, 'null'], maxLength: 2000 }
@@ -536,9 +537,13 @@ components:
       required: [supplier, lines, fileIds]
       properties:
         supplier: { type: string, maxLength: 200 }
+        currency:
+          $ref: './common.yaml#/components/schemas/Currency'
+          description: Currency of the supplier's prices (default BBD). USD prices are converted to BBD with `exchangeRate` when the quote is sent. Ignored on legacy USD requests (prices are then in the request currency).
+        exchangeRate: { type: [string, 'null'], pattern: '^\d+(\.\d{1,6})?$', description: 'BBD per 1 USD; required (> 0) when currency is USD, else EXCHANGE_RATE_REQUIRED' }
         lines:
           type: array
-          items: { type: object, required: [lineId, unitPrice], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' } } }
+          items: { type: object, required: [lineId, unitPrice], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money', description: in the supplier currency } } }
         fileIds: { type: array, items: { type: string } }
     SupplierQuote:
       type: object
@@ -549,8 +554,10 @@ components:
         supplier: { type: string, description: staff/admin only }
         lines:
           type: array
-          items: { type: object, required: [lineId, unitPrice, total], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' }, total: { $ref: './common.yaml#/components/schemas/Money' } } }
+          items: { type: object, required: [lineId, unitPrice, total], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' }, total: { $ref: './common.yaml#/components/schemas/Money' }, sourceUnitPrice: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: "The supplier's own unit price when it was converted (in sourceCurrency)" } } }
         total: { $ref: './common.yaml#/components/schemas/Money' }
+        sourceCurrency: { oneOf: [ { $ref: './common.yaml#/components/schemas/Currency' }, { type: 'null' } ], description: "Currency of the supplier's uploaded quote, when it differs from the request currency" }
+        exchangeRate: { type: [string, 'null'], description: BBD per 1 USD used for the conversion }
         fileIds: { type: array, items: { type: string } }
         expiresAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         sentAt: { $ref: './common.yaml#/components/schemas/Timestamp' }

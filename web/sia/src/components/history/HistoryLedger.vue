@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** A-15 Day ledger: filter strip (unit, scanned by, date presets, operation chips); movements grouped by Barbados day, newest first. */
-import { DateField, OPERATION_LABELS, shortRef } from '@cimh/web-app'
+import { DateField, OPERATION_LABELS, ShortRef } from '@cimh/web-app'
 import { mdiArrowRight, mdiBarcodeScan } from '@mdi/js'
 import { onMounted } from 'vue'
 import PersonPicker from '../PersonPicker.vue'
@@ -59,7 +59,7 @@ onMounted(reload)
                   <template v-if="h.from && place(h.from)"><span>{{ place(h.from) }}</span><svg viewBox="0 0 24 24" width="14" height="14" aria-label="to"><path :d="mdiArrowRight" fill="currentColor" /></svg></template>
                   <router-link v-if="h.shelf" class="place-link" :to="unitLink(h.shelf)">{{ place(h) }}</router-link>
                   <span v-if="personPart(h, name)">{{ personPart(h, name) }}</span>
-                  <router-link v-if="h.orderId" class="console-mono" :to="requestLink(h.orderId)">{{ shortRef(h.orderId) }}</router-link>
+                  <router-link v-if="h.orderId" class="console-mono" :to="requestLink(h.orderId)"><ShortRef :id="h.orderId" /></router-link>
                   <span v-if="h.reason" class="muted">“{{ h.reason }}”</span>
                 </td>
                 <td class="by">{{ name(h.user) }}</td>

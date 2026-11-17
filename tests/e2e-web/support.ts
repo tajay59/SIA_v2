@@ -259,7 +259,12 @@ export async function auditDialog(page: Page, name: string): Promise<void> {
   await shot(page, name)
 }
 export async function shot(page: Page, name: string): Promise<void> {
-  if (process.env.SHOTS) await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage: true })
+  if (!process.env.SHOTS) return
+  // Entrance motion must settle first (infinite loops such as a breathing ring are left running).
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+  )
+  await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage: true })
 }
 
 /**

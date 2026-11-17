@@ -20,16 +20,16 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     await page.getByLabel('Email').fill(customer)
     await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
     await page.getByRole('button', { name: 'Log in' }).click()
-    await expect(page.getByRole('link', { name: 'My requests' }).first()).toBeVisible()
+    await expect(page.getByRole('link', { name: 'Orders', exact: true }).first()).toBeVisible()
 
     // Cart: Continue is enabled without an invoice address and says what is missing.
     await page.goto(`${SHOP}/catalogue/${pid}`)
     await page.getByRole('button', { name: 'Add to cart' }).click()
     await page.goto(`${SHOP}/cart`)
-    await page.getByRole('button', { name: 'Continue to quote details' }).click()
+    await page.getByRole('button', { name: 'Continue to invoice' }).click()
     await page.getByRole('button', { name: 'Continue to delivery' }).click()
     await expect(page.getByRole('alert').filter({ hasText: 'Add an invoice address to continue.' })).toBeVisible()
-    await expect(page.getByRole('heading', { name: 'Invoice address' })).toBeVisible() // still on step 2
+    await expect(page.getByRole('heading', { name: 'Who is the quote made out to?' })).toBeVisible() // still on step 2
 
     // Address dialog: Save marks the missing fields.
     await page.goto(`${SHOP}/account`)
@@ -94,7 +94,7 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
 
     // Leaving asks; Stay keeps the page and the edit.
-    await siaGo(page, 'Products')
+    await siaGo(page, 'Inventory')
     const dialog = page.getByRole('dialog')
     await expect(dialog).toContainText('Reference')
     await auditDialog(page, 'settings-leave')
@@ -106,14 +106,14 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
     await expect(page.getByText('Reference saved')).toBeVisible()
 
     // Clean again: leaving is not held up.
-    await siaGo(page, 'Products')
+    await siaGo(page, 'Inventory')
     await expect(page).toHaveURL(/\/products/)
 
     // Unsaved again, and this time leave: the edit is dropped.
     await page.goto(`${SIA}/admin/settings?tab=reference`)
     await page.getByRole('combobox', { name: 'Departments' }).fill(`${dept} b`)
     await page.getByRole('combobox', { name: 'Departments' }).press('Enter')
-    await siaGo(page, 'Products')
+    await siaGo(page, 'Inventory')
     await dialog.getByRole('button', { name: 'Leave without saving' }).click()
     await expect(page).toHaveURL(/\/products/)
   })

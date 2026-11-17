@@ -22,7 +22,7 @@ import {
   saveQuoteDraft,
   uploadRequestFile,
   useNotify,
-  shortRef,
+  ShortRef,
 } from '@cimh/web-app'
 import { formatMoney } from '@cimh/web-ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -36,9 +36,9 @@ const notify = useNotify()
 const r = ref<OrderRequest | null>(null)
 const loadFailed = ref(false)
 
-interface Supplier { key: number; name: string; fileIds: string[]; uploading: boolean }
+interface Supplier { key: number; name: string; fileIds: string[]; uploading: boolean; currency: 'BBD' | 'USD'; rate: string }
 interface LineState { cimh: boolean; supplier: number | null; unitPrice: string }
-type Draft = { supplierQuotes: { supplier: string; fileIds: string[]; lines: { lineId: string; unitPrice: string }[] }[]; cimh?: { lineIds: string[]; exchangeRate?: string | null } | null }
+type Draft = { supplierQuotes: { supplier: string; currency?: 'BBD' | 'USD'; exchangeRate?: string | null; fileIds: string[]; lines: { lineId: string; unitPrice: string }[] }[]; cimh?: { lineIds: string[]; exchangeRate?: string | null } | null }
 
 const suppliers = ref<Supplier[]>([])
 const lines = reactive<Record<string, LineState>>({})
@@ -64,6 +64,16 @@ function convert(bbdCents: number): number | null {
   const num = BigInt(bbdCents) * 1_000_000n
   let q = num / micro
   if ((num % micro) * 2n >= micro) q += 1n
+  return Number(q)
+}
+/** Supplier USD cents → BBD cents (unit price × BBD-per-USD rate, half-up like the server), or null without a valid rate. */
+function usdToBbd(usdCents: number, rate: string): number | null {
+  if (!RATE.test(rate) || Number(rate) <= 0) return null
+  const [i, f = ''] = rate.split('.')
+  const micro = BigInt(i) * 1_000_000n + BigInt(f.padEnd(6, '0'))
+  const num = BigInt(usdCents) * micro
+  let q = num / 1_000_000n
+  if ((num % 1_000_000n) * 2n >= 1_000_000n) q += 1n
   return Number(q)
 }
 const cur = computed(() => r.value?.currency ?? 'BBD')
@@ -110,9 +120,11 @@ async function load() {
   // Start from the draft, else from the last sent quote (revising), else empty.
   const sq: Draft['supplierQuotes'] = draft?.supplierQuotes ??
     (x.quotes ?? []).filter((q) => q.version === latest).map((q) => ({ supplier: q.supplier ?? '', fileIds: q.fileIds ?? [],
-      lines: q.lines.map((l) => ({ lineId: l.lineId, unitPrice: l.unitPrice })) }))  // prettier-ignore
+      currency: q.sourceCurrency ?? 'BBD', exchangeRate: q.exchangeRate ?? null,
+      lines: q.lines.map((l) => ({ lineId: l.lineId, unitPrice: l.sourceUnitPrice ?? l.unitPrice })) }))  // prettier-ignore
   const cimhIds = draft?.cimh?.lineIds ?? x.cimhQuote?.lines.map((l) => l.lineId) ?? []
-  suppliers.value = sq.map((s) => ({ key: nextKey++, name: s.supplier, fileIds: [...s.fileIds], uploading: false }))
+  suppliers.value = sq.map((s) => ({ key: nextKey++, name: s.supplier, fileIds: [...s.fileIds], uploading: false,
+    currency: s.currency ?? 'BBD', rate: s.exchangeRate ?? '' }))  // prettier-ignore
   for (const l of x.lines) {
     const i = sq.findIndex((s) => s.lines.some((y) => y.lineId === l.lineId))
     lines[l.lineId] = {
@@ -150,6 +162,18 @@ const rateError = computed(() => {
   return ''
 })
 const dupes = computed(() => suppliers.value.some(dupName))
+// A supplier quoted in USD (BBD requests only) needs its own BBD-per-USD rate.
+const supUsd = (s: Supplier | undefined) => !usd.value && s?.currency === 'USD'
+const supRateError = (s: Supplier) => {
+  if (!supUsd(s)) return ''
+  if (!s.rate) return 'Required for a USD quote'
+  if (!RATE.test(s.rate)) return 'A number, up to 6 decimals, e.g. 2.0'
+  return Number(s.rate) > 0 ? '' : 'Must be more than 0'
+}
+const ratesMissing = computed(() => suppliers.value.filter((s) => supRateError(s)).length)
+const supOf = (key: number | null) => suppliers.value.find((s) => s.key === key)
+/** The currency staff type a line's price in: the supplier's on BBD requests, else the request's. */
+const priceCur = (lineId: string) => (supUsd(supOf(lines[lineId]?.supplier ?? null)) ? 'USD' : cur.value)
 
 // ---- draft body: only valid, unique suppliers and valid prices travel; the rest stays on screen
 function draftBody(): Draft {
@@ -158,6 +182,7 @@ function draftBody(): Draft {
       .filter((s) => s.name.trim() && !dupName(s))
       .map((s) => ({
         supplier: s.name.trim(),
+        ...(usd.value ? {} : { currency: s.currency, exchangeRate: s.currency === 'USD' && !supRateError(s) ? s.rate : null }),
         fileIds: s.fileIds,
         lines: Object.entries(lines)
           .filter(([, v]) => v.supplier === s.key && MONEY.test(v.unitPrice))
@@ -238,7 +263,7 @@ onBeforeUnmount(() => {
 
 // ---- suppliers
 function addSupplier() {
-  suppliers.value.push({ key: nextKey++, name: '', fileIds: [], uploading: false })
+  suppliers.value.push({ key: nextKey++, name: '', fileIds: [], uploading: false, currency: 'BBD', rate: '' })
   void nextTick(() => (document.querySelector('.sup:last-of-type input') as HTMLInputElement | null)?.focus())
 }
 const usedBy = (s: Supplier) => Object.values(lines).filter((v) => v.supplier === s.key).length
@@ -301,9 +326,16 @@ const cimhTotal = (lineId: string) => {
   const u = cimhUnit(lineId)
   return u === null ? null : u * qtyOf(lineId)
 }
-const supTotal = (lineId: string) => {
+/** A supplier line's unit price in the request currency (USD supplier prices converted to BBD). */
+function supUnit(lineId: string): number | null {
   const v = lines[lineId]
-  return v && v.supplier !== null && MONEY.test(v.unitPrice) ? cents(v.unitPrice) * qtyOf(lineId) : null
+  if (!v || v.supplier === null || !MONEY.test(v.unitPrice)) return null
+  const s = supOf(v.supplier)
+  return supUsd(s) ? usdToBbd(cents(v.unitPrice), s!.rate) : cents(v.unitPrice)
+}
+const supTotal = (lineId: string) => {
+  const u = supUnit(lineId)
+  return u === null ? null : u * qtyOf(lineId)
 }
 const noCost = computed(() => r.value?.lines.filter((l) => lines[l.lineId]?.cimh && !costBBD[l.productId] && l.productId in costBBD) ?? [])
 const totals = computed(() => {
@@ -341,7 +373,7 @@ const totals = computed(() => {
 
 // ---- send
 const sending = ref(false)
-const canSend = computed(() => !missing.value.length && !needsRate.value && !dupes.value && !unsavedPrices.value)
+const canSend = computed(() => !missing.value.length && !needsRate.value && !dupes.value && !unsavedPrices.value && !ratesMissing.value)
 const confirmSend = ref(false)
 const nextVersion = computed(() => Math.max(0, ...(r.value?.quotes ?? []).map((q) => q.version)) + 1)
 const pricedLines = computed(() => (r.value?.lines.length ?? 0) - missing.value.length)
@@ -380,7 +412,7 @@ async function send() {
         <div>
           <h1 class="qb-title">{{ r.status === 'QUOTED' ? 'Revise quote' : 'Build quote' }}</h1>
           <p class="qb-sub">
-            {{ r.organisationName || r.customerName }} · <span class="console-mono" :title="r.id">{{ shortRef(r.id) }}</span> · prices in
+            {{ r.organisationName || r.customerName }} · <span class="console-mono"><ShortRef :id="r.id" /></span> · prices in
             <strong class="console-mono">{{ r.currency }}</strong>
           </p>
         </div>
@@ -420,6 +452,23 @@ async function send() {
                   class="sup-file"
                   @update:model-value="(f: File | File[] | null) => attach(s, f)"
                 />
+                <div v-if="!usd" class="sup-cur">
+                  <v-btn-toggle v-model="s.currency" mandatory density="compact" variant="outlined" divided :aria-label="`Currency of ${s.name || 'this supplier'}'s quote`">
+                    <v-btn value="BBD" size="small">BBD</v-btn>
+                    <v-btn value="USD" size="small">USD</v-btn>
+                  </v-btn-toggle>
+                  <v-text-field
+                    v-if="s.currency === 'USD'"
+                    v-model="s.rate"
+                    label="BBD per 1 USD"
+                    density="compact"
+                    inputmode="decimal"
+                    class="sup-rate"
+                    hide-details="auto"
+                    :error-messages="s.rate || ratesMissing ? supRateError(s) || undefined : undefined"
+                  />
+                  <span class="t-caption muted">{{ s.currency === 'USD' ? 'Type the USD prices; the customer sees BBD.' : 'Prices in BBD' }}</span>
+                </div>
                 <div class="sup-actions">
                   <v-btn
                     v-if="s.name.trim() && unassigned"
@@ -505,7 +554,8 @@ async function send() {
                     :disabled="lines[l.lineId]!.supplier === null"
                     :error-messages="priceError(lines[l.lineId]!) || undefined"
                     hide-details="auto"
-                    :aria-label="`Unit price for ${l.product.name}`"
+                    :aria-label="`Unit price for ${l.product.name} in ${priceCur(l.lineId)}`"
+                    :prefix="priceCur(l.lineId) === 'USD' && !usd ? 'USD' : undefined"
                     @keydown.enter.prevent="nextPrice(l.lineId)"
                   />
                 </span>
@@ -571,6 +621,7 @@ async function send() {
                 </ul>
               </div>
               <p v-if="dupes" class="warn"><v-icon :icon="BTN.reject" size="16" />Two suppliers share a name.</p>
+              <p v-if="ratesMissing" class="warn"><v-icon :icon="BTN.reject" size="16" />Enter the exchange rate for each USD supplier quote.</p>
               <p v-if="unsavedPrices" class="warn"><v-icon :icon="BTN.reject" size="16" />Fix the price{{ unsavedPrices > 1 ? 's' : '' }} marked in red.</p>
 
               <v-btn color="primary" class="m3 send" :prepend-icon="BTN.verify" :disabled="!canSend" @click="confirmSend = true">
@@ -585,7 +636,7 @@ async function send() {
       <v-dialog v-model="confirmSend" max-width="520" :persistent="sending">
         <v-card>
           <v-card-title class="t-h3">{{ r.status === 'QUOTED' ? 'Email the revised quote?' : 'Email this quote?' }}</v-card-title>
-          <v-card-subtitle><span class="console-mono" :title="r.id">{{ shortRef(r.id) }}</span></v-card-subtitle>
+          <v-card-subtitle><span class="console-mono"><ShortRef :id="r.id" /></span></v-card-subtitle>
           <v-divider />
           <v-card-text class="stack">
             <dl class="sum check">
@@ -729,6 +780,17 @@ async function send() {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
+}
+/* Currency of the supplier's own quote (BBD requests): toggle, rate when USD, a line saying what to type. */
+.sup-cur {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+}
+.sup-rate {
+  flex: 0 1 180px;
 }
 .files {
   grid-column: 1 / -1;

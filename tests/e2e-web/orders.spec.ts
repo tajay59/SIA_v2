@@ -32,7 +32,7 @@ async function shopLogin(page: Page, email: string) {
   await page.getByLabel('Email').fill(email)
   await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
   await page.getByRole('button', { name: 'Log in' }).click()
-  await expect(page.getByRole('link', { name: 'My requests' }).first()).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Orders', exact: true }).first()).toBeVisible()
 }
 async function siaLogin(page: Page, email: string) {
   await page.goto(`${SIA}/login`)
@@ -88,15 +88,17 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByText(/BBD|150\.00/)).toHaveCount(0) // no prices before the quote
 
     await expect(page.getByRole('heading', { name: 'Items to be quoted' })).toBeVisible()
-    await page.getByRole('button', { name: 'Continue to quote details' }).click()
-    await expect(page.getByLabel('BBD (Barbados dollar)')).toBeChecked() // preselected, so Continue is never blocked
+    await page.getByRole('button', { name: 'Continue to invoice' }).click()
+    await expect(page.getByRole('heading', { name: 'Who is the quote made out to?' })).toBeFocused()
     await page.getByRole('button', { name: 'Continue to delivery' }).click()
     await page.getByLabel('Notes for CIMH (optional)').fill('Needed for the hurricane season')
-    await page.getByRole('button', { name: 'Submit request' }).click()
+    await expect(page.getByText('Barbados dollars (BBD)')).toBeVisible() // every quote is in BBD
+    await shot(page, 'shop-review')
+    await page.getByRole('button', { name: 'Send request' }).click()
     await expect(page.getByRole('heading', { name: 'Requests sent' })).toBeVisible()
     await shot(page, 'shop-sent')
-    paidRequest = (await page.locator('p', { hasText: /^\s*Request/ }).getByRole('link').textContent())!.trim()
-    proRequest = (await page.locator('p', { hasText: 'Pro Bono request' }).getByRole('link').textContent())!.trim()
+    paidRequest = (await page.locator('li', { hasText: /^\s*Request/ }).getByRole('link').textContent())!.trim()
+    proRequest = (await page.locator('li', { hasText: 'Pro Bono request' }).getByRole('link').textContent())!.trim()
     expect(paidRequest).toMatch(/^ORD/)
     expect(proRequest).toMatch(/^ORD/)
     await expect(page.getByRole('link', { name: /Cart, 0 items/ })).toBeVisible()
@@ -104,7 +106,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
 
   test('J-05 staff start quoting and send a quote with a CIMH-stock option', async ({ page }) => {
     await siaLogin(page, staff)
-    await siaGo(page, 'Requests')
+    await siaGo(page, 'Orders')
     await page.getByRole('textbox', { name: 'Request id, customer or organisation' }).fill(paidRequest)
     const row = page.getByRole('option', { name: new RegExp(paidRequest.slice(-6)) }) // the queue shows ORD…last6
     await row.focus()
@@ -133,14 +135,15 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
 
   test('J-03 customer chooses CIMH stock, signs the agreement and accepts', async ({ page }) => {
     await shopLogin(page, customer)
-    await page.getByRole('link', { name: 'My requests' }).first().click()
+    await page.getByRole('link', { name: 'Orders', exact: true }).first().click()
     // The quote leads the list under "Waiting for you", named by the item, with its expiry.
     const waiting = page.getByRole('region', { name: 'Waiting for you' })
     await expect(waiting.getByText('Quote ready')).toBeVisible()
     await expect(waiting.getByText(paidName)).toBeVisible()
     await expect(waiting.getByText(/valid until .* days left/)).toBeVisible()
+    await shot(page, 'shop-requests-docket')
     await page.getByRole('link', { name: new RegExp(paidRequest.slice(-6)) }).click() // the list shows ORD…last6
-    await expect(page.getByRole('heading', { level: 1, name: paidName })).toBeVisible()
+    await expect(page.getByRole('heading', { name: paidName })).toBeVisible()
     // Table cells on wide screens, line cards on phones.
     await expect(page.getByText(/360\.00/).locator('visible=true').first()).toBeVisible() // supplier 2 × 180.00
     await expect(page.getByText(/300\.00/).locator('visible=true').first()).toBeVisible() // CIMH 2 × 150.00
@@ -209,7 +212,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
   test('J-04 customer sees the request delivered', async ({ page }) => {
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/requests/${paidRequest}`)
-    await expect(page.getByRole('alert').getByText('Delivered', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Where it stands' }).getByText('Delivered', { exact: true })).toBeVisible()
     await expect(page.getByText('Collected by Cass')).toBeVisible()
     await shot(page, 'shop-request-delivered')
     await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // the line's choice

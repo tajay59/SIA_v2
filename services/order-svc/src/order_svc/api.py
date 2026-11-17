@@ -65,7 +65,7 @@ class QtyIn(Strict):
 
 
 class SubmitIn(Strict):
-    currency: Currency | None = None
+    currency: Currency | None = None  # deprecated: ignored, new requests are always BBD
     shipTo: Address
     billTo: Address | None = None
     notes: str | None = Field(default=None, max_length=2000)
@@ -97,6 +97,8 @@ class PriceLine(Strict):
 
 class SupplierQuoteIn(Strict):
     supplier: str = Field(min_length=1, max_length=200)
+    currency: Currency = "BBD"  # currency of the supplier's prices; USD is converted to BBD when sent
+    exchangeRate: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,6})?$")  # BBD per 1 USD
     lines: list[PriceLine] = Field(max_length=200)
     fileIds: list[Id] = Field(max_length=20)
 

@@ -49,7 +49,7 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
 
   test('register a site, a location and two shelves with QR codes (A-08)', async ({ page }) => {
     await login(page, staff)
-    await siaGo(page, 'Inventory')
+    await siaGo(page, 'Locations')
     await page.getByRole('link', { name: 'Register site' }).click()
     await page.getByLabel('Site name').fill(siteName)
     await page.getByRole('button', { name: 'Register site' }).click()

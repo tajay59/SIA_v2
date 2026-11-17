@@ -14,7 +14,7 @@ const route = useRoute('/requests/[id]/')
 <template>
   <div class="req-page">
     <nav class="crumbs" aria-label="Breadcrumb">
-      <v-btn to="/requests" variant="text" class="m3" :prepend-icon="BTN.back">Requests</v-btn>
+      <v-btn to="/requests" variant="text" class="m3" :prepend-icon="BTN.back">Orders</v-btn>
       <v-btn :to="{ path: '/requests', query: { open: route.params.id } }" variant="text" class="m3" :prepend-icon="BTN.list">Open beside the list</v-btn>
     </nav>
     <h1 class="sr-only">Request {{ route.params.id }}</h1>

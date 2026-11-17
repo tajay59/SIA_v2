@@ -352,7 +352,7 @@ One connected strip cut by seams, 44 px cells, 13/500 muted labels with a mono c
 Grid row, 44 px, seam below: mono id, customer (500) with Pro Bono badge, a reason line with icon + word, optional status chip (168 px column), waiting time right-aligned. Hover: Graphite Raised. Selected: Action Wash with a 2 px Action Blue bar on the left. Overdue waiting turns amber with the word "Overdue"; expiring quotes turn red. In compact mode (beside an open request) and on phones the row becomes two lines (who + wait, why + code).
 
 ### Next step well
-The one decision in the detail panel: Graphite Raised well, 1 px seam, 4 px corners; an icon + sentence in 16/600 (amber when urgent, red when expiring, muted when waiting), then the inline actions as M3 buttons.
+The one decision in the detail panel and its one coloured region (colorize 2026-11-16): when staff act, the well takes its tone (Action Blue for act/fulfil, amber urgent, red expiring) as a 12 % wash with a full 1 px edge at 55 %, the "Next step" label and icon in that hue and the sentence in ink at 18/24 700; waiting on the customer and closed stay a Graphite Raised well with a seam edge and a muted 16/600 sentence. 4 px corners; the inline actions follow as M3 buttons.
 
 ### Pro Bono badge
 11/16, 600, 0.02em, 1 px × 6 px padding, 3 px corners, Pro Bono Yellow with Pro Bono Ink.

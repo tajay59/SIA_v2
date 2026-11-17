@@ -13,6 +13,7 @@ import {
   primaryImage,
   PRODUCT_TYPES,
   ProductImage,
+  ShortRef,
   type ProductType,
   typeLabel,
   useCursorList,
@@ -25,7 +26,7 @@ import { useRoute, useRouter } from 'vue-router'
 import ProductRecord from '../../components/ProductRecord.vue'
 import StockMeter from '../../components/StockMeter.vue'
 
-definePage({ meta: { guard: 'staff', title: 'Products', ownHeading: true } })
+definePage({ meta: { guard: 'staff', title: 'Inventory', ownHeading: true } })
 const route = useRoute()
 const router = useRouter()
 const { reference } = useReference()
@@ -153,7 +154,7 @@ const summary = computed(() => {
 <template>
   <div class="products">
     <div class="top">
-      <h1 class="t-h1">Products</h1>
+      <h1 class="t-h1">Inventory</h1>
       <span class="spacer" />
       <v-btn class="m3 new-product" color="primary" :prepend-icon="mdiPlus" to="/products/new">New product</v-btn>
     </div>
@@ -265,7 +266,7 @@ const summary = computed(() => {
               <router-link :to="`/products/${p.id}`" class="pcard" @click.prevent="open(p)">
                 <span class="ptile"><ProductImage :image="primaryImage(p)" :alt="p.name" small sizes="220px" /></span>
                 <span class="pname">{{ p.name }}</span>
-                <span class="console-mono t-caption muted">{{ p.modelnumber || p.id }}</span>
+                <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" /></span>
                 <span class="sub">
                   <StockMeter :available="p.stockCount" :threshold="p.threshold" />
                   <span v-if="p.probono" class="probono-badge">Pro Bono</span>
@@ -491,6 +492,13 @@ const summary = computed(() => {
   gap: 2px;
   min-width: 0;
 }
+/* One line: a long model number ends in an ellipsis (full on hover); a bare id is shortened (full in a tooltip). */
+.pid {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pname {
   font-weight: 500;
   line-height: 20px;
@@ -558,6 +566,7 @@ const summary = computed(() => {
   color: inherit;
   text-decoration: none;
   border-radius: 4px;
+  min-width: 0;
 }
 .pcard:hover {
   background: rgb(var(--v-theme-surface-variant));

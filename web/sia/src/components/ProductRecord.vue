@@ -226,7 +226,7 @@ watch(product, (p) => p && emit('updated', p))
       <div class="console-skel sk-body" />
     </div>
     <template v-else>
-      <router-link v-if="!embedded" to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Products</router-link>
+      <router-link v-if="!embedded" to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Inventory</router-link>
 
       <!-- Identity -->
       <header class="head">

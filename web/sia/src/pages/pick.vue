@@ -23,7 +23,7 @@ import {
   type Shelf,
   unitWhere,
 } from '@cimh/web-app'
-import { orders, type RequestSummary, shortRef } from '@cimh/web-app'
+import { orders, type RequestSummary, ShortRef } from '@cimh/web-app'
 import { statusLabel } from '@cimh/web-ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -335,7 +335,7 @@ function unpicked(l: PickLine) {
                 <span class="age t-caption" :class="{ old: (q.waitingDays ?? 0) >= 3 }">{{ waited(q) }}</span>
               </span>
               <span class="r1">
-                <span class="t-mono t-caption rid">{{ shortRef(q.id) }}</span>
+                <span class="t-mono t-caption rid"><ShortRef :id="q.id" /></span>
                 <span v-if="q.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
               </span>
               <span class="t-caption muted">{{ q.lineCount }} {{ q.lineCount === 1 ? 'line' : 'lines' }} · {{ statusLabel(q.status) }}</span>

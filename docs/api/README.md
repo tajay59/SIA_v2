@@ -33,7 +33,7 @@ Viewing: open any `.openapi.yaml` in the VS Code OpenAPI extension, Swagger Edit
 | Field names | camelCase in the API. The database keeps legacy names where the BSD says so; services map between them |
 | Ids | Strings: `USR…`, `ORG…`, `ORD…`, `CRT…`, `QTE…`, `FIL…`. Products, units and shelves keep their legacy barcodes |
 | Dates | ISO-8601 UTC (`2026-11-06T14:03:22Z`); date-only fields are `YYYY-MM-DD`. The UI shows America/Barbados time |
-| Money | **String** with 2 decimals (`"1250.00"`), never a float. Catalogue cost is BBD; quotes carry `currency` (`BBD` or `USD`, never both) |
+| Money | **String** with 2 decimals (`"1250.00"`), never a float. Catalogue cost is BBD; new requests are quoted in BBD (`currency`; legacy requests may be USD). A supplier quote may be priced in USD and is converted to BBD per supplier (`sourceCurrency`, `exchangeRate`) |
 | Nullability | Optional fields may be absent **or** `null`; clients must handle both |
 | Unknown fields | Request bodies reject unknown fields (`422`). Responses may add fields at any time, so clients must ignore unknown ones |
 | Paging | Cursor-based: `?limit=` (≤ 100, default 25) & `?cursor=`. Responses carry `{ items, nextCursor }`, and `nextCursor: null` means the end. No offset paging |
@@ -119,7 +119,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 |---|---|
 | Auth | `ACCOUNT_PENDING_VERIFICATION`, `ACCOUNT_PENDING_APPROVAL`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_LOCKED`, `MFA_REQUIRED`, `TOKEN_REUSE`, `CODE_INVALID`, `CODE_EXPIRED`, `PASSWORD_BREACHED`, `LAST_ADMIN`, `INVALID_CREDENTIALS`, `MFA_INVALID`, `MFA_ALREADY_ENABLED`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `TOKEN_INVALID`, `CSRF_FAILED` |
 | Accounts / organisations | `ACCOUNT_ILLEGAL_TRANSITION`, `DUPLICATE`, `ORG_MERGE_INVALID` |
-| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `CURRENCY_REQUIRED`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `CHOICE_REQUIRED`, `TRACKING_REQUIRED` |
+| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `CHOICE_REQUIRED`, `TRACKING_REQUIRED` |
 | Inventory | `UNIT_NOT_FOUND`, `SHELF_NOT_FOUND`, `UNIT_NOT_STOWED`, `UNIT_ALREADY_STOWED` (on another shelf: relocate instead), `UNIT_ALREADY_PICKED`, `UNIT_RESERVED`, `UNIT_NOT_RESERVED_FOR_ORDER`, `UNIT_ASSIGNED` (issued to a person: unassign first), `UNIT_NOT_ASSIGNED`, `RESERVATION_FAILED` |
 | General | `VERSION_CONFLICT`, `PRECONDITION_REQUIRED` (428: `If-Match` missing), `VALIDATION_FAILED`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED` (422: same key, different request), `IDEMPOTENCY_IN_PROGRESS` (409: the first request with this key is still running; retry), `SEARCH_BUSY` (503 + `Retry-After`: too many searches at once, or a broad query hit its time limit) |
 

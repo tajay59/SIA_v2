@@ -280,6 +280,10 @@ const total = computed(() =>
 }
 /* Phones and tablets: the summary sits under the step content, before nothing else scrolls past it. */
 @media (max-width: 959px) {
+  /* Every step ends in its buttons: keep them clear of the bottom bar and toasts. */
+  .page {
+    padding-bottom: 120px;
+  }
   .layout {
     grid-template-columns: minmax(0, 1fr);
   }
