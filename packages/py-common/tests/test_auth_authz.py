@@ -158,6 +158,38 @@ def test_cookie_auth_requires_csrf_on_writes(verifier: TokenVerifier, keys: Keys
     assert client.post("/me", headers={"X-CSRF-Token": "abc"}).status_code == 200
 
 
+def _raw_cookies(*pairs: tuple[str, str]) -> dict[str, str]:
+    """A Cookie header with repeated names, as a browser sends it (httpx's jar would merge them)."""
+    return {"cookie": "; ".join(f"{k}={v}" for k, v in pairs)}
+
+
+def test_a_stray_access_cookie_does_not_replace_ours(verifier: TokenVerifier, keys: Keys) -> None:
+    # Dev 2026-11-18: another localhost app's access_token on "/" came after ours ("/api"); request.cookies kept
+    # the stray one, so sign-in worked and every call was 401. The browser sends ours first; either order works.
+    client = make_client(verifier)
+    ours = keys.token()
+    for pairs in (
+        (("access_token", ours), ("access_token", "stale.token.value")),
+        (("access_token", "stale.token.value"), ("access_token", ours)),
+    ):
+        assert client.get("/me", headers=_raw_cookies(*pairs)).status_code == 200
+    # None valid: the first one's error (ours expired → the client refreshes), never the stray's.
+    old = int(time.time()) - 3600
+    expired = keys.token(iat=old, exp=old + 60)
+    r = client.get("/me", headers=_raw_cookies(("access_token", expired), ("access_token", "junk")))
+    assert r.status_code == 401
+    assert r.json()["code"] == "TOKEN_EXPIRED"
+
+
+def test_a_stray_csrf_cookie_does_not_break_writes(verifier: TokenVerifier, keys: Keys) -> None:
+    client = make_client(verifier)
+    pairs = (("access_token", keys.token()), ("csrf_token", "ours"), ("csrf_token", "stray"))
+    assert client.post("/me", headers=_raw_cookies(*pairs) | {"X-CSRF-Token": "ours"}).status_code == 200
+    assert client.post("/me", headers=_raw_cookies(*pairs) | {"X-CSRF-Token": "stray"}).status_code == 200
+    assert client.post("/me", headers=_raw_cookies(*pairs) | {"X-CSRF-Token": "other"}).status_code == 403
+    assert client.post("/me", headers=_raw_cookies(*pairs)).status_code == 403
+
+
 def test_bearer_writes_need_no_csrf(verifier: TokenVerifier, keys: Keys) -> None:
     assert make_client(verifier).post("/me", headers=bearer(keys.token())).status_code == 200
 

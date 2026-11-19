@@ -105,6 +105,11 @@ class LinesIn(Strict):
     lines: list[Line] = Field(min_length=1, max_length=200)
 
 
+class AvailabilityIn(LinesIn):
+    # Units already held for this request count as available (a revised quote keeps its own reservation).
+    orderId: str | None = Field(default=None, min_length=1, max_length=64)
+
+
 class ReserveIn(LinesIn):
     orderId: str = Field(min_length=1, max_length=64)
 
@@ -295,8 +300,10 @@ async def history(
 
 
 @router.post("/internal/availability", tags=["internal"])
-async def availability(body: LinesIn, request: Request, me: Principal = Depends(require_order_svc)) -> dict[str, Any]:
-    return {"lines": await svc(request).availability([line.model_dump() for line in body.lines])}
+async def availability(
+    body: AvailabilityIn, request: Request, me: Principal = Depends(require_order_svc)
+) -> dict[str, Any]:
+    return {"lines": await svc(request).availability([line.model_dump() for line in body.lines], body.orderId)}
 
 
 @router.post("/internal/reservations", tags=["internal"])

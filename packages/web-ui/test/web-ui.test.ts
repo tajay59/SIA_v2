@@ -77,15 +77,15 @@ describe('theme', () => {
 
 describe('status chips (§3.4)', () => {
   it('maps every request status', () => {
-    expect(Object.keys(REQUEST_STATUS_TONE)).toHaveLength(14)
-    expect(statusTone('AWAITING_AGREEMENT')).toBe('warning')
+    expect(Object.keys(REQUEST_STATUS_TONE)).toHaveLength(13) // no AWAITING_AGREEMENT since view and sign
+    expect(statusTone('QUOTED')).toBe('info')
     expect(statusTone('DELIVERED')).toBe('success')
     expect(ACCOUNT_STATUS_TONE.PENDING_APPROVAL).toBe('warning')
     expect(statusTone('REJECTED')).toBe('error')
     expect(statusTone('UNKNOWN')).toBe('neutral')
   })
   it('labels are sentence case', () => {
-    expect(statusLabel('AWAITING_AGREEMENT')).toBe('Awaiting agreement')
+    expect(statusLabel('PENDING_APPROVAL')).toBe('Pending approval')
     expect(statusLabel('PENDING_VERIFICATION')).toBe('Pending verification')
     expect(statusLabel('')).toBe('')
   })

@@ -255,7 +255,7 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** Request detail (fields filtered by role; supplier names and POs are staff-only) */
+        /** Request detail (fields filtered by role; purchase orders, catalogue costs and the quote draft are staff-only) */
         get: {
             parameters: {
                 query?: never;
@@ -288,72 +288,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/requests/{requestId}/agreement": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                requestId: components["parameters"]["RequestId"];
-            };
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Choose options and get the payment agreement (requester or admin) - QUOTED → AWAITING_AGREEMENT
-         * @description Every line offered by both CIMH stock and a supplier needs a choice; lines with only one option default to it.
-         *     Locks the choices, computes the total, and generates the **agreement PDF** asynchronously
-         *     (`order.agreement_requested` → document-svc; it appears in `agreement.fileId` / `files[]` with kind `agreement`).
-         *     Calling again while AWAITING_AGREEMENT replaces the choices and the agreement (the old one becomes invalid).
-         */
-        post: {
-            parameters: {
-                query?: never;
-                header: {
-                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
-                    "If-Match": components["parameters"]["IfMatch"];
-                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
-                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
-                };
-                path: {
-                    requestId: components["parameters"]["RequestId"];
-                };
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": {
-                        /** @description Must equal the latest quote version (409 QUOTE_OUTDATED) */
-                        quoteVersion: number;
-                        choices: {
-                            lineId: string;
-                            choice: components["schemas"]["LineChoice"];
-                        }[];
-                    };
-                };
-            };
-            responses: {
-                /** @description AWAITING_AGREEMENT */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["Request"];
-                    };
-                };
-                403: components["responses"]["Forbidden"];
-                404: components["responses"]["NotFound"];
-                409: components["responses"]["Conflict"];
-                422: components["responses"]["Unprocessable"];
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/requests/{requestId}/accept": {
         parameters: {
             query?: never;
@@ -366,11 +300,13 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Accept with the signed agreement (requester or admin) - AWAITING_AGREEMENT → ACCEPTED
-         * @description The customer downloads the agreement, signs it, uploads it with `POST /api/documents/v1/files` (kind `signed_agreement`),
-         *     then calls this with the returned file id. This is the **commitment to pay** the agreement total. Records user, time, IP,
-         *     choices and the signed file. CIMH-chosen lines are reserved asynchronously (`order.accepted` → inventory); a failed
-         *     reservation flags the line for requote.
+         * Accept with the signed agreement (requester or admin) - QUOTED → ACCEPTED
+         * @description "View and sign": the agreement PDF is generated when staff send the quote (`agreement.fileId`, kind `agreement`).
+         *     The customer downloads it, signs it, uploads it with `POST /api/documents/v1/files` (kind `signed_agreement`;
+         *     document-svc stamps the current `quoteVersion` on it), then calls this with the returned file id. This is the
+         *     **commitment to pay** the agreement total. Records user, time, IP and the signed file. A signed copy made for an
+         *     earlier quote version is refused (409 QUOTE_OUTDATED). The customer has nothing to choose: staff fixed the source
+         *     of every line when sending the quote; CIMH stock lines were reserved then.
          */
         post: {
             parameters: {
@@ -429,8 +365,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Reject the signed agreement (staff; reason required) - ACCEPTED → AWAITING_AGREEMENT
-         * @description Releases any reserved stock; the customer is emailed to upload a correctly signed copy.
+         * Reject the signed agreement (staff; reason required) - ACCEPTED → QUOTED
+         * @description The quote stays live (reserved stock stays held) and is valid for at least 7 more days; the customer is emailed to upload a correctly signed copy.
          */
         post: {
             parameters: {
@@ -482,7 +418,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Decline the quote (requester or admin) - QUOTED → DECLINED → CANCELLED */
+        /** Cancel a quoted request (the customer's "Cancel request"; requester or admin) - QUOTED → DECLINED → CANCELLED; releases stock held for the quote */
         post: {
             parameters: {
                 query?: never;
@@ -533,7 +469,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel (requester, staff or admin) - allowed up to ACCEPTED (PAID, incl. AWAITING_AGREEMENT) or APPROVED (PROBONO); releases reserved stock */
+        /** Cancel (requester, staff or admin) - SUBMITTED or QUOTING; ACCEPTED (staff/admin) (PAID; while QUOTED the requester uses decline) or SUBMITTED/APPROVED (PROBONO); releases reserved stock */
         post: {
             parameters: {
                 query?: never;
@@ -632,8 +568,12 @@ export interface paths {
         };
         get?: never;
         /**
-         * Save the draft quote while QUOTING (staff)
-         * @description Supplier quotes (with uploaded file ids) and, for lines with `cimhAvailable`, the CIMH option. `exchangeRate` is required when the request currency is USD and a CIMH option exists. CIMH prices are computed by the server (cost + admin fee).
+         * Save the draft quote while QUOTING or QUOTED (staff)
+         * @description Staff fix where every line comes from: a supplier quote (with uploaded file ids) or, for lines with `cimhAvailable`
+         *     (full quantity in stock), CIMH stock. A line sits in **one** place only (422 LINE_SOURCE_CONFLICT when it is in two
+         *     supplier quotes, or in a supplier quote and CIMH stock). Each place carries its **estimated shipping**
+         *     (`shippingEstimate`: supplier quotes in the supplier's currency, CIMH stock in BBD). `cimh.exchangeRate` is required
+         *     on legacy USD requests when CIMH stock or an admin fee is priced. CIMH prices are computed by the server (catalogue cost).
          */
         put: {
             parameters: {
@@ -654,10 +594,12 @@ export interface paths {
                     "application/json": {
                         supplierQuotes: components["schemas"]["SupplierQuoteInput"][];
                         cimh?: {
-                            /** @description Lines to offer from CIMH stock (subset of cimhAvailable) */
+                            /** @description Lines supplied from CIMH stock (subset of cimhAvailable) */
                             lineIds?: string[];
                             /** @description BBD per 1 USD */
                             exchangeRate?: string | null;
+                            /** @description Estimated shipping of the CIMH stock lines to the customer (BBD); required at send when lineIds is not empty */
+                            shippingEstimate?: components["schemas"]["Money"] | null;
                         } | null;
                     };
                 };
@@ -695,7 +637,15 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** QUOTING → QUOTED, or revise while QUOTED (staff); new quote version, expiry now + 30 days */
+        /**
+         * QUOTING → QUOTED, or revise while QUOTED (staff); new quote version, expiry now + 30 days
+         * @description Fixes `lines[].source` / `lines[].supplier` from the draft, prices every line, converts USD supplier prices and
+         *     shipping to BBD, and creates the `agreement` for this version (`total` = lines + estimated shipping + admin fee).
+         *     `order.quoted` (or `order.quote_revised`) makes document-svc generate the agreement PDF (and the CIMH stock quote)
+         *     and inventory reserve the CIMH stock lines. A revision voids the earlier agreement and any signed copy of it.
+         *     422 QUOTE_INCOMPLETE (a line without a source or price), SHIPPING_ESTIMATE_REQUIRED, EXCHANGE_RATE_REQUIRED;
+         *     409 CIMH_STOCK_SHORT when a CIMH stock line is no longer fully in stock (quote it from a supplier).
+         */
         post: {
             parameters: {
                 query?: never;
@@ -723,13 +673,8 @@ export interface paths {
                 };
                 404: components["responses"]["NotFound"];
                 409: components["responses"]["Conflict"];
-                /** @description Draft incomplete (every line needs a supplier price or a CIMH option) */
-                422: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
             };
         };
         delete?: never;
@@ -1096,6 +1041,8 @@ export interface paths {
                             status: string;
                             /** @enum {string|null} */
                             type?: "PAID" | "PROBONO" | null;
+                            /** @description Current quote version; stamped on signed_agreement uploads */
+                            quoteVersion?: number | null;
                         };
                     };
                 };
@@ -1141,6 +1088,56 @@ export interface paths {
                     };
                 };
                 404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/requests/{requestId}/quote-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The request as send-quote would leave it, nothing saved (document-svc draws the agreement preview; service token)
+         * @description Prices the saved draft exactly as `send-quote` does (next quote version, expiry now + 30 days, sources, shipping,
+         *     admin fee, agreement total) and returns the staff view with `status` QUOTED, without writing anything or
+         *     publishing an event. Same refusals as `send-quote`: 422 QUOTE_INCOMPLETE, SHIPPING_ESTIMATE_REQUIRED,
+         *     EXCHANGE_RATE_REQUIRED; 409 CIMH_STOCK_SHORT, or ORDER_ILLEGAL_TRANSITION outside QUOTING / QUOTED.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The request with the would-be quote */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Request"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
             };
         };
         put?: never;
@@ -1280,9 +1277,12 @@ export interface components {
         /** @enum {string} */
         RequestType: "PAID" | "PROBONO";
         /** @enum {string} */
-        RequestStatus: "SUBMITTED" | "QUOTING" | "QUOTED" | "AWAITING_AGREEMENT" | "ACCEPTED" | "DECLINED" | "PURCHASING" | "APPROVED" | "REJECTED" | "PICKING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
-        /** @enum {string} */
-        LineChoice: "CIMH" | "SUPPLIER";
+        RequestStatus: "SUBMITTED" | "QUOTING" | "QUOTED" | "ACCEPTED" | "DECLINED" | "PURCHASING" | "APPROVED" | "REJECTED" | "PICKING" | "SHIPPED" | "DELIVERED" | "CANCELLED";
+        /**
+         * @description Where a paid line comes from, fixed by staff when the quote is sent (CIMH stock is picked and shipped by CIMH; supplier items ship directly to the customer)
+         * @enum {string}
+         */
+        LineSource: "CIMH" | "SUPPLIER";
         /** @enum {string} */
         Carrier: "FEDEX" | "DHL" | "HAND";
         ReasonBody: {
@@ -1316,7 +1316,10 @@ export interface components {
             product: components["schemas"]["ProductSnapshot"];
             qty: number;
             cimhAvailable?: boolean | null;
-            choice?: components["schemas"]["LineChoice"] | null;
+            /** @description Set when the quote is sent; null before (and on Pro Bono lines) */
+            source?: components["schemas"]["LineSource"] | null;
+            /** @description Supplier name for SUPPLIER lines */
+            supplier?: string | null;
             reservation?: {
                 /** @enum {string} */
                 status?: "NONE" | "RESERVED" | "FAILED" | "RELEASED";
@@ -1342,11 +1345,13 @@ export interface components {
                 unitPrice: components["schemas"]["Money"];
             }[];
             fileIds: string[];
+            /** @description Estimated shipping straight to the customer, in the supplier's currency; required at send when the quote has lines */
+            shippingEstimate?: components["schemas"]["Money"] | null;
         };
         SupplierQuote: {
             id: string;
             version: number;
-            /** @description staff/admin only */
+            /** @description Supplier name (customers see it too; they hold the supplier's quote) */
             supplier?: string;
             lines: {
                 lineId: string;
@@ -1356,6 +1361,10 @@ export interface components {
                 sourceUnitPrice?: components["schemas"]["Money"] | null;
             }[];
             total: components["schemas"]["Money"];
+            /** @description Estimated shipping in the request currency (not part of `total`) */
+            shippingEstimate?: components["schemas"]["Money"] | null;
+            /** @description The supplier's own shipping figure when it was converted (in sourceCurrency) */
+            sourceShippingEstimate?: components["schemas"]["Money"] | null;
             /** @description Currency of the supplier's uploaded quote, when it differs from the request currency */
             sourceCurrency?: components["schemas"]["Currency"] | null;
             /** @description BBD per 1 USD used for the conversion */
@@ -1376,6 +1385,8 @@ export interface components {
                 total: components["schemas"]["Money"];
             }[];
             total: components["schemas"]["Money"];
+            /** @description Estimated shipping of the CIMH stock lines (not part of `total`) */
+            shippingEstimate?: components["schemas"]["Money"] | null;
             fileId?: string | null;
         };
         ShipmentInput: {
@@ -1397,6 +1408,8 @@ export interface components {
             name: string;
             mime: string;
             size: number;
+            /** @description Quote version a generated agreement / CIMH quote or a signed agreement belongs to */
+            quoteVersion?: number | null;
             uploadedAt?: components["schemas"]["Timestamp"];
             /** @description Download path: /api/documents/v1/files/{id} */
             url?: string;
@@ -1445,22 +1458,16 @@ export interface components {
             cimhQuote?: components["schemas"]["CimhQuote"] | null;
             acceptance?: {
                 quoteVersion?: number;
-                choices?: {
-                    lineId?: string;
-                    choice?: components["schemas"]["LineChoice"];
-                }[];
                 signedAgreementFileId?: string;
                 by?: components["schemas"]["Actor"];
                 at?: components["schemas"]["Timestamp"];
             } | null;
+            /** @description Made when the quote is sent, one per quote version */
             agreement?: {
                 quoteVersion?: number;
-                choices?: {
-                    lineId?: string;
-                    choice?: components["schemas"]["LineChoice"];
-                }[];
+                /** @description Every line + estimated shipping + admin fee: the amount the customer signs for (the invoice charges it) */
                 total?: components["schemas"]["Money"];
-                /** @description Generated agreement PDF to download and sign */
+                /** @description Generated agreement PDF to download and sign (null until document-svc has made it) */
                 fileId?: string | null;
                 signedFileId?: string | null;
                 /** @description staff verification */
@@ -1487,7 +1494,7 @@ export interface components {
             cancellation?: Record<string, never> | null;
             history: components["schemas"]["StatusChange"][];
             /** @description Actions the caller may take now (drives UI buttons) */
-            allowedActions?: ("agreement" | "accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "deliver")[];
+            allowedActions?: ("accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "deliver")[];
         };
         /**
          * Format: date-time

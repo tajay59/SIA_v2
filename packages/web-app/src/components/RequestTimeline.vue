@@ -90,8 +90,9 @@ const byName = (n: string) => (n.includes('@') ? n.slice(0, n.indexOf('@')) : n)
   color: rgb(var(--v-theme-primary));
   font-weight: 600;
 }
+/* Not reached yet: medium emphasis in the theme's AA text colour (an opacity fade measured 3.1:1). */
 .timeline .todo {
-  opacity: 0.55;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .timeline .closed {
   color: rgb(var(--v-theme-error));

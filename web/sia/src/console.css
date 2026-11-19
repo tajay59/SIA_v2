@@ -147,9 +147,14 @@
   min-height: 32px;
   padding: 0 12px;
 }
-.v-btn.m3.m3-danger {
-  border-color: rgba(var(--v-theme-error), 0.5);
+/* Specific enough to beat the outlined / text rules above (they carry :not([class*=' text-'])), which made every
+   danger pill blue on a grey seam until 2026-11-18. */
+.v-btn.m3.m3-danger.v-btn--variant-outlined:not([class*=' text-']),
+.v-btn.m3.m3-danger.v-btn--variant-text:not([class*=' text-']) {
   color: rgb(var(--v-theme-error));
+}
+.v-btn.m3.m3-danger.v-btn--variant-outlined:not([class*=' text-']) {
+  border-color: rgba(var(--v-theme-error), 0.5);
 }
 .v-btn.m3.m3-danger .v-btn__overlay {
   background: rgb(var(--v-theme-error));

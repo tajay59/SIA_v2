@@ -18,6 +18,7 @@
     "@cimh/web-api": "*",
     "@cimh/web-ui": "*",
     "@mdi/js": "^7.4.47",
+    "pdfjs-dist": "5.7.284",
     "qrcode": "^1.5.4"
   },
   "peerDependencies": {

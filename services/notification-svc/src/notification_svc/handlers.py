@@ -252,18 +252,31 @@ class Notifier:
             button="Open the request",
         )
 
+    @staticmethod
+    def _quote_facts(p: dict[str, Any]) -> list[tuple[str, str]]:
+        facts = []
+        if p.get("total"):
+            facts.append(("Total", f"{p.get('currency') or 'BBD'} {p['total']}"))
+        facts.append(("Valid until", _date(p.get("expiresAt"))))
+        return facts
+
+    # "View and sign" (2026-11-17): the agreement comes with the quote, so this is the one email for the step
+    # (the agreement's own document.generated sends nothing more).
     async def quoted(self, e: EventEnvelope) -> list[Message]:
         p = e.payload
         return await self.to_customer(
             e,
-            subject=f"Your quote is ready ({p['orderId']})",
+            subject=f"Your quote is ready to sign ({p['orderId']})",
             heading="Your quote is ready",
-            paragraphs=["Choose CIMH stock or the supplier for each item, then sign the agreement."],
+            paragraphs=[
+                "CIMH priced every item and the estimated shipping. Check the quote, then download the agreement, "
+                "sign it and upload the signed copy. If you no longer want the items, cancel the request there.",
+            ],
             request_id=p["orderId"],
-            status=("Quoted", INFO),
-            facts=[("Valid until", _date(p.get("expiresAt"))), ("Currency", p.get("currency", ""))],
-            link=self.shop(f"/requests/{p['orderId']}"),
-            button="View the quote",
+            status=("Quote to sign", INFO),
+            facts=self._quote_facts(p),
+            link=self.shop(f"/requests/{p['orderId']}/agreement"),
+            button="View and sign",
         )
 
     async def quote_revised(self, e: EventEnvelope) -> list[Message]:
@@ -272,11 +285,15 @@ class Notifier:
             e,
             subject=f"Your quote was updated ({p['orderId']})",
             heading="Your quote was updated",
-            paragraphs=[f"CIMH sent a new {p.get('reason') or 'quote version'}. Please review it before you choose."],
+            paragraphs=[
+                f"CIMH sent a new {p.get('reason') or 'quote version'}. The earlier agreement no longer applies: "
+                "check the new quote, then sign and upload its agreement.",
+            ],
             request_id=p["orderId"],
-            status=("Quoted", INFO),
-            link=self.shop(f"/requests/{p['orderId']}"),
-            button="View the quote",
+            status=("Quote to sign", INFO),
+            facts=self._quote_facts(p),
+            link=self.shop(f"/requests/{p['orderId']}/agreement"),
+            button="View and sign",
         )
 
     async def quote_expiring(self, e: EventEnvelope) -> list[Message]:
@@ -285,12 +302,16 @@ class Notifier:
             e,
             subject=f"Your quote expires soon ({p['orderId']})",
             heading="Your quote expires soon",
-            paragraphs=["Accept it with a signed agreement before it expires, or it will be cancelled."],
+            paragraphs=[
+                "Send the signed agreement before the quote expires, or the request is cancelled. The link opens the "
+                "page where you send the signed copy; the quote and the agreement to download are on the same page.",
+            ],
             request_id=p["orderId"],
             status=("Expires soon", WARNING),
             facts=[("Valid until", _date(p.get("expiresAt")))],
-            link=self.shop(f"/requests/{p['orderId']}"),
-            button="View the quote",
+            # The reminder usually reaches whoever comes back with the signed copy: straight to that task (S-12).
+            link=self.shop(f"/requests/{p['orderId']}/agreement?task=send"),
+            button="Send the signed copy",
         )
 
     async def expired(self, e: EventEnvelope) -> list[Message]:
@@ -314,12 +335,12 @@ class Notifier:
             heading="We couldn't accept the signed agreement",
             paragraphs=[
                 f"Reason: {p.get('reason') or 'not given'}",
-                "Download the agreement, sign it and upload it again.",
+                "Your quote still stands. Download the agreement, sign it and upload the signed copy again.",
             ],
             request_id=p["orderId"],
-            status=("Agreement to sign", WARNING),
-            link=self.shop(f"/requests/{p['orderId']}/agreement"),
-            button="Upload it again",
+            status=("Quote to sign", WARNING),
+            link=self.shop(f"/requests/{p['orderId']}/agreement?task=send"),
+            button="Send it again",
         )
 
     async def shipped(self, e: EventEnvelope) -> list[Message]:
@@ -417,23 +438,7 @@ class Notifier:
     async def document(self, e: EventEnvelope) -> list[Message]:
         p = e.payload
         rid, kind = p["orderId"], p.get("kind")
-        if e.type == "document.generated" and kind == "agreement":
-            acc = await self.customer(p.get("customer"))
-            if acc is None:
-                return []
-            return [
-                Message(
-                    to=acc["email"],
-                    why=REQUEST_WHY,
-                    subject=f"Your agreement is ready to sign ({rid})",
-                    heading="Your agreement is ready",
-                    paragraphs=["Download it, sign it, and upload the signed copy to accept the quote."],
-                    request_id=rid,
-                    status=("Agreement to sign", WARNING),
-                    link=self.shop(f"/requests/{rid}/agreement"),
-                    button="Download and sign",
-                )
-            ]
+        # A generated agreement sends nothing: order.quoted / order.quote_revised already asked the customer to sign.
         if e.type == "document.uploaded" and kind == "signed_agreement":
             return await self.staff(
                 "order",

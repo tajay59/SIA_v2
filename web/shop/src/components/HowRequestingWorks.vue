@@ -24,14 +24,14 @@ const STEPS = [
   {
     key: 'quote',
     title: 'Review the quote',
-    short: 'CIMH emails you a quote, valid for 30 days.',
-    text: 'CIMH emails you a quote, valid for 30 days. For items CIMH holds, you choose between CIMH stock and a supplier order.',
+    short: 'CIMH emails you a quote with every price and the total, valid for 30 days.',
+    text: 'CIMH prices every item, from its own stock or from a supplier, with the estimated shipping and the total. The quote is valid for 30 days.',
   },
   {
     key: 'sign',
     title: 'Sign and receive',
-    short: 'Sign the agreement, upload it, and CIMH ships.',
-    text: 'Download the agreement, sign it and upload the copy. CIMH ships stock items; supplier items come straight to you.',
+    short: 'Sign the agreement, upload it, and the items ship.',
+    text: 'Download the agreement, sign it and upload the copy, or cancel the request. CIMH ships its stock items; suppliers ship theirs straight to you, each with a tracking link.',
   },
 ] as const
 </script>

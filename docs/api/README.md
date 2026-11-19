@@ -48,7 +48,7 @@ Viewing: open any `.openapi.yaml` in the VS Code OpenAPI extension, Swagger Edit
 
 | Client | How |
 |---|---|
-| SHOP / SIA web | `POST /auth/login` sets **HttpOnly, Secure, SameSite=Lax** cookies (`access_token` 15 min, `refresh_token` 7 days, path-scoped) plus a readable `csrf_token` cookie. Every POST/PUT/PATCH/DELETE must echo it in **`X-CSRF-Token`** |
+| SHOP / SIA web | `POST /auth/login` sets **HttpOnly, Secure, SameSite=Lax** cookies (`access_token` 15 min, `refresh_token` 7 days, path-scoped) plus a readable `csrf_token` cookie. Every POST/PUT/PATCH/DELETE must echo it in **`X-CSRF-Token`**. A cookie name can arrive more than once (another app on the same host or a parent domain, on another path): services use the first `access_token` that verifies (browsers send the most specific path, ours, first), the first `refresh_token`, and accept the header when it equals any `csrf_token` (2026-11-18) |
 | SIA Mobile | `POST /auth/login` with `client: "mobile"` returns `accessToken` + `refreshToken` in the body (stored in Android Keystore). Send `Authorization: Bearer <accessToken>` |
 | Refresh | `POST /auth/refresh` issues a new access token **and a new refresh token**. Reusing an old refresh token revokes the whole session (`401 TOKEN_REUSE`) |
 | Services | `POST /internal/service-token` (internal network only) → 5-minute bearer token. Every `/internal/*` endpoint requires one and is **not routed by nginx** |
@@ -119,7 +119,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 |---|---|
 | Auth | `ACCOUNT_PENDING_VERIFICATION`, `ACCOUNT_PENDING_APPROVAL`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_LOCKED`, `MFA_REQUIRED`, `TOKEN_REUSE`, `CODE_INVALID`, `CODE_EXPIRED`, `PASSWORD_BREACHED`, `LAST_ADMIN`, `INVALID_CREDENTIALS`, `MFA_INVALID`, `MFA_ALREADY_ENABLED`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `TOKEN_INVALID`, `CSRF_FAILED` |
 | Accounts / organisations | `ACCOUNT_ILLEGAL_TRANSITION`, `DUPLICATE`, `ORG_MERGE_INVALID` |
-| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `CHOICE_REQUIRED`, `TRACKING_REQUIRED` |
+| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `LINE_SOURCE_CONFLICT`, `SHIPPING_ESTIMATE_REQUIRED`, `CIMH_STOCK_SHORT`, `TRACKING_REQUIRED` |
 | Inventory | `UNIT_NOT_FOUND`, `SHELF_NOT_FOUND`, `UNIT_NOT_STOWED`, `UNIT_ALREADY_STOWED` (on another shelf: relocate instead), `UNIT_ALREADY_PICKED`, `UNIT_RESERVED`, `UNIT_NOT_RESERVED_FOR_ORDER`, `UNIT_ASSIGNED` (issued to a person: unassign first), `UNIT_NOT_ASSIGNED`, `RESERVATION_FAILED` |
 | General | `VERSION_CONFLICT`, `PRECONDITION_REQUIRED` (428: `If-Match` missing), `VALIDATION_FAILED`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED` (422: same key, different request), `IDEMPOTENCY_IN_PROGRESS` (409: the first request with this key is still running; retry), `SEARCH_BUSY` (503 + `Retry-After`: too many searches at once, or a broad query hit its time limit) |
 
@@ -187,20 +187,20 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | PUT / DELETE | `/cart/lines/{productId}` | user | — |
 | POST | `/requests` | user | → `SUBMITTED` (1 or 2 requests) |
 | GET | `/requests` · `/requests/{id}` | user (own/org) · staff | — |
-| POST | `/requests/{id}/agreement` | requester, admin | `QUOTED → AWAITING_AGREEMENT` (choices; agreement PDF generated) |
-| POST | `/requests/{id}/accept` | requester, admin | `AWAITING_AGREEMENT → ACCEPTED` (signed agreement file) |
-| POST | `/requests/{id}/reject-agreement` | staff | `ACCEPTED → AWAITING_AGREEMENT` (signature not acceptable) |
-| POST | `/requests/{id}/decline` | requester, admin | `QUOTED → DECLINED → CANCELLED` |
-| POST | `/requests/{id}/cancel` | requester, staff, admin | → `CANCELLED` (up to ACCEPTED/APPROVED) |
+| POST | `/requests/{id}/accept` | requester, admin | `QUOTED → ACCEPTED` ("View and sign": signed copy of this quote version's agreement) |
+| POST | `/requests/{id}/reject-agreement` | staff | `ACCEPTED → QUOTED` (signature not acceptable; quote valid ≥ 7 more days) |
+| POST | `/requests/{id}/decline` | requester, admin | `QUOTED → DECLINED → CANCELLED` (the customer's "Cancel request" on a quote) |
+| POST | `/requests/{id}/cancel` | requester, staff, admin | → `CANCELLED` (SUBMITTED/QUOTING; ACCEPTED staff only; Pro Bono up to APPROVED) |
 | POST | `/requests/{id}/start-quoting` | staff | `SUBMITTED → QUOTING` (+ stock check) |
-| PUT | `/requests/{id}/quote-draft` | staff | Draft supplier + CIMH options, exchange rate |
-| POST | `/requests/{id}/send-quote` | staff | `QUOTING → QUOTED` (or revise) |
+| PUT | `/requests/{id}/quote-draft` | staff | Draft: one source per line (a supplier quote or CIMH stock), estimated shipping per source, exchange rates |
+| POST | `/requests/{id}/send-quote` | staff | `QUOTING → QUOTED` (or revise): fixes line sources, makes the agreement (PDF generated), reserves CIMH stock |
 | POST | `/requests/{id}/purchase-orders` | staff | `ACCEPTED → PURCHASING` (needs `agreementVerified: true`) |
 | POST | `/requests/{id}/approve` · `/reject` | staff | Pro Bono: `SUBMITTED → APPROVED / REJECTED` |
 | POST | `/requests/{id}/picks` | staff | Pick a unit for a **CIMH-stock or Pro Bono line** (Pro Bono `APPROVED → PICKING`); supplier lines are never picked |
 | POST | `/requests/{id}/ship` | staff | `→ SHIPPED` (carrier; tracking unless HAND) |
 | POST | `/requests/{id}/deliver` | staff | `SHIPPED → DELIVERED` (+ invoice) |
 | GET / POST | `/internal/requests/{id}/access` · `/internal/requests/{id}/files` · `/internal/requests/{id}` | service | Internal (document-svc: access + state, attach, staff view for PDFs) |
+| GET | `/internal/requests/{id}/quote-preview` | service (document) | The request as `send-quote` would leave it (next version, sources, prices, shipping, fee, agreement total), nothing saved; same 409/422 as `send-quote` |
 
 Catalog internal (service token): `GET /internal/email-lists` (notification-svc: staff lists with emails).
 
@@ -210,9 +210,10 @@ Catalog internal (service token): `GET /internal/email-lists` (notification-svc:
 | POST | `/files` | staff; user (`signed_agreement` on own request) | Upload (≤ 20 MB; PDF/JPEG/PNG/WebP) |
 | GET | `/files/{id}` | allowed viewers | Download (streamed by nginx via X-Accel-Redirect) |
 | DELETE | `/files/{id}` | staff | Soft delete with a reason (generated documents cannot be deleted) |
+| GET | `/requests/{id}/agreement-preview` | staff | The agreement a Send quote would email, from the saved draft, marked "Preview · not sent"; never stored or published (`no-store`); order-svc's 409/422 passed on |
 | POST | `/internal/labels` | service (inventory) | Render a unit-label PDF (QR + text) for barcodes just allocated |
 
-Upload errors: 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE` (type read from the bytes, not the name), 422 `FILE_INFECTED` (ClamAV found malware; the file is quarantined, never stored), 409 `INVALID_STATE` (customer upload outside AWAITING_AGREEMENT), 503 when the scanner is down (fail closed).
+Upload errors: 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE` (type read from the bytes, not the name), 422 `FILE_INFECTED` (ClamAV found malware; the file is quarantined, never stored), 409 `INVALID_STATE` (customer upload outside QUOTED), 503 when the scanner is down (fail closed).
 
 ## 6. Events (Kafka)
 

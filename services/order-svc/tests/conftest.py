@@ -75,6 +75,7 @@ class MemoryDeps:
     accounts: dict[str, dict[str, Any]] = field(default_factory=dict)
     picks: list[tuple[str, str, str]] = field(default_factory=list)
     reserved: dict[str, set[str]] = field(default_factory=dict)  # orderId -> units inventory reserved
+    availability_calls: list[str | None] = field(default_factory=list)  # orderId passed with each check
     down: bool = False
 
     def _up(self) -> None:
@@ -89,8 +90,9 @@ class MemoryDeps:
         self._up()
         return self.fee
 
-    async def availability(self, lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def availability(self, lines: list[dict[str, Any]], order_id: str | None = None) -> list[dict[str, Any]]:
         self._up()
+        self.availability_calls.append(order_id)
         out = []
         for ln in lines:
             n = self.stock.get(ln["productId"], 0)
@@ -194,9 +196,11 @@ class Ctx:
             self.run(self.svc.store.orders.update_one({"id": reqs[0]["id"]}, {"$set": {"currency": currency}}))
         return str(reqs[0]["id"])
 
-    def attach(self, rid: str, kind: str, fid: str | None = None) -> str:
+    def attach(self, rid: str, kind: str, fid: str | None = None, quote_version: int | None = None) -> str:
         fid = fid or "FIL" + uuid.uuid4().hex
-        body = {"id": fid, "kind": kind, "name": f"{kind}.pdf", "mime": "application/pdf", "size": 10}
+        body: dict[str, Any] = {"id": fid, "kind": kind, "name": f"{kind}.pdf", "mime": "application/pdf", "size": 10}
+        if quote_version is not None:
+            body["quoteVersion"] = quote_version
         r = self.client.post(self.url(f"/internal/requests/{rid}/files"), headers=DOCUMENT, json=body)
         assert r.status_code == 204, r.text
         return fid

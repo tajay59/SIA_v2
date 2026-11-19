@@ -100,6 +100,8 @@ def run(n: Notifier, e: EventEnvelope) -> int:
 
 ORDER = {"orderId": "ORD9", "customer": "USRUSER"}
 MOVE = {**ORDER, "orderType": "PAID", "from": "X", "to": "Y"}
+QUOTED = {**ORDER, "quoteVersion": 1, "expiresAt": "2026-12-08T00:00:00Z", "currency": "BBD", "total": "560.00",
+          "lines": []}  # fmt: skip
 
 # (event type, payload, recipients, link the button opens)
 CASES = [
@@ -140,19 +142,19 @@ CASES = [
     ("order.submitted", {**ORDER, "type": "PAID", "lines": []}, LISTS["order"], f"{SIA}/requests/ORD9"),
     (
         "order.quoted",
-        {**ORDER, "quoteVersion": 1, "expiresAt": "2026-12-08T00:00:00Z", "currency": "BBD"},
+        {**QUOTED},
         ["una@met.bb"],
-        f"{SHOP}/requests/ORD9",
+        f"{SHOP}/requests/ORD9/agreement",  # view and sign
     ),
-    ("order.quote_revised", MOVE, ["una@met.bb"], f"{SHOP}/requests/ORD9"),
+    ("order.quote_revised", {**QUOTED, **MOVE}, ["una@met.bb"], f"{SHOP}/requests/ORD9/agreement"),
     (
         "order.quote_expiring",
         {**ORDER, "quoteVersion": 1, "expiresAt": "2026-12-08T00:00:00Z"},
         ["una@met.bb"],
-        f"{SHOP}/requests/ORD9",
+        f"{SHOP}/requests/ORD9/agreement?task=send",
     ),
     ("order.expired", MOVE, ["una@met.bb"], f"{SHOP}/requests/ORD9"),
-    ("order.agreement_rejected", {**MOVE, "reason": "Not signed"}, ["una@met.bb"], f"{SHOP}/requests/ORD9/agreement"),
+    ("order.agreement_rejected", {**MOVE, "reason": "Not signed"}, ["una@met.bb"], f"{SHOP}/requests/ORD9/agreement?task=send"),
     (
         "order.shipped",
         {**ORDER, "carrier": "DHL", "tracking": "JD0001", "notifyCustomer": True},
@@ -173,21 +175,6 @@ CASES = [
         None,
     ),
     ("order.declined", {**MOVE, "reason": "Too expensive"}, LISTS["cancellation"], f"{SIA}/requests/ORD9"),
-    (
-        "document.generated",
-        {
-            "orderId": "ORD9",
-            "customer": "USRUSER",
-            "fileId": "FIL1",
-            "kind": "agreement",
-            "name": "a.pdf",
-            "mime": "application/pdf",
-            "size": 1,
-            "sha256": "0",
-        },
-        ["una@met.bb"],
-        f"{SHOP}/requests/ORD9/agreement",
-    ),
     (
         "document.generated",
         {
@@ -282,7 +269,7 @@ def test_retry_after_a_partial_failure_sends_only_the_missing(env: tuple[Notifie
     [
         (
             "order.quoted",
-            {**ORDER, "customer": "USRGONE", "quoteVersion": 1, "expiresAt": "2026-12-08T00:00:00Z", "currency": "BBD"},
+            {**QUOTED, "customer": "USRGONE"},
         ),  # suspended
         ("order.delivered", {**MOVE, "customer": "USRNOBODY"}),  # erased
         ("order.shipped", {**ORDER, "carrier": "HAND", "tracking": None, "notifyCustomer": False}),
@@ -301,6 +288,20 @@ def test_retry_after_a_partial_failure_sends_only_the_missing(env: tuple[Notifie
         ),
         ("stock.changed", {"productId": "MET1", "available": 3, "reserved": 0}),
         ("order.accepted", {**ORDER, "quoteVersion": 1, "lines": []}),
+        (  # view and sign: order.quoted already asked the customer to sign
+            "document.generated",
+            {
+                "orderId": "ORD9",
+                "customer": "USRUSER",
+                "fileId": "FIL1",
+                "kind": "agreement",
+                "quoteVersion": 1,
+                "name": "a.pdf",
+                "mime": "application/pdf",
+                "size": 1,
+                "sha256": "0",
+            },
+        ),
     ],
 )
 def test_no_email(env: tuple[Notifier, FakeMailer, FakeDirectory], etype: str, payload: dict[str, Any]) -> None:

@@ -23,7 +23,7 @@ This document explains **how the CIMH Stores Platform v2 is built**: what the pa
 |---|---|---|
 | Up to 1M registered users, about 1,000 requests/s at peak | PRD §2, TRD §2 | Services that hold no state and can be scaled out; pooled connections; indexed queries; cursor paging |
 | Security flaws in the current system | PRD §3 | Login handled centrally in one service, while every service checks tokens itself; roles and ownership checked everywhere; validated input |
-| Request → quote → accept workflow with CIMH stock option | PRD O3–O8, O5a | order-svc runs the request status flow; inventory-svc reserves stock inside transactions |
+| Request → quote → view and sign workflow (CIMH stock or supplier per line) | PRD O3–O8, O5a | order-svc runs the request status flow; inventory-svc reserves stock inside transactions when the quote is sent |
 | Admin approval of accounts | PRD A3 | identity-svc runs the account status flow |
 | MongoDB required; existing collection names kept | PRD §4 | One `inventory` database; each collection owned by exactly one service |
 | Kafka for communication between services | Decision | Events for everything that "has happened"; HTTP only for queries that need an answer immediately |
@@ -193,22 +193,22 @@ auth/         shared token-checking library (from packages/)
 | **Responsibilities** | Sites, locations, shelves (QR), unit labels, stow, pick, relocate, self-assign, lookups, stock counts, low-stock detection, **reservations** |
 | **Owns** | `storage`, `history`, `stock` (per-product counts + outbox, BSD §5.11). Sites/shelves records are kept in `misc` through catalog-svc's internal places API (looked up by barcode, cached in Redis); see the BSD |
 | **Public API** | `/api/inventory/v1/*`: sites, shelves, units, stow, pick, relocate, lookup, stock |
-| **Internal API** | `POST /internal/availability` (for each product, whether the full quantity is available), `POST /internal/reservations`, `DELETE /internal/reservations/{orderId}`, `POST /internal/picks` (order-svc picks a reserved unit for a staff member) |
+| **Internal API** | `POST /internal/availability` (for each product, whether the full quantity is available; with `orderId`, units already held for that request count), `POST /internal/reservations`, `DELETE /internal/reservations/{orderId}`, `POST /internal/picks` (order-svc picks a reserved unit for a staff member) |
 | **Publishes** | `inventory.stock.events`: `stock.changed`, `stock.low`, `stock.reserved`, `stock.released`, `unit.stowed`, `unit.picked` |
-| **Consumes** | `catalog.product.events` (name, threshold, active → `stock`); `order.events`: `order.accepted` (reserve the CIMH-chosen lines), `order.probono_approved` (reserve every line), `order.cancelled` / `order.expired` / `order.agreement_rejected` (release what is held). A shortfall publishes `stock.reservation_failed`; nothing is half-reserved. Units are marked picked by the pick itself (`/internal/picks`), not at shipping |
+| **Consumes** | `catalog.product.events` (name, threshold, active → `stock`); `order.events`: `order.quoted` (reserve the lines quoted from CIMH stock: the signed agreement promises them), `order.quote_revised` (swap the reservation for the revised CIMH lines in one transaction), `order.accepted` (reserve only if nothing is held), `order.probono_approved` (reserve every line), `order.declined` / `order.cancelled` / `order.expired` (release what is held; a rejected signature keeps it). A shortfall publishes `stock.reservation_failed`; nothing is half-reserved. Units are marked picked by the pick itself (`/internal/picks`), not at shipping |
 | **Concurrency** | Every scan and every reservation is **one multi-document transaction** (unit + `history` + `stock` counts + events; §7.3); scans carry an `Idempotency-Key` (Redis, 24 h) |
 
 ### 4.4 order-svc
 | Aspect | Detail |
 |---|---|
-| **Responsibilities** | Cart; submission with automatic split into paid and Pro Bono requests; paid and Pro Bono status flows; supplier quotes; CIMH stock quote; acceptance per item; purchasing; shipping (carrier + manual tracking number); cancellation; organisation-wide visibility |
+| **Responsibilities** | Cart; submission with automatic split into paid and Pro Bono requests; paid and Pro Bono status flows; supplier quotes and CIMH stock quote, one source per line ("view and sign", 2026-11-17); the agreement the customer signs; purchasing; shipping (carrier + manual tracking number); cancellation; organisation-wide visibility |
 | **Owns** | `orders` (carts are stored as `orders` documents with `status: CART`; see the BSD) |
 | **Public API** | `/api/orders/v1/*`: cart, requests, quotes, acceptance, purchase orders, shipping, staff queue |
-| **Internal API** | `GET /internal/requests/{id}/access?user=` (document-svc asks whether a user may see a request's files); `POST /internal/requests/{id}/files` (document-svc attaches file metadata; normally via `document.events`) |
-| **Publishes** | `order.events`: `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised`, `order.agreement_requested`, `order.agreement_rejected`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired` (a failed reservation is reported by inventory as `stock.reservation_failed`) |
-| **Consumes** | `document.events` (attach generated or uploaded files to `files[]`; the agreement and CIMH-quote PDF ids are linked); `inventory.stock.events` (`stock.reserved` → line `RESERVED` + units, `stock.reservation_failed` → line `FAILED` for staff to requote, `stock.released` → `RELEASED`); `identity.user.events` (`user.suspended` → the cart gets `blocked` and answers 403 `ACCOUNT_SUSPENDED`, `user.reactivated` → unblocked; defence in depth, since suspension already revokes every session; `user.deleted` → open requests cancelled (`order.cancelled`, auto, reason "Account deleted"; PURCHASING/PICKING/SHIPPED left for staff), personal data in the person's requests replaced with `"[deleted]"`, their name removed wherever they acted, cart deleted) |
-| **Scheduled jobs** | `order-jobs`: quote expiry after 30 days (`QUOTED`/`AWAITING_AGREEMENT` → `CANCELLED`, `order.expired`); `order.quote_expiring` once per expiry date when a live quote expires within `QUOTE_REMINDER_DAYS` (3); carts untouched for 180 days are emptied |
-| **Calls (HTTP)** | catalog-svc (`/internal/products/summaries`: snapshots, cost, Pro Bono limits; `/internal/fees`: admin fee); inventory-svc (`/internal/availability` when quoting starts, `/internal/picks`); identity-svc (`/internal/accounts/{id}`: names and organisation at submission, file-access checks) |
+| **Internal API** | `GET /internal/requests/{id}/access?user=` (document-svc asks whether a user may see a request's files); `POST /internal/requests/{id}/files` (document-svc attaches file metadata; normally via `document.events`); `GET /internal/requests/{id}/quote-preview` (the request as `send-quote` would leave it, priced from the draft by the same code, nothing saved: document-svc draws the agreement preview staff see before sending) |
+| **Publishes** | `order.events`: `order.submitted`, `order.quoting_started`, `order.quoted`, `order.quote_revised` (both carry every line with its source, shipping estimates and the total), `order.agreement_rejected`, `order.accepted`, `order.declined`, `order.probono_approved`, `order.probono_rejected`, `order.purchasing`, `order.shipped`, `order.delivered`, `order.cancelled`, `order.expired` (a failed reservation is reported by inventory as `stock.reservation_failed`) |
+| **Consumes** | `document.events` (attach generated or uploaded files to `files[]`; the agreement and CIMH-quote PDF ids are linked only for the quote version they were made for); `inventory.stock.events` (`stock.reserved` → line `RESERVED` + units, `stock.reservation_failed` → line `FAILED` for staff to requote, `stock.released` → `RELEASED`); `identity.user.events` (`user.suspended` → the cart gets `blocked` and answers 403 `ACCOUNT_SUSPENDED`, `user.reactivated` → unblocked; defence in depth, since suspension already revokes every session; `user.deleted` → open requests cancelled (`order.cancelled`, auto, reason "Account deleted"; PURCHASING/PICKING/SHIPPED left for staff), personal data in the person's requests replaced with `"[deleted]"`, their name removed wherever they acted, cart deleted) |
+| **Scheduled jobs** | `order-jobs`: quote expiry after 30 days (`QUOTED` → `CANCELLED`, `order.expired`); `order.quote_expiring` once per expiry date when a live quote expires within `QUOTE_REMINDER_DAYS` (3); carts untouched for 180 days are emptied |
+| **Calls (HTTP)** | catalog-svc (`/internal/products/summaries`: snapshots, cost, Pro Bono limits; `/internal/fees`: admin fee); inventory-svc (`/internal/availability` when quoting starts and again when the quote is sent, `/internal/picks`); identity-svc (`/internal/accounts/{id}`: names and organisation at submission, file-access checks) |
 
 ### 4.5 document-svc
 | Aspect | Detail |
@@ -217,8 +217,8 @@ auth/         shared token-checking library (from packages/)
 | **Owns** | **No collection.** File metadata is held by order-svc in `orders.files[]`, and by catalog-svc for product images. The files themselves live on the volume |
 | **Public API** | `/api/documents/v1/*`: upload, download (`X-Accel-Redirect`), delete; internal `POST /internal/labels` (inventory-svc: unit-label PDF) |
 | **Publishes** | `document.events`: `document.generated`, `document.uploaded`, `document.deleted` (+ `audit.recorded` for deletes and quarantines). **No outbox** (it owns no collection): events go straight to Kafka (acks=all). An upload is refused, and its file removed, if `document.uploaded` can't be published; it is then also attached to the request synchronously (`POST /internal/requests/{id}/files`) so the customer can accept at once |
-| **Consumes** | `order.events` (`document-consumer`): `order.quoted` with CIMH lines → CIMH quote; `order.agreement_requested` → agreement; `order.shipped` to a ship-to outside Barbados → commercial invoice; `order.delivered` → invoice (paid) or Pro Bono delivery note. The file id is derived from the event id, so a redelivery rewrites the same file. PDFs are rendered (reportlab) from `GET /internal/requests/{id}` on order-svc |
-| **Access check** | Before serving a file: (staff/admin role) **or** (order-svc confirms the user or their organisation may see the request); otherwise 404. Label batches: staff only. Uploads: staff any kind; customers only `signed_agreement`, as requester (or admin), while AWAITING_AGREEMENT (order-svc answers `allowed`, `canAct`, `status`) |
+| **Consumes** | `order.events` (`document-consumer`): `order.quoted` / `order.quote_revised` → quote agreement (every line, source, price, estimated shipping, total, signature line) + CIMH stock quote when there are CIMH lines, both only while their quote version is current; `order.shipped` to a ship-to outside Barbados → commercial invoice; `order.delivered` → invoice (paid) or Pro Bono delivery note. The file id is derived from the event id, so a redelivery rewrites the same file. PDFs are rendered (reportlab) from `GET /internal/requests/{id}` on order-svc. **Agreement preview** (staff, `GET /requests/{id}/agreement-preview`, 2026-11-18): the same agreement drawn from `GET /internal/requests/{id}/quote-preview`, marked "Preview · not sent" on every page, returned directly (`no-store`), never stored, attached or published |
+| **Access check** | Before serving a file: (staff/admin role) **or** (order-svc confirms the user or their organisation may see the request); otherwise 404. Label batches: staff only. Uploads: staff any kind; customers only `signed_agreement`, as requester (or admin), while QUOTED, stamped with the current quote version (order-svc answers `allowed`, `canAct`, `status`, `quoteVersion`) |
 | **Files** | Type from magic bytes (PDF/JPEG/PNG/WebP), ≤ 20 MB, images re-encoded (metadata dropped), ClamAV `INSTREAM` before storing; a hit goes to `quarantine/` (422 `FILE_INFECTED`); scanner down → 503 (fail closed). Metadata sidecar `protected/meta/<fileId>.json`. Staging-lite runs with `SCAN_ENABLED=false` (no memory for clamd) |
 
 ### 4.6 notification-svc
@@ -430,7 +430,10 @@ sequenceDiagram
     end
 ```
 
-### 7.2 Paid request: quote, choice and acceptance
+### 7.2 Paid request: quote, view and sign
+"View and sign" (owner, 2026-11-17): staff decide where every line comes from (CIMH stock when the full quantity is
+on the shelves, otherwise one supplier, who ships it straight to the customer) and estimate the shipping per source.
+The agreement PDF comes with the quote. The customer has nothing to choose: they sign and upload it, or cancel.
 ```mermaid
 sequenceDiagram
     actor C as Customer
@@ -441,66 +444,66 @@ sequenceDiagram
     participant K as Kafka
     actor S as Staff
 
-    C->>O: POST /requests (from cart, currency BBD|USD)
+    C->>O: POST /requests (from cart; every quote in BBD)
     O->>CAT: product snapshots, Pro Bono limits
     O->>O: split cart → PAID request (+ Pro Bono request if any)
     O-->>K: order.submitted
     S->>O: POST /requests/{id}/start-quoting
     O->>I: POST /internal/availability (lines)
     I-->>O: full quantity available? per line
-    O->>O: QUOTING; build CIMH stock option for fully available lines (cost + admin fee; exchange rate entered by staff for USD)
-    S->>D: upload supplier quote PDFs
+    S->>D: upload supplier quote files (customers see them)
     D-->>K: document.uploaded → O attaches to files[]
-    S->>O: POST /requests/{id}/send-quote (supplier amounts, expiry 30 d)
-    O-->>K: order.quoted
-    K-->>D: generate CIMH quote PDF
-    K-->>C: (via notification-svc) "Your quote is ready"
-    C->>O: POST /requests/{id}/agreement {quoteVersion, line choices: CIMH|SUPPLIER}
-    O->>O: QUOTED → AWAITING_AGREEMENT, total of chosen quotes
-    O-->>K: order.agreement_requested
-    K-->>D: generate agreement PDF (total, choices, quote version)
-    C->>D: download agreement, sign, upload (kind signed_agreement)
-    C->>O: POST /requests/{id}/accept {quoteVersion, agreementFileId}
-    O->>O: AWAITING_AGREEMENT → ACCEPTED (conditional), record acceptance (user, time, IP, choices, signed file)
-    O-->>K: order.accepted
-    K-->>I: reserve CIMH-chosen lines (transaction)
+    S->>O: PUT quote-draft (one source per line, supplier prices, estimated shipping per source)
+    S->>O: POST /requests/{id}/send-quote
+    O->>I: POST /internal/availability (CIMH lines, orderId) — still in stock?
+    O->>CAT: catalogue cost (CIMH lines), admin fee
+    O->>O: QUOTED; sources fixed; agreement {quoteVersion, total = lines + shipping + fee}
+    O-->>K: order.quoted (lines with source, shipping estimates, total)
+    K-->>D: generate quote agreement + CIMH stock quote PDFs (for this quote version)
+    K-->>I: reserve the CIMH lines (transaction)
     alt reservation ok
-        I-->>K: stock.reserved
-    else stock gone
-        I-->>K: stock.reservation_failed
-        K-->>O: line flagged → staff requote that line (O6)
+        I-->>K: stock.reserved → line RESERVED
+    else stock gone meanwhile
+        I-->>K: stock.reservation_failed → line FAILED → staff revise the quote
+    end
+    K-->>C: (via notification-svc) "Your quote is ready to sign"
+    C->>D: download agreement, sign, upload (kind signed_agreement, stamped with the quote version)
+    C->>O: POST /requests/{id}/accept {quoteVersion, signedAgreementFileId}
+    O->>O: QUOTED → ACCEPTED (conditional), record acceptance (user, time, IP, signed file)
+    O-->>K: order.accepted
+    alt signature not acceptable
+        S->>O: reject-agreement (reason) → QUOTED, ≥ 7 days left; stock stays held
     end
     S->>O: verify signed agreement + purchase orders → PURCHASING
     Note over S,O: supplier items ship direct to the customer (no stock/units); only CIMH-stock lines are picked
     S->>O: SHIPPED (carrier + tracking) → DELIVERED
     O-->>K: order.shipped / order.delivered
-    K-->>I: mark reserved units picked
-    K-->>D: generate invoice
+    K-->>D: generate invoice (the signed total)
 ```
+A revised quote (`order.quote_revised`) voids the earlier agreement and any signed copy of it; inventory swaps the
+reservation for the revised CIMH lines in one transaction (an unchanged set changes nothing). The customer's
+**Cancel request** is `decline` (`QUOTED → DECLINED → CANCELLED`), which releases the held stock.
 
 **Paid request status flow:**
 ```mermaid
 stateDiagram-v2
     [*] --> SUBMITTED
     SUBMITTED --> QUOTING
-    QUOTING --> QUOTED
+    QUOTING --> QUOTED: quote + agreement sent (CIMH stock held)
     QUOTED --> QUOTED: quote revised
-    QUOTED --> AWAITING_AGREEMENT: customer chooses options
-    AWAITING_AGREEMENT --> QUOTED: change choices
-    AWAITING_AGREEMENT --> ACCEPTED: signed agreement uploaded
-    ACCEPTED --> AWAITING_AGREEMENT: staff reject signature
-    AWAITING_AGREEMENT --> CANCELLED: expired / cancel
-    QUOTED --> DECLINED
+    QUOTED --> ACCEPTED: signed agreement uploaded
+    ACCEPTED --> QUOTED: staff reject signature
+    QUOTED --> DECLINED: customer cancels
     QUOTED --> CANCELLED: expired (30 d)
     DECLINED --> CANCELLED
     ACCEPTED --> PURCHASING
+    ACCEPTED --> CANCELLED: staff cancel
     PURCHASING --> SHIPPED
     SHIPPED --> DELIVERED
     SUBMITTED --> CANCELLED
     QUOTING --> CANCELLED
-    ACCEPTED --> CANCELLED
-    DELIVERED --> [*]
     CANCELLED --> [*]
+    DELIVERED --> [*]
 ```
 
 **Pro Bono request status flow:**
@@ -527,6 +530,11 @@ stateDiagram-v2
 5. If the transaction fails because of a temporary conflict (`TransientTransactionError`), retry it up to 3 times.
 
 Releasing stock (on cancel) runs `updateMany({reservedFor: orderId}, {$set: {reservedFor: null}})`. Running it twice has no further effect.
+
+A **revised quote** replaces the reservation in the same transaction: the units the request holds are released first,
+then the new CIMH lines are reserved, and one result event goes out (`stock.reserved` for the whole new allocation, or
+`stock.reservation_failed`, after which everything the request held is given back). When the revised quote holds
+the same products and quantities, nothing changes and no event is sent.
 
 ### 7.4 Stow and pick (web or mobile)
 1. Scan the shelf QR → `GET /api/inventory/v1/shelves/{barcode}` (checks the shelf exists).

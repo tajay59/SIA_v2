@@ -38,7 +38,7 @@ Shared schemas (Problem, Money, Address, paging) live in [common.yaml](../api/co
 
 | Client | Mechanism |
 |---|---|
-| SHOP / SIA | HttpOnly cookies + `X-CSRF-Token` header (double-submit) |
+| SHOP / SIA | HttpOnly cookies + `X-CSRF-Token` header (double-submit); a repeated cookie name (another app on the host) never replaces ours: the first `access_token` that verifies is used |
 | SIA Mobile | `client: "mobile"` login → Bearer tokens in Keystore; refresh issues a new refresh token each time |
 | Services | `/internal/service-token` (5 min), internal network only; `/internal/*` is never routed by nginx. Service tokens are refused on user endpoints. `GET /internal/codes/{codeRef}` lets notification-svc (only) claim a code once |
 
@@ -57,18 +57,17 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 |---|---|---|---|
 | `POST /requests` (submit cart) | customer | → `SUBMITTED` | → `SUBMITTED` (mixed cart → 2 requests) |
 | `start-quoting` | staff | `SUBMITTED → QUOTING` (stock check) | — |
-| `PUT quote-draft` | staff | supplier prices + CIMH option (+ exchange rate if USD) | — |
-| `send-quote` | staff | `QUOTING → QUOTED` (30 days; re-send = new version) | — |
-| `agreement` | requester/admin | `QUOTED → AWAITING_AGREEMENT` (choice per line; agreement PDF generated) | — |
-| `accept` | requester/admin | `AWAITING_AGREEMENT → ACCEPTED` (signed agreement file id) | — |
-| `reject-agreement` | staff | `ACCEPTED → AWAITING_AGREEMENT` (bad signature, reason) | — |
-| `decline` | requester/admin | `QUOTED → DECLINED → CANCELLED` | — |
+| `PUT quote-draft` | staff | one source per line (supplier price or CIMH stock), estimated shipping per source (+ exchange rates) | — |
+| `send-quote` | staff | `QUOTING → QUOTED` (30 days; agreement PDF made, CIMH stock held; re-send = new version) | — |
+| `accept` | requester/admin | `QUOTED → ACCEPTED` (signed copy of this version's agreement) | — |
+| `reject-agreement` | staff | `ACCEPTED → QUOTED` (bad signature, reason; ≥ 7 days left) | — |
+| `decline` | requester/admin | `QUOTED → DECLINED → CANCELLED` (the customer's Cancel request) | — |
 | `purchase-orders` | staff | `ACCEPTED → PURCHASING` (agreement verified) | — |
 | `approve` / `reject` | staff | — | `SUBMITTED → APPROVED / REJECTED` |
 | `picks` | staff | pick **CIMH-stock lines only** (supplier items ship direct) | `APPROVED → PICKING` |
 | `ship` | staff | `PURCHASING → SHIPPED` | `PICKING → SHIPPED` |
 | `deliver` | staff | `SHIPPED → DELIVERED` | `SHIPPED → DELIVERED` |
-| `cancel` | requester/staff/admin | up to `AWAITING_AGREEMENT` (customer); `ACCEPTED` staff/admin only | `SUBMITTED` (customer); `APPROVED` staff/admin only |
+| `cancel` | requester/staff/admin | `SUBMITTED`/`QUOTING` (customer); `ACCEPTED` staff/admin only | `SUBMITTED` (customer); `APPROVED` staff/admin only |
 
 Every illegal action returns **409 `ORDER_ILLEGAL_TRANSITION`**; a stale `If-Match` returns 409 `VERSION_CONFLICT`. The admin fee is charged once per request and included in the agreement total. Shipping needs every CIMH-stock and Pro Bono unit picked first (409 `PICKING_INCOMPLETE`).
 
@@ -82,7 +81,7 @@ Status diagrams: [Chapter 5](05-workflows.md#53-paid-request-quote-to-delivery).
 | catalog | `/products` (browse, create), `/products/search`, `/products/{id}`, `/products/{id}/images`, `/reference`, `/settings/fees`, `/settings/email-lists`, `/settings/general` |
 | inventory | `/sites`, `/sites/{s}/locations`, `/locations/{l}/shelves`, `/shelves/{b}` (+ `/units`), `/units/{b}`, `/labels`, `/stow`, `/pick`, `/relocate`, `/assign`, `/unassign`, `/products/{id}/stock`, `/stock/low`, `/assignments`, `/history` |
 | orders | `/cart`, `/cart/lines/{productId}`, `/requests`, `/requests/{id}` + the actions in §10.4 |
-| documents | `POST /files`, `GET /files/{id}` (X-Accel-Redirect), `DELETE /files/{id}` |
+| documents | `POST /files`, `GET /files/{id}` (X-Accel-Redirect), `DELETE /files/{id}`, `GET /requests/{id}/agreement-preview` (staff: the agreement before it is sent, marked as a preview, never stored) |
 
 The full catalogue with roles, and the **legacy → v2 endpoint mapping**, is in the [API Specification](../api/README.md#5-endpoint-catalogue).
 

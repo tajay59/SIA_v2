@@ -3,8 +3,10 @@
   order  GET  /internal/requests/{id}/access?user=   may the user see / act on the request, and its status
          GET  /internal/requests/{id}                staff view, for rendering PDFs
          POST /internal/requests/{id}/files          attach an upload at once (so "Accept" works immediately)
+         GET  /internal/requests/{id}/quote-preview  the request as Send quote would leave it (agreement preview)
 
-Transport errors and 5xx become 503 DEPENDENCY_UNAVAILABLE.
+Transport errors and 5xx become 503 DEPENDENCY_UNAVAILABLE. The quote preview passes order-svc's 409/422 on: they
+say why the draft can't be sent yet, which is what staff need to read.
 
 document-svc owns no collection, so it has no outbox: events are published straight to Kafka (acks=all) and the
 caller decides what a failed publish means (upload: refuse and remove the file; generated PDF: the consumer
@@ -34,6 +36,7 @@ class Orders(Protocol):
     async def access(self, rid: str, user: str) -> dict[str, Any] | None: ...
     async def request(self, rid: str) -> dict[str, Any] | None: ...
     async def attach(self, rid: str, file: dict[str, Any]) -> None: ...
+    async def quote_preview(self, rid: str) -> dict[str, Any] | None: ...
 
 
 class Publisher(Protocol):
@@ -69,7 +72,7 @@ class HttpOrders:
             self._until = time.monotonic() + max(30, int(body.get("expiresIn", 300)) - 30)
         return {"Authorization": f"Bearer {self._token}"}
 
-    async def _call(self, method: str, url: str, **kw: Any) -> httpx.Response | None:
+    async def _call(self, method: str, url: str, *, relay: tuple[int, ...] = (), **kw: Any) -> httpx.Response | None:
         try:
             async with httpx.AsyncClient(timeout=self.timeout, transport=self.transport) as client:
                 r = await client.request(method, url, headers=await self._auth(client), **kw)
@@ -77,6 +80,8 @@ class HttpOrders:
             raise unavailable("order-svc") from exc
         if r.status_code == 404:
             return None
+        if r.status_code in relay:
+            raise _relayed(r)
         if r.status_code >= 400:
             raise unavailable("order-svc")
         return r
@@ -91,7 +96,30 @@ class HttpOrders:
 
     async def attach(self, rid: str, file: dict[str, Any]) -> None:
         body = {k: file[k] for k in ("id", "kind", "name", "mime", "size")}
+        if file.get("quoteVersion") is not None:
+            body["quoteVersion"] = file["quoteVersion"]
         await self._call("POST", f"{self.orders}/{rid}/files", json=body)
+
+    async def quote_preview(self, rid: str) -> dict[str, Any] | None:
+        r = await self._call("GET", f"{self.orders}/{rid}/quote-preview", relay=(409, 422))
+        return None if r is None else dict(r.json())
+
+
+def _relayed(r: httpx.Response) -> ProblemError:
+    """order-svc's own problem (code, detail, field errors), returned to the caller unchanged."""
+    try:
+        body = r.json()
+    except ValueError:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    errors = body.get("errors")
+    return ProblemError(
+        r.status_code,
+        body.get("code") if isinstance(body.get("code"), str) else None,
+        body.get("detail") if isinstance(body.get("detail"), str) else None,
+        errors=[e for e in errors if isinstance(e, dict)] if isinstance(errors, list) else None,
+    )
 
 
 class KafkaPublisher:

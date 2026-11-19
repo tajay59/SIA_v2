@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from cimh_common.outbox import EventEnvelope
+from order_svc import jobs
 from order_svc.consumer import make_handler
 from order_svc.store import now
 
@@ -29,7 +30,9 @@ def test_probono_journey(ctx: Ctx) -> None:
     assert out["status"] == "APPROVED"
     assert out["approval"]["by"]["id"] == "USRSTAFF"
     (evt,) = ctx.events(rid, "order.probono_approved")
-    assert evt["payload"]["lines"] == [{"lineId": "L1", "productId": "PRO1", "qty": 2, "choice": None}]
+    assert evt["payload"]["lines"] == [
+        {"lineId": "L1", "productId": "PRO1", "qty": 2, "source": None, "supplier": None}
+    ]
     assert "cancel" not in ctx.get(rid, USER)["allowedActions"]  # after approval only staff cancel
 
     ctx.run(ctx.svc.stock_reserved({"orderId": rid, "lines": [{"lineId": "L1", "units": ["PRO1_a", "PRO1_b"]}]}))
@@ -98,7 +101,8 @@ def test_access_tells_who_may_act_and_the_state(ctx: Ctx) -> None:
         assert r.status_code == 200
         return dict(r.json())
 
-    assert ask("USRUSER") == {"allowed": True, "canAct": True, "status": "SUBMITTED", "type": "PROBONO"}
+    assert ask("USRUSER") == {"allowed": True, "canAct": True, "status": "SUBMITTED", "type": "PROBONO",
+                              "quoteVersion": None}  # fmt: skip
     assert ask("USRPEER")["canAct"] is False
     assert ask("USRSTAFF")["canAct"] is False
     assert ask("USRSTAFF")["allowed"] is True
@@ -164,6 +168,12 @@ def test_agreement_pdf_before_and_after_the_agreement(ctx: Ctx) -> None:
 
 
 # ---------------------------------------------------------------- jobs
+
+
+def test_one_jobs_run_does_every_job(ctx: Ctx) -> None:
+    ctx.cart_add("MET1")
+    ctx.run(ctx.db["orders"].update_one({"cartOf": "USRUSER"}, {"$set": {"updatedAt": now() - timedelta(days=181)}}))
+    assert ctx.run(jobs.run_all(ctx.svc)) == {"expired": 0, "reminded": 0, "cartsEmptied": 1}
 
 
 def test_old_carts_are_emptied(ctx: Ctx) -> None:

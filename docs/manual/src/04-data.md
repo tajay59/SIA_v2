@@ -142,11 +142,12 @@ Updated **in the same transaction** as every scan, with counts recomputed from `
 | Group | Fields |
 |---|---|
 | Common | `id` (`ORD…`/`CRT…`), `type` (`PAID`/`PROBONO`/null), **`status`**, `customer`, `customerSnapshot`, `organisationId`, `lines[]`, `currency`, `shipTo`, `notes`, `version`, `createdAt`, `updatedAt`, `submittedAt`, `history[]`, `outbox[]` |
-| Line | `lineId`, `productId`, `product` (details copied at submission), `qty`, `choice` (CIMH/SUPPLIER), `cimhAvailable`, `reservation{status, units[]}`, `picked[]` |
-| Supplier quotes | `quotes[]`: `id`, `version`, `supplier`, `lines{unitPrice, total}`, `total`, `fileIds`, `expiresAt` (+30 d), `sentAt/By`. **Every version is kept** |
-| CIMH quote | `cimhQuote`: `lines{unitCostBBD, unitPrice, total}`, **`exchangeRate`** (required for USD), `total`, `fileId` |
+| Line | `lineId`, `productId`, `product` (details copied at submission), `qty`, `source` (CIMH/SUPPLIER, fixed by staff when the quote is sent; was `choice`), `supplier`, `cimhAvailable`, `reservation{status, units[]}`, `picked[]` |
+| Supplier quotes | `quotes[]`: `id`, `version`, `supplier` (customers see it), `lines{unitPrice, total}`, `total`, `shippingEstimate`, `fileIds`, `expiresAt` (+30 d), `sentAt/By`. **Every version is kept** |
+| CIMH quote | `cimhQuote`: `lines{unitCostBBD, unitPrice, total}`, **`exchangeRate`** (required for USD), `total`, `shippingEstimate`, `fileId` |
 | Quote state | `quoteVersion`, `quoteExpiresAt`, **`adminFee`** (once per request, in the request currency), `quoteDraft` (staff) |
-| Decision | `acceptance{quoteVersion, choices[], by, at, ip}` or `decline{by, at, reason}` |
+| Agreement | `agreement{quoteVersion, total (lines + shipping + fee), fileId, signedFileId, verified, rejections[]}`, made when the quote is sent |
+| Decision | `acceptance{quoteVersion, agreementFileId, by, at, ip}` or `decline{by, at, reason}` |
 | Fulfilment | `purchaseOrders[]`, `approval` / `rejection` (PROBONO), `shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}`, `invoice{…}`, `files[]`, `cancellation{by, at, reason, auto}` |
 
 Key rules:

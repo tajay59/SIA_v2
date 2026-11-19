@@ -35,7 +35,9 @@ data class RequestLine(
     val productId: String,
     val product: ProductSnapshot,
     val qty: Int,
-    val choice: String? = null,
+    /** CIMH or SUPPLIER, fixed by staff when the quote is sent ("view and sign", 2026-11-17). */
+    val source: String? = null,
+    val supplier: String? = null,
     val reservation: Reservation? = null,
     val picked: List<PickedUnit> = emptyList(),
 )
@@ -60,7 +62,7 @@ data class OrderRequest(
     val allowedActions: List<String> = emptyList(),
 ) {
     /** Only CIMH-stock lines (paid) and every Pro Bono line are picked; supplier items ship direct. */
-    val pickableLines: List<RequestLine> get() = lines.filter { type == "PROBONO" || it.choice == "CIMH" }
+    val pickableLines: List<RequestLine> get() = lines.filter { type == "PROBONO" || it.source == "CIMH" }
     val allPicked: Boolean get() = pickableLines.all { it.picked.size >= it.qty }
 }
 

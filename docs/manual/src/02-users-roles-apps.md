@@ -42,8 +42,8 @@ When approving, the admin links the account to an **organisation** (picking an e
 | Home | Featured met and radar products; first-visit tour |
 | Catalogue | Browse by type (met, radar, equipment, supplies, misc, projects) and department; search by name, make, model, serial, keyword; product detail with images, specs and **availability** (in stock / on request). **No prices.** |
 | Pro Bono items | Separate section of free items; maximum quantity per request shown on each item |
-| Cart | Saved across devices; choose **BBD or USD**; submit. A cart with both paid and Pro Bono items becomes **two requests** |
-| My requests | Own and organisation requests; filter by status, year and requester; timeline; quotes (supplier + CIMH option); choose per item; accept/decline; documents; carrier + tracking link |
+| Cart | Saved across devices; every quote is in **BBD**; submit. A cart with both paid and Pro Bono items becomes **two requests** |
+| My requests | Own and organisation requests; filter by status, year and requester; timeline; the quote (every item with its source and price, estimated shipping, total; the supplier and CIMH quote files); **view and sign, or cancel**; documents; carrier + tracking link |
 | Account | Sign up → verify → awaiting approval → login; password reset; profile, saved addresses |
 
 ## 2.4 SIA (staff web app)

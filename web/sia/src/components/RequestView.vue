@@ -125,11 +125,11 @@ async function submitReason(reason: string) {
 // ---- lines, names and progress
 const lineName = (lineId: string) => r.value?.lines.find((l) => l.lineId === lineId)?.product.name ?? lineId
 const lineQty = (lineId: string) => r.value?.lines.find((l) => l.lineId === lineId)?.qty ?? 0
-/** Lines CIMH picks: every Pro Bono line; on paid requests only lines the customer took from CIMH stock. */
+/** Lines CIMH picks: every Pro Bono line; on paid requests only lines quoted from CIMH stock. */
 const pickLines = computed(() =>
-  (r.value?.lines ?? []).filter((l) => r.value!.type === 'PROBONO' || l.choice === 'CIMH'),
+  (r.value?.lines ?? []).filter((l) => r.value!.type === 'PROBONO' || l.source === 'CIMH'),
 )
-const PICK_STAGES = ['ACCEPTED', 'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED']
+const PICK_STAGES = ['ACCEPTED', 'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED'] // stock is held from QUOTED
 type Step = { label: string; state: 'done' | 'pending' | 'none'; detail: string }
 const steps = computed<Step[]>(() => {
   const x = r.value
@@ -164,7 +164,7 @@ const steps = computed<Step[]>(() => {
 const STEP_ICON = { done: IDone, pending: IPending, none: INotNeeded } as const
 // Columns that carry nothing at this stage stay hidden.
 const showStock = computed(() => r.value?.lines.some((l) => l.cimhAvailable !== null && l.cimhAvailable !== undefined) ?? false)
-const showChoice = computed(() => r.value?.lines.some((l) => !!l.choice) ?? false)
+const showSource = computed(() => r.value?.lines.some((l) => !!l.source) ?? false)
 const showReservation = computed(() => r.value?.lines.some((l) => !!l.reservation?.status) ?? false)
 const showPicked = computed(() => r.value ? PICK_STAGES.includes(r.value.status) && pickLines.value.length > 0 : false)
 const reservationLabel = (s?: string) =>
@@ -180,7 +180,7 @@ const po = reactive({ verified: false, rows: [] as { supplier: string; poNumber:
 function openPo() {
   const x = r.value
   if (!x) return
-  const supplierLines = new Set(x.lines.filter((l) => l.choice === 'SUPPLIER').map((l) => l.lineId))
+  const supplierLines = new Set(x.lines.filter((l) => l.source === 'SUPPLIER').map((l) => l.lineId))
   const latest = Math.max(0, ...(x.quotes ?? []).map((q) => q.version))
   const bySupplier = new Map<string, string[]>()
   const taken = new Set<string>() // a line belongs to one supplier only
@@ -360,7 +360,7 @@ async function submitDeliver() {
                     <th>Item</th>
                     <th class="num">Qty</th>
                     <th v-if="showStock">CIMH stock</th>
-                    <th v-if="showChoice">Choice</th>
+                    <th v-if="showSource">From</th>
                     <th v-if="showReservation">Reservation</th>
                     <th v-if="showPicked" class="num">Picked</th>
                   </tr>
@@ -373,7 +373,7 @@ async function submitDeliver() {
                     </td>
                     <td class="num console-mono" data-label="Qty"><span>{{ l.qty }}</span></td>
                     <td v-if="showStock" data-label="CIMH stock"><span>{{ l.cimhAvailable === null || l.cimhAvailable === undefined ? '—' : l.cimhAvailable ? 'Full quantity' : 'Not enough' }}</span></td>
-                    <td v-if="showChoice" data-label="Choice"><span>{{ l.choice === 'CIMH' ? 'CIMH stock' : l.choice === 'SUPPLIER' ? 'Supplier (ships direct)' : '—' }}</span></td>
+                    <td v-if="showSource" data-label="From"><span>{{ l.source === 'CIMH' ? 'CIMH stock' : l.source === 'SUPPLIER' ? `${l.supplier ?? 'Supplier'} (ships direct)` : '—' }}</span></td>
                     <td v-if="showReservation" data-label="Reservation">
                       <span :class="{ failed: l.reservation?.status === 'FAILED' }">{{ reservationLabel(l.reservation?.status) || '—' }}</span>
                       <span v-if="l.reservation?.units?.length" class="units console-mono" :title="l.reservation.units.join(', ')">{{ l.reservation.units.map(shortUnit).join(', ') }}</span>
@@ -385,13 +385,10 @@ async function submitDeliver() {
             </div>
           </section>
 
-          <section v-if="r.quotes?.length" class="panel">
+          <section v-if="r.quotes?.length || r.cimhQuote" class="panel">
             <header class="console-head"><h2 class="console-title">Quote</h2></header>
             <div class="pad">
               <QuoteTable :request="r" staff />
-              <p v-if="r.agreement" class="agreement">
-                Agreement total <strong class="console-mono">{{ money(r.agreement.total) }}</strong>
-              </p>
               <ul v-if="r.agreement?.rejections?.length" class="rejections">
                 <li v-for="(rej, i) in r.agreement.rejections" :key="i" class="muted">
                   Signature rejected <span class="console-mono">{{ formatDate(rej.at!) }}</span>: {{ rej.reason }}

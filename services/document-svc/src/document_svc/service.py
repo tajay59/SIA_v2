@@ -1,7 +1,9 @@
 """document-svc rules (TAD §4.5, API documents.openapi.yaml).
 
 Upload:   staff/admin any upload kind on any request; a customer only `signed_agreement` on a request they may act
-          on (the requester, or an admin) while it is AWAITING_AGREEMENT. Size ≤ 20 MB, every file virus-scanned
+          on (the requester, or an admin) while it is QUOTED ("view and sign"). A signed agreement is stamped with
+          the request's current quote version, so a copy signed for an older version can't accept a revised quote.
+          Size ≤ 20 MB, every file virus-scanned
           first, then type from the bytes, images re-encoded (infected → quarantine, 422 FILE_INFECTED; scanner down →
           503, fail closed). Then: bytes + sidecar on the volume → document.uploaded on Kafka (if that fails the
           file is removed and the upload refused) → attached to the request at once (best effort; the event does
@@ -10,7 +12,8 @@ Download: staff/admin, or whoever order-svc says may see the request; otherwise 
           Label batches: staff only. nginx streams the bytes (X-Accel-Redirect to the internal /_protected/).
 Delete:   staff; uploads only (generated documents stay); soft (sidecar flag) + document.deleted + audit.
 Generate: from order events (consumer.py); the file id is derived from the event id, so a redelivered event
-          rewrites the same file and order-svc attaches it once.
+          rewrites the same file and order-svc attaches it once. An agreement / CIMH quote is rendered only while
+          its quote version is still the current one (a revision sent meanwhile renders its own).
 """
 
 from __future__ import annotations
@@ -49,7 +52,7 @@ def now() -> datetime:
 
 
 def public(meta: dict[str, Any]) -> dict[str, Any]:
-    keys = ("id", "requestId", "kind", "name", "mime", "size", "sha256", "uploadedBy", "uploadedAt")
+    keys = ("id", "requestId", "kind", "name", "mime", "size", "sha256", "uploadedBy", "uploadedAt", "quoteVersion")
     return {k: meta.get(k) for k in keys}
 
 
@@ -80,7 +83,7 @@ class DocumentService:
             raise ProblemError(413, "FILE_TOO_LARGE", f"Files can be at most {self.max_bytes // (1024 * 1024)} MB")
         if not data:
             raise ProblemError(422, "VALIDATION_FAILED", errors=[{"field": "file", "message": "empty file"}])
-        await self._may_upload(p, rid, kind)
+        acc = await self._may_upload(p, rid, kind)
         fid = "FIL" + secrets.token_hex(16)
         # Scan before the type check: every infected upload is quarantined and audited, whatever its type.
         try:
@@ -117,6 +120,8 @@ class DocumentService:
             "uploadedAt": now().isoformat(),
             "generated": False,
         }
+        if kind == "signed_agreement" and isinstance(acc.get("quoteVersion"), int):
+            meta["quoteVersion"] = acc["quoteVersion"]
         self.files.save(meta, data)
         try:
             await self._emit("document.uploaded", meta, cid, p.sub)
@@ -129,11 +134,13 @@ class DocumentService:
             log.warning("sync attach failed; document.uploaded will attach it", extra={"fileId": fid})
         return public(meta)
 
-    async def _may_upload(self, p: Principal, rid: str, kind: str) -> None:
+    async def _may_upload(self, p: Principal, rid: str, kind: str) -> dict[str, Any]:
+        """The access answer for the request (status, quote version) when the upload is allowed."""
         if p.is_staff:
-            if await self.orders.access(rid, p.sub) is None:
+            staff_acc = await self.orders.access(rid, p.sub)
+            if staff_acc is None:
                 raise not_found("No request with this id")
-            return
+            return staff_acc
         if kind != "signed_agreement":
             raise forbidden("Customers can only upload the signed agreement")
         acc = await self.orders.access(rid, p.sub)
@@ -141,8 +148,9 @@ class DocumentService:
             raise not_found("No request with this id")
         if not acc.get("canAct"):
             raise forbidden("Only the requester or an admin can do this")
-        if acc.get("status") != "AWAITING_AGREEMENT":
-            raise conflict("INVALID_STATE", "The signed agreement can be uploaded only while it is awaited")
+        if acc.get("status") != "QUOTED":
+            raise conflict("INVALID_STATE", "The signed agreement can be uploaded only while the quote is open")
+        return acc
 
     # ------------------------------------------------------------------ download / delete
 
@@ -180,12 +188,20 @@ class DocumentService:
         self.files.save(meta, data)
         return public(meta)
 
-    async def generate(self, kind: str, rid: str, event: EventEnvelope, **opts: Any) -> dict[str, Any] | None:
-        """Render `kind` for request `rid` and publish document.generated. Same event → same file id."""
+    async def generate(
+        self, kind: str, rid: str, event: EventEnvelope, *, quote_version: int | None = None, **opts: Any
+    ) -> dict[str, Any] | None:
+        """Render `kind` for request `rid` and publish document.generated. Same event → same file id.
+        With `quote_version` (agreement, CIMH quote) nothing is rendered once a newer version was sent."""
         req = await self.orders.request(rid)
         if req is None:
             log.warning("request gone; nothing to render", extra={"requestId": rid, "kind": kind})
             return None
+        if quote_version is not None:
+            current = (req.get("agreement") if kind == "agreement" else req.get("cimhQuote")) or {}
+            if current.get("quoteVersion" if kind == "agreement" else "version") != quote_version:
+                log.info("quote revised meanwhile; not rendered", extra={"requestId": rid, "kind": kind})
+                return None
         render: dict[str, Callable[..., bytes]] = {
             "cimh_quote": pdfs.cimh_quote,
             "agreement": pdfs.agreement,
@@ -195,11 +211,24 @@ class DocumentService:
         }
         data = await asyncio.to_thread(render[kind], req, **opts)
         fid = "FIL" + hashlib.sha256(f"{event.eventId}:{kind}".encode()).hexdigest()[:32]
-        meta = self._generated_meta(fid, rid, kind, f"{NAMES[kind]}-{rid}.pdf", data, "system")
+        name = f"{NAMES[kind]}-{rid}" + (f"-v{quote_version}" if quote_version else "") + ".pdf"
+        meta = self._generated_meta(fid, rid, kind, name, data, "system")
+        if quote_version is not None:
+            meta["quoteVersion"] = quote_version
         self.files.save(meta, data)
         extra = {"customer": req["customer"]} if isinstance(req.get("customer"), str) else {}
         await self._emit("document.generated", meta, event.correlationId, event.actorId, **extra)
         return public(meta)
+
+    async def agreement_preview(self, p: Principal, rid: str) -> bytes:
+        """Staff see the agreement a Send quote would email, before sending it: rendered from order-svc's priced
+        draft, marked as a preview, never stored and never published."""
+        if not p.is_staff:
+            raise forbidden("Only staff can preview an agreement")
+        req = await self.orders.quote_preview(rid)
+        if req is None:
+            raise not_found("Request not found")
+        return await asyncio.to_thread(pdfs.agreement, req, preview=True)
 
     @staticmethod
     def _generated_meta(fid: str, rid: str | None, kind: str, name: str, data: bytes, by: str) -> dict[str, Any]:
@@ -225,6 +254,8 @@ class DocumentService:
     async def _emit(self, etype: str, meta: dict[str, Any], cid: str, actor_id: str | None, **extra: Any) -> None:
         payload = {"orderId": meta["requestId"], "fileId": meta["id"], **extra}
         payload |= {k: meta[k] for k in ("kind", "name", "mime", "size", "sha256")}
+        if meta.get("quoteVersion") is not None:
+            payload["quoteVersion"] = meta["quoteVersion"]
         await self.publisher.publish(TOPIC, meta["requestId"], self._event(etype, payload, cid, actor_id))
 
     async def _audit(self, p: Principal, action: str, fid: str, cid: str, **extra: Any) -> None:

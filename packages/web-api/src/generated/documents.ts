@@ -14,7 +14,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while AWAITING_AGREEMENT)
+         * Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED; stamped with the current quote version)
          * @description PDF, JPEG, PNG, WebP; type checked from content (magic bytes); ≤ 20 MB; images re-encoded.
          */
         post: {
@@ -173,6 +173,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/agreement-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Preview the agreement a Send quote would email (staff, admin)
+         * @description Renders the quote agreement from the request's saved quote draft, priced as `send-quote` would price it
+         *     (order-svc `GET /internal/requests/{id}/quote-preview`), marked "Preview · not sent" on every page. Nothing is
+         *     stored, attached or published; each call renders afresh. order-svc's 409/422 are passed on unchanged (they say
+         *     why the draft can't be sent yet).
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The agreement preview */
+                200: {
+                    headers: {
+                        "Content-Disposition"?: string;
+                        "Cache-Control"?: "private, no-store";
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/labels": {
         parameters: {
             query?: never;
@@ -313,6 +367,8 @@ export interface components {
             sha256: string;
             uploadedBy?: components["schemas"]["Actor"];
             uploadedAt: components["schemas"]["Timestamp"];
+            /** @description Quote version of a generated agreement / CIMH quote, or the one a signed agreement was uploaded for */
+            quoteVersion?: number | null;
         };
         Actor: {
             id: string;
@@ -379,6 +435,33 @@ export interface components {
         };
         /** @description State conflict (stale If-Match version, illegal status transition, duplicate). */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Missing, expired or revoked token. */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Validation failed. */
+        Unprocessable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description A dependency is unavailable; nothing was written. */
+        Unavailable: {
             headers: {
                 [name: string]: unknown;
             };

@@ -64,7 +64,7 @@
             },
             "auto": {
               "type": "boolean",
-              "description": "true when cancelled by quote expiry"
+              "description": "true when cancelled by the system (quote expiry or the customer's account deleted)"
             }
           }
         }

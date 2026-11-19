@@ -11,7 +11,6 @@ export const REQUEST_STATUS_TONE = {
   PURCHASING: 'info',
   PICKING: 'info',
   SHIPPED: 'info',
-  AWAITING_AGREEMENT: 'warning',
   ACCEPTED: 'success',
   DELIVERED: 'success',
   DECLINED: 'error',
@@ -55,7 +54,7 @@ export const TONE_ICON: Record<Tone, string> = {
   error: 'mdi-close-circle-outline',
 }
 
-/** "AWAITING_AGREEMENT" -> "Awaiting agreement" (sentence case, §4 rules). */
+/** "PENDING_APPROVAL" -> "Pending approval" (sentence case, §4 rules). */
 export function statusLabel(status: string): string {
   const words = status.toLowerCase().split('_').filter(Boolean)
   if (words.length === 0) return ''

@@ -14,6 +14,7 @@ from cimh_common.idempotency import IdempotencyStore
 from cimh_common.outbox import outbox_backlog_hook
 from cimh_common.redis_client import redis_client
 
+from . import upgrade
 from .api import router
 from .clients import Deps, HttpDeps
 from .config import Settings
@@ -83,6 +84,7 @@ def build_app(
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> Any:
         await store.ensure_indexes()
+        await upgrade.view_and_sign(store.orders)  # idempotent one-off (2026-11-17); remove after cut-over
         yield
 
     app.router.lifespan_context = lifespan

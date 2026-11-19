@@ -258,13 +258,24 @@ export async function auditDialog(page: Page, name: string): Promise<void> {
   expect(found, found.join('\n')).toEqual([])
   await shot(page, name)
 }
-export async function shot(page: Page, name: string): Promise<void> {
+/** axe on one part of a page (e.g. a pane that opens in place), same tags and bar as `auditDialog`. */
+export async function auditPart(page: Page, selector: string, name: string): Promise<void> {
+  const result = await new AxeBuilder({ page })
+    .include(selector)
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
+    .analyze()
+  const found = result.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${name}: ${v.id} ${v.help} — ${v.nodes.slice(0, 3).map((n) => `${n.target.join(" ")} ${n.failureSummary ?? ""}`).join(" | ")}`)
+  expect(found, found.join('\n')).toEqual([])
+}
+/** `fullPage: false` for pages with a sticky split pane: Chromium's full-page capture resizes the viewport and catches
+ * them mid re-layout (the S-11/S-12 document pane came out half-drawn). */
+export async function shot(page: Page, name: string, { fullPage = true }: { fullPage?: boolean } = {}): Promise<void> {
   if (!process.env.SHOTS) return
   // Entrance motion must settle first (infinite loops such as a breathing ring are left running).
   await page.waitForFunction(() =>
     document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
   )
-  await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage: true })
+  await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage })
 }
 
 /**

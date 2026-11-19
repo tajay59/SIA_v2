@@ -292,7 +292,7 @@ Material 3 pills, calm until touched.
 - **Primary:** filled Action Blue with `on-action` label; the detail panel shows the filled action for the request's current step (from its allowed actions), with secondary actions outlined.
 - **Hover / Focus:** state layer at 8% on hover and 12% on press or focus; filled buttons gain the level-1 shadow on hover (200 ms, `cubic-bezier(0.2, 0, 0, 1)`).
 - **Outlined:** 1 px seam outline, Action Blue label, no lift.
-- **Danger:** outlined with a 50% red outline and red label; placed alone, away from the primary action (detail footer: the way out on the left, Reject on the right).
+- **Danger:** outlined with a 50% red outline and red label; placed alone, away from the primary action (detail footer: the way out on the left, Reject on the right). Class `m3-danger` on an outlined or text `m3` button; its selector must out-rank the outlined/text rules in `console.css` (it did not until 2026-11-18, so danger buttons drew blue).
 - **Text links in panels:** Action Blue, 600, underline on hover with the trailing arrow nudging 3 px.
 
 ### Switches and dialogs
@@ -320,6 +320,8 @@ Status, never an action.
 - **Focus:** the edge becomes 2 px Action Blue on the raised fill; the global focus ring is suppressed inside fields.
 - **6-digit codes:** always six OTP boxes (`v-otp-input`: verify email, MFA, password reset), never a text field.
 - **Scan field:** a form around a solo-inverted field with a barcode icon, mono input text, a persistent hint and a tonal "Enter" button inside. Enter submits one scan, the field clears and keeps focus.
+- **Terms row** (quote builder, 2026-11-18): when fields sit side by side in a strip and their names are long, the name goes **above** the field as a caption (label 13/18 500, muted ink, a real `<label for>`) and the field has no inner label, so nothing is cut off. Each cell is caption, 40 px solo-inverted field, one reserved 12/16 message line (a hint in muted ink, or an error in red with a 14 px icon), so the row never jumps. A wrong value is marked at once; a missing one only after the action that needs it (Preview, Send) was pressed. Units travel as prefix/suffix ("1 USD = … BBD", "USD") in mono and stay visible at rest (`persistent-placeholder`); the placeholder is then a word in muted ink ("rate", "amount"), never a number that reads as a value. Cells keep fixed widths and wrap whole; a destructive action at the end of the row turns icon-only (aria-label + title) when the row is short of room (container query), and keeps its word on phones.
+- **Segmented choice** (2 to 3 options that switch a form, e.g. a currency): Material 3 segmented button built from native radios (arrow keys for free): 40 px tall to match the fields, full-pill outer edge in Field Edge, segments split by 1 px, the chosen one on Action Wash with weight 600 and an 18 px Action Blue check; focus = 2 px primary ring inset. Not `v-btn-toggle`, whose pills fall apart in the M3 button styles.
 
 ### Sign-in pages (`AuthCard`, shared with SHOP)
 Category-standard split sign-in (owner, 2026-11-16; brief `packages/web-app/.impeccable/surfaces/src-components-authcard-vue.md`). Used by log in, sign up, verify, forgot/reset password, MFA setup and staff-only.
@@ -337,7 +339,7 @@ In SIA each section is a console panel (seam, 4 px corners, 44 px head with the 
 - Theme defaults (`packages/web-ui/src/theme.ts`, `VDialog` nested defaults): the card inside a dialog is elevated on `surface` (cards elsewhere stay outlined and transparent), and fields inside a dialog take `surface-variant` so they stay visible on the card.
 - **Confirms** (2026-11-15): an action that can't be undone, or that emails someone, asks first: the dialog names the record and says what happens; the safe button says what it keeps ("Keep editing", "Keep issued"), the acting button repeats the verb ("Email the customer", "Return unit"). Red only for the irreversible ones (Erase, Merge, Remove).
 - **Submit, then mark:** submit pills are never disabled for missing input; pressing one runs `checkForm` (web-app `form.ts`), which marks every field and focuses the first. Disabled is kept for "nothing changed" (the save bar says "All changes saved") and while saving. Exception: small dialogs whose one field carries the hint (reason dialogs; Erase, where typing the email is the safeguard).
-- Anatomy: title + subtitle (the record's mono id and name), seam dividers, body, actions right-aligned (Back text, primary filled pill). Choices of 2-4 options are radio tiles (icon + radio + word), e.g. Record shipment (`ShipDialog.vue`).
+- Anatomy: title + subtitle (the record's mono id and name), seam dividers, body, actions right-aligned (Back text, primary filled pill). A confirm that sends a document shows the document: the quote builder's review dialog (1240 px) puts the agreement PDF, exactly as the customer gets it and marked as a preview, on the left and the summary on the right (phones: fullscreen, summary first). Choices of 2-4 options are radio tiles (icon + radio + word), e.g. Record shipment (`ShipDialog.vue`).
 
 ### Navigation
 - **Drawer:** brand mark row, groups Work / Stock / Reports / Admin with uppercase group titles, flat 32 px rows (20 px muted icon, 14 px label, mono count on the right), scan box and account/theme controls at the foot behind a seam.

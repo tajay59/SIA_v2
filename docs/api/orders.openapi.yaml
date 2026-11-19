@@ -122,7 +122,7 @@ paths:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     get:
       tags: [requests]
-      summary: Request detail (fields filtered by role; supplier names and POs are staff-only)
+      summary: Request detail (fields filtered by role; purchase orders, catalogue costs and the quote draft are staff-only)
       responses:
         '200':
           description: Request
@@ -130,48 +130,18 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
-  /requests/{requestId}/agreement:
-    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
-    post:
-      tags: [customer-actions]
-      summary: Choose options and get the payment agreement (requester or admin) - QUOTED → AWAITING_AGREEMENT
-      description: |
-        Every line offered by both CIMH stock and a supplier needs a choice; lines with only one option default to it.
-        Locks the choices, computes the total, and generates the **agreement PDF** asynchronously
-        (`order.agreement_requested` → document-svc; it appears in `agreement.fileId` / `files[]` with kind `agreement`).
-        Calling again while AWAITING_AGREEMENT replaces the choices and the agreement (the old one becomes invalid).
-      parameters:
-        - { $ref: './common.yaml#/components/parameters/IfMatch' }
-        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [quoteVersion, choices]
-              properties:
-                quoteVersion: { type: integer, description: Must equal the latest quote version (409 QUOTE_OUTDATED) }
-                choices:
-                  type: array
-                  items: { type: object, required: [lineId, choice], properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } }
-      responses:
-        '200': { description: AWAITING_AGREEMENT, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
-        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
-        '409': { $ref: './common.yaml#/components/responses/Conflict' }
-        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
-        '404': { $ref: './common.yaml#/components/responses/NotFound' }
-
   /requests/{requestId}/accept:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [customer-actions]
-      summary: Accept with the signed agreement (requester or admin) - AWAITING_AGREEMENT → ACCEPTED
+      summary: Accept with the signed agreement (requester or admin) - QUOTED → ACCEPTED
       description: |
-        The customer downloads the agreement, signs it, uploads it with `POST /api/documents/v1/files` (kind `signed_agreement`),
-        then calls this with the returned file id. This is the **commitment to pay** the agreement total. Records user, time, IP,
-        choices and the signed file. CIMH-chosen lines are reserved asynchronously (`order.accepted` → inventory); a failed
-        reservation flags the line for requote.
+        "View and sign": the agreement PDF is generated when staff send the quote (`agreement.fileId`, kind `agreement`).
+        The customer downloads it, signs it, uploads it with `POST /api/documents/v1/files` (kind `signed_agreement`;
+        document-svc stamps the current `quoteVersion` on it), then calls this with the returned file id. This is the
+        **commitment to pay** the agreement total. Records user, time, IP and the signed file. A signed copy made for an
+        earlier quote version is refused (409 QUOTE_OUTDATED). The customer has nothing to choose: staff fixed the source
+        of every line when sending the quote; CIMH stock lines were reserved then.
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -196,8 +166,8 @@ paths:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [staff-actions]
-      summary: Reject the signed agreement (staff; reason required) - ACCEPTED → AWAITING_AGREEMENT
-      description: Releases any reserved stock; the customer is emailed to upload a correctly signed copy.
+      summary: Reject the signed agreement (staff; reason required) - ACCEPTED → QUOTED
+      description: The quote stays live (reserved stock stays held) and is valid for at least 7 more days; the customer is emailed to upload a correctly signed copy.
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -205,7 +175,7 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/ReasonBody' } } }
       responses:
-        '200': { description: AWAITING_AGREEMENT, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '200': { description: QUOTED (back to the customer), content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
@@ -213,7 +183,7 @@ paths:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [customer-actions]
-      summary: Decline the quote (requester or admin) - QUOTED → DECLINED → CANCELLED
+      summary: Cancel a quoted request (the customer's "Cancel request"; requester or admin) - QUOTED → DECLINED → CANCELLED; releases stock held for the quote
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -229,7 +199,7 @@ paths:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [customer-actions]
-      summary: Cancel (requester, staff or admin) - allowed up to ACCEPTED (PAID, incl. AWAITING_AGREEMENT) or APPROVED (PROBONO); releases reserved stock
+      summary: Cancel (requester, staff or admin) - SUBMITTED or QUOTING; ACCEPTED (staff/admin) (PAID; while QUOTED the requester uses decline) or SUBMITTED/APPROVED (PROBONO); releases reserved stock
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -259,8 +229,13 @@ paths:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     put:
       tags: [staff-actions]
-      summary: Save the draft quote while QUOTING (staff)
-      description: Supplier quotes (with uploaded file ids) and, for lines with `cimhAvailable`, the CIMH option. `exchangeRate` is required when the request currency is USD and a CIMH option exists. CIMH prices are computed by the server (cost + admin fee).
+      summary: Save the draft quote while QUOTING or QUOTED (staff)
+      description: |
+        Staff fix where every line comes from: a supplier quote (with uploaded file ids) or, for lines with `cimhAvailable`
+        (full quantity in stock), CIMH stock. A line sits in **one** place only (422 LINE_SOURCE_CONFLICT when it is in two
+        supplier quotes, or in a supplier quote and CIMH stock). Each place carries its **estimated shipping**
+        (`shippingEstimate`: supplier quotes in the supplier's currency, CIMH stock in BBD). `cimh.exchangeRate` is required
+        on legacy USD requests when CIMH stock or an admin fee is priced. CIMH prices are computed by the server (catalogue cost).
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -276,8 +251,9 @@ paths:
                 cimh:
                   type: [object, 'null']
                   properties:
-                    lineIds: { type: array, items: { type: string }, description: Lines to offer from CIMH stock (subset of cimhAvailable) }
+                    lineIds: { type: array, items: { type: string }, description: Lines supplied from CIMH stock (subset of cimhAvailable) }
                     exchangeRate: { type: [string, 'null'], pattern: '^\d+(\.\d{1,6})?$', description: BBD per 1 USD }
+                    shippingEstimate: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: 'Estimated shipping of the CIMH stock lines to the customer (BBD); required at send when lineIds is not empty' }
       responses:
         '200': { description: Draft saved, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
@@ -289,13 +265,21 @@ paths:
     post:
       tags: [staff-actions]
       summary: QUOTING → QUOTED, or revise while QUOTED (staff); new quote version, expiry now + 30 days
+      description: |
+        Fixes `lines[].source` / `lines[].supplier` from the draft, prices every line, converts USD supplier prices and
+        shipping to BBD, and creates the `agreement` for this version (`total` = lines + estimated shipping + admin fee).
+        `order.quoted` (or `order.quote_revised`) makes document-svc generate the agreement PDF (and the CIMH stock quote)
+        and inventory reserve the CIMH stock lines. A revision voids the earlier agreement and any signed copy of it.
+        422 QUOTE_INCOMPLETE (a line without a source or price), SHIPPING_ESTIMATE_REQUIRED, EXCHANGE_RATE_REQUIRED;
+        409 CIMH_STOCK_SHORT when a CIMH stock line is no longer fully in stock (quote it from a supplier).
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
       responses:
         '200': { description: QUOTED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
-        '422': { description: Draft incomplete (every line needs a supplier price or a CIMH option) }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /requests/{requestId}/purchase-orders:
@@ -422,6 +406,7 @@ paths:
                   canAct: { type: boolean }
                   status: { type: string }
                   type: { type: [string, 'null'], enum: [PAID, PROBONO, null] }
+                  quoteVersion: { type: [integer, 'null'], description: Current quote version; stamped on signed_agreement uploads }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
   /internal/requests/{requestId}:
@@ -432,6 +417,23 @@ paths:
       responses:
         '200': { description: Request, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /internal/requests/{requestId}/quote-preview:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    get:
+      tags: [internal]
+      summary: The request as send-quote would leave it, nothing saved (document-svc draws the agreement preview; service token)
+      description: |
+        Prices the saved draft exactly as `send-quote` does (next quote version, expiry now + 30 days, sources, shipping,
+        admin fee, agreement total) and returns the staff view with `status` QUOTED, without writing anything or
+        publishing an event. Same refusals as `send-quote`: 422 QUOTE_INCOMPLETE, SHIPPING_ESTIMATE_REQUIRED,
+        EXCHANGE_RATE_REQUIRED; 409 CIMH_STOCK_SHORT, or ORDER_ILLEGAL_TRANSITION outside QUOTING / QUOTED.
+      responses:
+        '200': { description: The request with the would-be quote, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
 
   /internal/requests/{requestId}/files:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -473,10 +475,11 @@ components:
       enum: [PAID, PROBONO]
     RequestStatus:
       type: string
-      enum: [SUBMITTED, QUOTING, QUOTED, AWAITING_AGREEMENT, ACCEPTED, DECLINED, PURCHASING, APPROVED, REJECTED, PICKING, SHIPPED, DELIVERED, CANCELLED]
-    LineChoice:
+      enum: [SUBMITTED, QUOTING, QUOTED, ACCEPTED, DECLINED, PURCHASING, APPROVED, REJECTED, PICKING, SHIPPED, DELIVERED, CANCELLED]
+    LineSource:
       type: string
       enum: [CIMH, SUPPLIER]
+      description: Where a paid line comes from, fixed by staff when the quote is sent (CIMH stock is picked and shipped by CIMH; supplier items ship directly to the customer)
     Carrier:
       type: string
       enum: [FEDEX, DHL, HAND]
@@ -523,7 +526,8 @@ components:
         product: { $ref: '#/components/schemas/ProductSnapshot' }
         qty: { type: integer }
         cimhAvailable: { type: [boolean, 'null'] }
-        choice: { oneOf: [ { $ref: '#/components/schemas/LineChoice' }, { type: 'null' } ] }
+        source: { oneOf: [ { $ref: '#/components/schemas/LineSource' }, { type: 'null' } ], description: 'Set when the quote is sent; null before (and on Pro Bono lines)' }
+        supplier: { type: [string, 'null'], description: Supplier name for SUPPLIER lines }
         reservation:
           type: [object, 'null']
           properties:
@@ -545,17 +549,20 @@ components:
           type: array
           items: { type: object, required: [lineId, unitPrice], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money', description: in the supplier currency } } }
         fileIds: { type: array, items: { type: string } }
+        shippingEstimate: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: "Estimated shipping straight to the customer, in the supplier's currency; required at send when the quote has lines" }
     SupplierQuote:
       type: object
       required: [id, version, lines, total, expiresAt]
       properties:
         id: { type: string }
         version: { type: integer }
-        supplier: { type: string, description: staff/admin only }
+        supplier: { type: string, description: Supplier name (customers see it too; they hold the supplier's quote) }
         lines:
           type: array
           items: { type: object, required: [lineId, unitPrice, total], properties: { lineId: { type: string }, unitPrice: { $ref: './common.yaml#/components/schemas/Money' }, total: { $ref: './common.yaml#/components/schemas/Money' }, sourceUnitPrice: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: "The supplier's own unit price when it was converted (in sourceCurrency)" } } }
         total: { $ref: './common.yaml#/components/schemas/Money' }
+        shippingEstimate: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: Estimated shipping in the request currency (not part of `total`) }
+        sourceShippingEstimate: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: "The supplier's own shipping figure when it was converted (in sourceCurrency)" }
         sourceCurrency: { oneOf: [ { $ref: './common.yaml#/components/schemas/Currency' }, { type: 'null' } ], description: "Currency of the supplier's uploaded quote, when it differs from the request currency" }
         exchangeRate: { type: [string, 'null'], description: BBD per 1 USD used for the conversion }
         fileIds: { type: array, items: { type: string } }
@@ -578,6 +585,7 @@ components:
               unitPrice: { $ref: './common.yaml#/components/schemas/Money' }
               total: { $ref: './common.yaml#/components/schemas/Money' }
         total: { $ref: './common.yaml#/components/schemas/Money' }
+        shippingEstimate: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: Estimated shipping of the CIMH stock lines (not part of `total`) }
         fileId: { type: [string, 'null'] }
     ShipmentInput:
       type: object
@@ -598,6 +606,7 @@ components:
         name: { type: string }
         mime: { type: string }
         size: { type: integer }
+        quoteVersion: { type: [integer, 'null'], description: 'Quote version a generated agreement / CIMH quote or a signed agreement belongs to' }
         uploadedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         url: { type: string, description: 'Download path: /api/documents/v1/files/{id}' }
     RequestSummary:
@@ -643,17 +652,16 @@ components:
               type: [object, 'null']
               properties:
                 quoteVersion: { type: integer }
-                choices: { type: array, items: { type: object, properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } } }
                 signedAgreementFileId: { type: string }
                 by: { $ref: './common.yaml#/components/schemas/Actor' }
                 at: { $ref: './common.yaml#/components/schemas/Timestamp' }
             agreement:
               type: [object, 'null']
+              description: Made when the quote is sent, one per quote version
               properties:
                 quoteVersion: { type: integer }
-                choices: { type: array, items: { type: object, properties: { lineId: { type: string }, choice: { $ref: '#/components/schemas/LineChoice' } } } }
-                total: { $ref: './common.yaml#/components/schemas/Money' }
-                fileId: { type: [string, 'null'], description: Generated agreement PDF to download and sign }
+                total: { $ref: './common.yaml#/components/schemas/Money', description: 'Every line + estimated shipping + admin fee: the amount the customer signs for (the invoice charges it)' }
+                fileId: { type: [string, 'null'], description: 'Generated agreement PDF to download and sign (null until document-svc has made it)' }
                 signedFileId: { type: [string, 'null'] }
                 verified: { type: [object, 'null'], description: staff verification }
                 rejections: { type: array, items: { type: object, properties: { reason: { type: string }, at: { type: string, format: date-time } } } }
@@ -673,4 +681,4 @@ components:
             allowedActions:
               type: array
               description: Actions the caller may take now (drives UI buttons)
-              items: { type: string, enum: [agreement, accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, deliver] }
+              items: { type: string, enum: [accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, deliver] }

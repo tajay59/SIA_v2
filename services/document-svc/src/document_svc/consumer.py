@@ -2,9 +2,9 @@
 
     python -m document_svc.consumer
 
-  order.quoted              with cimhLineIds          -> cimh_quote
-  order.quote_revised       with CIMH lines           -> cimh_quote (new version)
-  order.agreement_requested                            -> agreement
+  order.quoted / order.quote_revised                  -> agreement (the page the customer signs: "view and sign")
+                            with CIMH lines            -> cimh_quote
+                            (both for the event's quote version; skipped if staff revised again meanwhile)
   order.shipped             ship-to outside Barbados   -> commercial_invoice (customs)
   order.delivered           PAID -> invoice, PROBONO -> probono_invoice
 Each produces document.generated, which order-svc attaches to the request and notification-svc may mail.
@@ -34,22 +34,21 @@ def make_handler(service: DocumentService) -> Any:
     async def handle(event: EventEnvelope) -> None:
         p, t = event.payload, event.type
         rid = p.get("orderId")
-        if t not in ("order.quoted", "order.quote_revised", "order.agreement_requested", "order.shipped",
-                     "order.delivered"):  # fmt: skip
+        # order.agreement_requested (choose and sign, before 2026-11-17) is no longer produced; a stray one is ignored.
+        if t not in ("order.quoted", "order.quote_revised", "order.shipped", "order.delivered"):
             return
         if not isinstance(rid, str):
             raise ValueError(f"{t} {event.eventId} lacks orderId")  # -> DLQ
-        if t == "order.quoted":
-            ids = p.get("cimhLineIds") or []
+        if t in ("order.quoted", "order.quote_revised"):
+            version = p.get("quoteVersion")
+            version = version if isinstance(version, int) else None
+            await service.generate("agreement", rid, event, quote_version=version)
+            ids = p.get("cimhLineIds")
+            if ids is None:  # an event written before 2026-11-17: read the CIMH lines from the request
+                req = await service.orders.request(rid)
+                ids = [x["lineId"] for x in ((req or {}).get("cimhQuote") or {}).get("lines") or []]
             if ids:
-                await service.generate("cimh_quote", rid, event, line_ids=list(ids))
-        elif t == "order.quote_revised":
-            req = await service.orders.request(rid)
-            ids = [x["lineId"] for x in ((req or {}).get("cimhQuote") or {}).get("lines") or []]
-            if ids:
-                await service.generate("cimh_quote", rid, event, line_ids=ids)
-        elif t == "order.agreement_requested":
-            await service.generate("agreement", rid, event)
+                await service.generate("cimh_quote", rid, event, quote_version=version, line_ids=list(ids))
         elif t == "order.shipped":
             req = await service.orders.request(rid)
             country = ((req or {}).get("shipTo") or {}).get("country")

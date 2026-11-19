@@ -4,8 +4,8 @@
     python -m order_svc.jobs --once     # run every job once and exit (ops, tests)
 
 Jobs:
-  expire_quotes   QUOTED / AWAITING_AGREEMENT past the quote's 30-day validity -> CANCELLED (auto);
-                  `order.expired` is published (inventory releases nothing: no stock is held before acceptance).
+  expire_quotes   QUOTED past the quote's 30-day validity -> CANCELLED (auto); `order.expired` is published
+                  (inventory releases the CIMH stock held for the quote since it was sent).
   remind_quotes   live quotes expiring within QUOTE_REMINDER_DAYS (3) -> `order.quote_expiring` once per expiry date
                   (notification-svc emails the customer).
   purge_carts     carts untouched for 180 days are emptied (business rule).

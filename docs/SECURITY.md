@@ -73,10 +73,10 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-05 | S/E | Malicious registrant claims a member organisation | M | **Admin approval** with organisation link; domain match hint; `@cimh.edu.bb` auto-approve only after email verification and **no request rights** | ✅ |
 | T-06 | E | JWT forgery / algorithm confusion | H | EdDSA only; library pinned to `alg=EdDSA`; key from JWKS by `kid`; `exp`, `nbf`, `iss`, `aud` checked | ✅ |
 | T-07 | S | Verification / reset code guessing | M | 6 digits, hashed, 15 min, 5 attempts, 3 resends/hour, rate-limited endpoint | ✅ |
-| T-08 | R | User denies having accepted a quote | M | Acceptance records user, time, IP, choices **and the signed agreement file** (SHA-256); `auditlog` (insert-only) | ✅ |
+| T-08 | R | User denies having accepted a quote | M | Acceptance records user, time, IP **and the signed agreement file** (SHA-256), stamped with the quote version it was signed for; `auditlog` (insert-only) | ✅ |
 | T-09 | E | Suspended user keeps working with a live token | M | Suspension writes revoke-all marker in Redis, checked on every request | ✅ |
 | T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline); HttpOnly cookies; DOMPurify for any rich text | ✅ (pen test 2026-11: no `v-html`/`innerHTML`; CSP at the production edge) |
-| T-11 | T | CSRF on cookie-authenticated changes | H | `SameSite=Lax` + double-submit `X-CSRF-Token` on POST/PUT/PATCH/DELETE | ✅ |
+| T-11 | T | CSRF on cookie-authenticated changes | H | `SameSite=Lax` + double-submit `X-CSRF-Token` on POST/PUT/PATCH/DELETE (header equal to any `csrf_token` cookie, so a stray same-name cookie from another app on the host breaks nothing; a planted one could already match, so no weaker) | ✅ |
 
 ### 5.2 Authorisation and data access (all services)
 

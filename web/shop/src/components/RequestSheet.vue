@@ -4,30 +4,39 @@
  * request's own page. Reading order: reference + title, the request path (one rule, a node per stage, filled
  * to where it stands), the "whose move" well (the customer's turn in the primary tone with its action; CIMH's
  * turn neutral; amber only when a quote expires within a week), then Quote (first while it waits for the
- * customer), Status, Items, Delivery, Files and the actions the server allows (decline, cancel).
+ * customer), Status, Items, Delivery and the actions the server allows. "View and sign" (2026-11-17):
+ * while QUOTED the customer's move is View and sign, or Cancel request (the server's `decline`).
  * Same-organisation users see it read-only (the server sends no actions for them).
+ * No Files section and no document preview (owner, 2026-11-18): the quote files and the agreement are read on
+ * View and sign (S-12).
+ * One of each (critique fix, 2026-11-18): one progress model (the path; dated changes fold into History at the end,
+ * in the same words), the total once, and while the requester's quote waits the page is a hand-off: the well says
+ * what the agreement is and leads to View and sign, which holds the priced quote (S-11 shows no prices then).
  */
 import {
   act,
   ApiError,
+  countryName,
+  currentAgreement,
+  DocumentThumb,
   expiryNote,
+  FILE_KIND_LABELS,
   getRequest,
   isClosed,
-  type LineChoice,
   type OrderRequest,
+  pricedQuote,
   QuoteTable,
   ReasonDialog,
-  RequestFiles,
-  RequestTimeline,
   requestTitle,
-  shortRef,
+  ShortRef,
   StatusChip,
   useNotify,
   useSession,
 } from '@cimh/web-app'
-import { formatDate, formatMoney } from '@cimh/web-ui'
-import { mdiCheck, mdiClockAlertOutline, mdiOpenInNew, mdiPackageVariantClosed } from '@mdi/js'
+import { formatDate, formatDateTime, formatMoney, statusLabel } from '@cimh/web-ui'
+import { mdiArrowRight, mdiCheck, mdiChevronDown, mdiClockAlertOutline, mdiOpenInNew, mdiPackageVariantClosed } from '@mdi/js'
 import { computed, nextTick, ref, watch } from 'vue'
+import DocumentReader from './DocumentReader.vue'
 
 const props = withDefaults(defineProps<{ id: string; level?: 1 | 2; setTitle?: boolean; dir?: 1 | -1 }>(), { level: 1, setTitle: false, dir: 1 })
 const emit = defineEmits<{ changed: [OrderRequest] }>()
@@ -70,16 +79,51 @@ const switching = computed(() => !!request.value && request.value.id !== props.i
 
 const can = (a: string) => request.value?.allowedActions?.includes(a as never) ?? false
 const mine = computed(() => request.value?.customer === session.account?.id)
-const showQuote = computed(() => !!request.value?.quotes?.length && request.value.type === 'PAID')
-const quoteLive = computed(() => request.value?.status === 'QUOTED' || request.value?.status === 'AWAITING_AGREEMENT')
+const showQuote = computed(() => !!(request.value?.quotes?.length || request.value?.cimhQuote) && request.value?.type === 'PAID')
+const quoteLive = computed(() => request.value?.status === 'QUOTED')
 const expiry = computed(() => (quoteLive.value ? expiryNote(request.value?.quoteExpiresAt) : null))
+/** The requester's quote waits and View and sign is open to them: the priced quote is read there, not here. */
+const handoff = computed(() => quoteLive.value && can('accept') && !!request.value && !!currentAgreement(request.value))
+/** Staff turned the signed copy down (ACCEPTED → QUOTED): the move is to send a new copy, not to start again. */
+const resend = computed(() => {
+  const last = request.value?.history?.at(-1)
+  return handoff.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED'
+})
+/** Section headings sit one level under the title (h2 on the page, h3 beside the list). */
+const secTag = computed(() => `h${props.level + 1}`)
+
+/**
+ * View and sign calls for attention (owner, 2026-11-18): a soft halo and a pulse until the customer first presses it
+ * for this quote version (a revised quote calls again). Remembered in this browser; a private window forgets.
+ */
+const ctaKey = computed(() => (request.value ? `cimh.cta.${request.value.id}.v${pricedQuote(request.value).version}` : ''))
+const ctaSeen = ref(true)
+watch(
+  ctaKey,
+  (k) => {
+    try {
+      ctaSeen.value = !k || localStorage.getItem(k) === '1'
+    } catch {
+      ctaSeen.value = false
+    }
+  },
+  { immediate: true },
+)
+function ctaPressed() {
+  ctaSeen.value = true
+  try {
+    localStorage.setItem(ctaKey.value, '1')
+  } catch {
+    /* private window: it calls again next visit */
+  }
+}
 
 /** The request path the customer reads: fewer, plainer stages than the status list (stages group statuses). */
 const STAGES = {
   PAID: [
     { label: 'Sent', statuses: ['SUBMITTED'] },
     { label: 'Quote', statuses: ['QUOTING', 'QUOTED'] },
-    { label: 'Agreement', statuses: ['AWAITING_AGREEMENT', 'ACCEPTED'] },
+    { label: 'Signed', statuses: ['ACCEPTED'] },
     { label: 'Ordered', statuses: ['PURCHASING'] },
     { label: 'Shipped', statuses: ['SHIPPED'] },
     { label: 'Delivered', statuses: ['DELIVERED'] },
@@ -114,54 +158,146 @@ const well = computed<{ tone: Tone; title: string; text: string } | null>(() => 
         : { tone: 'cimh', title: 'With CIMH for a quote', text: `CIMH is preparing the quote and emails ${who} when it is ready. Nothing is needed until then.` }
     case 'QUOTING':
       return { tone: 'cimh', title: 'CIMH is preparing the quote', text: `CIMH emails ${who} when it is ready. Nothing is needed until then.` }
-    case 'QUOTED':
+    case 'QUOTED': {
+      const total = formatMoney(pricedQuote(r).total, r.currency ?? 'BBD')
+      if (!currentAgreement(r))  // a quote sent before 2026-11-17: staff re-send it with its agreement
+        return { tone: 'cimh', title: 'CIMH is updating the quote', text: `CIMH emails ${who} when the quote and its agreement are ready to sign.` }
+      const last = r.history?.at(-1)
+      if (mine.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED')  // staff rejected the signed copy
+        return { tone: turn, title: 'Upload the signed agreement again', text: `CIMH could not accept the signed copy (${last.reason ?? 'no reason given'}). Your quote still stands: sign the agreement again and upload it.` }
       return mine.value
-        ? { tone: turn, title: 'Your quote is ready', text: 'Choose your options to get the agreement.' }
-        : { tone: 'cimh', title: 'The quote is ready', text: `${r.customerName} chooses the options and signs the agreement.` }
-    case 'AWAITING_AGREEMENT':
-      return mine.value
-        ? { tone: turn, title: 'Sign the agreement', text: 'Download it, sign it and upload the signed copy to accept the quote.' }
-        : { tone: 'cimh', title: 'Waiting for the signed agreement', text: `${r.customerName} signs the agreement and uploads it.` }
-    case 'ACCEPTED':
+        ? {
+            tone: turn,
+            title: `Your quote is ready: ${total}`,
+            text: 'The agreement lists every item, where it comes from and its price. Someone who can commit your organisation signs it, and you send the signed copy back here. If you no longer need the items, cancel the request.',
+          }
+        : { tone: 'cimh', title: `The quote is ready: ${total}`, text: `${r.customerName} signs the agreement or cancels the request.` }
+    }
+    case 'ACCEPTED': {
+      const next = [
+        sources.value.supplier && 'order the supplier items (shipped straight to you)',
+        sources.value.cimh && 'prepare the items from CIMH stock',
+      ].filter(Boolean)
       return {
         tone: 'done',
-        title: 'Quote accepted',
-        text: 'CIMH staff now check the signature on the agreement. Items from CIMH stock are reserved; supplier items are ordered once the signature is verified. CIMH emails every step.',
+        title: 'Signed agreement received',
+        text: `CIMH staff check the signature${next.length ? `, then ${next.join(' and ')}` : ''}. CIMH emails every step.`,
       }
-    case 'PURCHASING':
-      return { tone: 'cimh', title: 'Signature verified', text: 'CIMH is ordering the supplier items and picking the items from its stock. Supplier items are shipped straight to the delivery address.' }
+    }
+    case 'PURCHASING': {
+      const doing = [sources.value.supplier && 'ordering the supplier items', sources.value.cimh && 'picking the items from its stock'].filter(Boolean)
+      return {
+        tone: 'cimh',
+        title: 'Signature verified',
+        text: `CIMH is ${doing.join(' and ') || 'preparing the items'}.${sources.value.supplier ? ' Supplier items are shipped straight to the delivery address.' : ''}`,
+      }
+    }
     case 'APPROVED':
     case 'PICKING':
       return { tone: 'cimh', title: 'Approved', text: 'CIMH is picking the items. An email follows when they are shipped.' }
     case 'SHIPPED':
       return { tone: 'cimh', title: 'On its way', text: 'The shipping details are under Delivery.' }
     case 'DELIVERED':
-      return { tone: 'done', title: 'Delivered', text: 'The invoice, if there is one, is under Files.' }
+      return { tone: 'done', title: 'Delivered', text: 'Everything on this request has been delivered.' }
     case 'REJECTED':
-      return { tone: 'stop', title: 'Not approved', text: 'This request was not approved. The reason is under Status.' }
+      return { tone: 'stop', title: 'Not approved', text: closingReason.value ? `CIMH did not approve it: ${closingReason.value}.` : 'This request was not approved.' }
     default:
-      return isClosed(r.status) ? { tone: 'stop', title: 'Cancelled', text: 'Nothing will be ordered for this request.' } : null
+      return isClosed(r.status)
+        ? { tone: 'stop', title: 'Cancelled', text: `Nothing will be ordered for this request.${closingReason.value ? ` Reason: ${closingReason.value}.` : ''}` }
+        : null
   }
+})
+const closingReason = computed(() => {
+  const r = request.value
+  return (r?.cancellation as { reason?: string } | null)?.reason ?? (r?.rejection as { reason?: string } | null)?.reason ?? null
+})
+/** Where the items come from, for the words after signing (no supplier sentence on an all-stock request). */
+const sources = computed(() => ({
+  cimh: !!request.value?.lines.some((l) => l.source === 'CIMH'),
+  supplier: !!request.value?.lines.some((l) => l.source === 'SUPPLIER'),
+}))
+
+/** What happened when, in the path's words (one progress model; the path shows where it stands). */
+function changeText(h: NonNullable<OrderRequest['history']>[number]): string {
+  switch (h.to) {
+    case 'SUBMITTED':
+      return 'Sent to CIMH'
+    case 'QUOTING':
+      return 'CIMH started the quote'
+    case 'QUOTED':
+      return h.from === 'ACCEPTED' ? 'Signed copy not accepted' : h.from === 'QUOTED' ? 'Quote revised' : 'Quote sent'
+    case 'ACCEPTED':
+      return 'Signed agreement received'
+    case 'PURCHASING':
+      return 'Signature verified, items ordered'
+    case 'APPROVED':
+      return 'Approved'
+    case 'PICKING':
+      return 'Picking started'
+    case 'SHIPPED':
+      return 'Shipped'
+    case 'DELIVERED':
+      return 'Delivered'
+    case 'REJECTED':
+      return 'Not approved'
+    case 'CANCELLED':
+    case 'DECLINED':
+      return 'Cancelled'
+    default:
+      return statusLabel(h.to)
+  }
+}
+const changes = computed(() => [...(request.value?.history ?? [])].reverse())
+
+/**
+ * The papers after signing (critique fix 4, owner chose "page tiles"): what was signed and what CIMH sent, page 1 as a
+ * small sheet each, opening the full-size reader. Signed copy, invoices, the agreement as sent, then the quotes behind
+ * the prices (the agreed version's). An invoice still to come is a dashed sheet until delivery. Before signing the
+ * papers live on View and sign; a Pro Bono request shows its papers once CIMH has made any.
+ */
+type Paper = { key: string; id?: string; mime: string; label: string; kind: string }
+const SIGNED = ['ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED']
+const INVOICES = ['invoice', 'commercial_invoice', 'probono_invoice']
+/** Captions stay one short line under a sheet: the file type only when it is not a PDF (a phone photo, say). */
+const typeNote = (mime: string) => (mime === 'application/pdf' ? '' : mime === 'image/png' ? ' · PNG' : mime === 'image/jpeg' ? ' · JPG' : '')
+const papers = computed<Paper[]>(() => {
+  const r = request.value
+  if (!r) return []
+  const files = r.files ?? []
+  const byId = (id: string | null | undefined) => (id ? files.find((f) => f.id === id) : undefined)
+  const out: Paper[] = []
+  const ag = r.agreement
+  const signedState = r.type === 'PAID' && SIGNED.includes(r.status) && !!ag
+  const signed = signedState ? byId(ag?.signedFileId) : undefined
+  if (signed) out.push({ key: signed.id, id: signed.id, mime: signed.mime, label: 'Signed agreement', kind: `Yours${signed.uploadedAt ? `, sent ${formatDate(signed.uploadedAt)}` : ''}${typeNote(signed.mime)}` })
+  const invoices = files.filter((f) => INVOICES.includes(f.kind))
+  for (const f of invoices) out.push({ key: f.id, id: f.id, mime: f.mime, label: FILE_KIND_LABELS[f.kind], kind: `From CIMH${typeNote(f.mime)}` })
+  if (signedState && !invoices.some((f) => f.kind === 'invoice') && r.status !== 'DELIVERED')
+    out.push({ key: 'invoice-to-come', mime: '', label: 'Invoice', kind: 'Comes when the items are delivered' })
+  if (!signedState) return invoices.length ? out : []
+  const v = ag!.quoteVersion
+  const agreementFile = byId(ag!.fileId)
+  if (agreementFile) out.push({ key: agreementFile.id, id: agreementFile.id, mime: agreementFile.mime, label: 'Agreement', kind: `As sent, version ${v}` })
+  for (const f of files.filter((f) => f.kind === 'cimh_quote' && f.quoteVersion === v))
+    out.push({ key: f.id, id: f.id, mime: f.mime, label: 'CIMH quote', kind: 'CIMH stock' })
+  for (const q of r.quotes ?? []) {
+    if (q.version !== v) continue
+    for (const id of q.fileIds ?? []) {
+      const f = byId(id)
+      if (f) out.push({ key: f.id, id: f.id, mime: f.mime, label: q.supplier ?? 'Supplier quote', kind: `Supplier quote${typeNote(f.mime)}` })
+    }
+  }
+  return out
 })
 
 const paidLines = computed(() => request.value?.lines.filter((l) => !l.product.probono) ?? [])
 const probonoLines = computed(() => request.value?.lines.filter((l) => l.product.probono) ?? [])
-// An agreement made for an earlier quote version is void once staff send a revised quote (it stays on the record).
-const agreement = computed(() => {
-  const r = request.value
-  const latest = Math.max(0, ...(r?.quotes ?? []).map((q) => q.version))
-  return r?.agreement && r.agreement.quoteVersion === latest ? r.agreement : null
-})
-const agreementTotal = computed(() =>
-  agreement.value?.total ? formatMoney(agreement.value.total, request.value?.currency ?? 'BBD') : null,
-)
-const picked = computed<Record<string, LineChoice> | undefined>(() => {
-  const list = agreement.value?.choices
-  if (!list?.length) return undefined
-  return Object.fromEntries(list.filter((c) => c.lineId && c.choice).map((c) => [c.lineId!, c.choice!]))
-})
-// A live quote is the thing to decide on, so it leads; later it is a record and follows the status and items.
-const order = computed(() => (quoteLive.value ? ['quote', 'status', 'items'] : ['status', 'items', 'quote']))
+/** Where each line comes from, for the Items list once the quote has been sent. */
+const sourceOf = (l: OrderRequest['lines'][number]) =>
+  l.source === 'CIMH' ? 'From CIMH stock' : l.source === 'SUPPLIER' ? `From ${l.supplier ?? 'a supplier'}, shipped directly` : ''
+// The hand-off shows no prices (View and sign has them). A live quote someone else signs (or one waiting for its
+// agreement) still leads; later the quote is a record after the items.
+const order = computed(() => (handoff.value ? ['items'] : quoteLive.value ? ['quote', 'items'] : ['items', 'quote']))
 
 const dialog = ref<null | 'decline' | 'cancel'>(null)
 const busy = ref(false)
@@ -170,7 +306,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   busy.value = true
   try {
     request.value = await act(request.value, `/requests/{requestId}/${kind}`, { reason })
-    notify.toast(kind === 'decline' ? 'Quote declined' : 'Request cancelled', 'success')
+    notify.toast('Request cancelled', 'success')
     dialog.value = null
     emit('changed', request.value)
   } catch (e) {
@@ -192,7 +328,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
       <header class="head">
         <p class="ref">
           {{ request.type === 'PROBONO' ? 'Pro Bono request' : 'Request' }}
-          <span class="t-mono">{{ request.id }}</span>
+          <ShortRef :id="request.id" />
           · sent {{ formatDate(request.submittedAt) }}
         </p>
         <div class="title-row">
@@ -230,36 +366,67 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
             <v-icon v-if="expiry.soon" :icon="mdiClockAlertOutline" size="16" />
             Quote valid until {{ formatDate(request.quoteExpiresAt) }} ({{ expiry.text }})
           </p>
+          <!-- The person who comes back (often another day, often someone else) with the signed copy goes straight
+               to sending it; View and sign opens on checking the quote. -->
+          <p v-if="handoff && !resend" class="well-return">
+            Already signed?
+            <router-link :to="`/requests/${request.id}/agreement?task=send`" class="well-link">
+              Send the signed copy<v-icon :icon="mdiArrowRight" size="16" />
+            </router-link>
+          </p>
         </div>
-        <v-btn v-if="can('agreement')" :to="`/requests/${request.id}/agreement`" color="primary" variant="flat" size="large" class="well-act">
-          {{ request.status === 'AWAITING_AGREEMENT' ? 'Continue' : 'Choose options' }}
-        </v-btn>
+        <div v-if="can('accept') && currentAgreement(request)" class="well-acts">
+          <v-btn
+            :to="`/requests/${request.id}/agreement${resend ? '?task=send' : ''}`"
+            color="primary"
+            variant="flat"
+            size="large"
+            class="well-act"
+            :class="{ 'well-cta': !ctaSeen }"
+            @click="ctaPressed"
+          >
+            {{ resend ? 'Send it again' : 'View and sign' }}
+          </v-btn>
+          <v-btn v-if="can('decline')" variant="text" class="well-act" @click="dialog = 'decline'">Cancel request</v-btn>
+        </div>
       </section>
       <p v-if="!mine" class="t-body muted readonly">Requested by {{ request.customerName }} (same organisation). You can view it; only they can act on it.</p>
 
-      <template v-for="part in order" :key="part">
-        <section v-if="part === 'quote' && showQuote" class="section" aria-labelledby="sec-quote">
-          <h3 id="sec-quote" class="sec-title">Quote</h3>
-          <dl v-if="agreementTotal || request.status === 'QUOTED'" class="quote-facts">
-            <div v-if="agreementTotal">
-              <dt>Agreement total</dt>
-              <dd class="tnum">{{ agreementTotal }}</dd>
+      <!-- The papers after signing: page 1 of each as a small sheet; a tile opens it full size. -->
+      <section v-if="papers.length" class="section" aria-labelledby="sec-papers">
+        <div class="papers-head">
+          <component :is="secTag" id="sec-papers" class="sec-title papers-title">Papers</component>
+          <span class="papers-hint" aria-hidden="true">Opens full size</span>
+        </div>
+        <ul class="tiles">
+          <li v-for="p in papers" :key="p.key">
+            <DocumentReader v-if="p.id" :file-id="p.id" :mime="p.mime" :name="p.label">
+              <template #default="{ props: a }">
+                <button type="button" class="tile" v-bind="a" :aria-label="`Read ${p.label} full size (${p.kind})`">
+                  <DocumentThumb :file-id="p.id" :mime="p.mime" />
+                  <span class="tile-name">{{ p.label }}</span>
+                  <span class="tile-kind">{{ p.kind }}</span>
+                </button>
+              </template>
+            </DocumentReader>
+            <div v-else class="tile wait">
+              <span class="tile-empty">Not yet</span>
+              <span class="tile-name">{{ p.label }}</span>
+              <span class="tile-kind">{{ p.kind }}</span>
             </div>
-            <div v-else>
-              <dt>Total</dt>
-              <dd>Depends on the options you choose</dd>
-            </div>
-          </dl>
-          <QuoteTable :request="request" :picked="picked" />
-        </section>
+          </li>
+        </ul>
+      </section>
 
-        <section v-else-if="part === 'status'" class="section" aria-labelledby="sec-status">
-          <h3 id="sec-status" class="sec-title">Status</h3>
-          <RequestTimeline :request="request" />
+      <template v-for="part in order" :key="part">
+        <!-- The total is said once: in the quote's own total row (its name follows the state). -->
+        <section v-if="part === 'quote' && showQuote" class="section" aria-labelledby="sec-quote">
+          <component :is="secTag" id="sec-quote" class="sec-title">Quote</component>
+          <QuoteTable :request="request" />
         </section>
 
         <section v-else-if="part === 'items'" class="section" aria-labelledby="sec-items">
-          <h3 id="sec-items" class="sec-title">{{ paidLines.length && probonoLines.length ? 'Items' : 'Items requested' }}</h3>
+          <component :is="secTag" id="sec-items" class="sec-title">{{ paidLines.length && probonoLines.length ? 'Items' : 'Items requested' }}</component>
           <template v-for="group in [{ key: 'paid', lines: paidLines }, { key: 'probono', lines: probonoLines }]" :key="group.key">
             <template v-if="group.lines.length">
               <p v-if="paidLines.length && probonoLines.length" class="group-label">
@@ -278,7 +445,8 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
                   </span>
                   <span class="item-end">
                     <span class="tnum">× {{ l.qty }}</span>
-                    <span v-if="l.choice" class="muted small">{{ l.choice === 'CIMH' ? 'From CIMH stock' : 'From a supplier' }}</span>
+                    <span v-if="l.product.probono && !(paidLines.length && probonoLines.length)" class="probono-badge">Free</span>
+                    <span v-if="sourceOf(l)" class="muted small">{{ sourceOf(l) }}</span>
                   </span>
                 </li>
               </ul>
@@ -288,7 +456,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
       </template>
 
       <section class="section" aria-labelledby="sec-delivery">
-        <h3 id="sec-delivery" class="sec-title">Delivery</h3>
+        <component :is="secTag" id="sec-delivery" class="sec-title">Delivery</component>
         <dl class="facts">
           <div v-if="request.shipTo">
             <dt>Deliver to</dt>
@@ -297,10 +465,11 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
               <template v-if="request.shipTo.organisation">{{ request.shipTo.organisation }}<br /></template>
               {{ request.shipTo.line1 }}<template v-if="request.shipTo.line2">, {{ request.shipTo.line2 }}</template><br />
               {{ [request.shipTo.city, request.shipTo.parish, request.shipTo.zip].filter(Boolean).join(' ') }}<br />
-              {{ request.shipTo.country }}
+              {{ countryName(request.shipTo.country) }}
             </dd>
           </div>
-          <div v-if="request.currency">
+          <!-- Every quote is BBD now; only a legacy USD request says so. -->
+          <div v-if="request.currency && request.currency !== 'BBD'">
             <dt>Quote currency</dt>
             <dd>{{ request.currency }}</dd>
           </div>
@@ -322,21 +491,31 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
         </dl>
       </section>
 
-      <section class="section" aria-labelledby="sec-files">
-        <h3 id="sec-files" class="sec-title">Files</h3>
-        <RequestFiles :files="request.files ?? []" bare />
-      </section>
+      <!-- Dated changes, folded: the path above already shows where it stands. -->
+      <details v-if="changes.length" class="section history">
+        <summary class="sec-title history-sum">
+          <span>History</span>
+          <span class="history-n">{{ changes.length }} {{ changes.length === 1 ? 'change' : 'changes' }}</span>
+          <v-icon :icon="mdiChevronDown" size="20" class="history-chev" aria-hidden="true" />
+        </summary>
+        <ol class="changes">
+          <li v-for="(h, i) in changes" :key="i">
+            <span class="ch-when tnum">{{ formatDateTime(h.at) }}</span>
+            <span class="ch-what">{{ changeText(h) }}<template v-if="h.reason"><span class="ch-why">: {{ h.reason }}</span></template></span>
+          </li>
+        </ol>
+      </details>
 
-      <div v-if="can('decline') || can('cancel')" class="actions">
-        <v-btn v-if="can('decline')" variant="outlined" @click="dialog = 'decline'">Decline quote</v-btn>
-        <v-btn v-if="can('cancel')" variant="outlined" color="error" @click="dialog = 'cancel'">Cancel request</v-btn>
+      <!-- While a quote waits, Cancel request sits beside View and sign in the well; otherwise it is here. -->
+      <div v-if="can('cancel') || (can('decline') && !currentAgreement(request))" class="actions">
+        <v-btn variant="outlined" color="error" @click="dialog = can('decline') ? 'decline' : 'cancel'">Cancel request</v-btn>
       </div>
 
       <ReasonDialog
         :model-value="dialog !== null"
-        :title="dialog === 'decline' ? 'Decline the quote?' : 'Cancel this request?'"
-        :text="dialog === 'decline' ? 'The request will be closed. You can send a new request later.' : 'Nothing will be ordered for this request.'"
-        :confirm="dialog === 'decline' ? 'Decline quote' : 'Cancel request'"
+        title="Cancel this request?"
+        :text="dialog === 'decline' ? 'The quote lapses and nothing will be ordered. You can send a new request later.' : 'Nothing will be ordered for this request.'"
+        confirm="Cancel request"
         danger
         :busy="busy"
         @update:model-value="(v: boolean) => !v && (dialog = null)"
@@ -424,6 +603,28 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 }
 .well {
   animation: well-in 360ms var(--ease) calc(var(--fill-ms) * 0.6) backwards;
+}
+/* The customer's move (owner, 2026-11-18): until View and sign is first pressed (`ctaSeen`), it sits in a soft
+   primary halo (the shade) and sends out a ring every 2 s once the well has landed. Paint-only: the button's own
+   box-shadow, which its overflow doesn't clip. Hovering or focusing it pauses the ring (the halo stays); reduced
+   motion keeps only the halo. */
+.well-cta {
+  --halo: 0 0 0 5px rgba(var(--v-theme-primary), 0.2);
+  box-shadow: var(--halo);
+  animation: cta-pulse 2000ms var(--ease) calc(var(--fill-ms) * 0.6 + 400ms) infinite;
+}
+.well-cta:hover,
+.well-cta:focus-visible {
+  animation-play-state: paused;
+}
+@keyframes cta-pulse {
+  0% {
+    box-shadow: var(--halo), 0 0 0 5px rgba(var(--v-theme-primary), 0.5);
+  }
+  70%,
+  100% {
+    box-shadow: var(--halo), 0 0 0 16px rgba(var(--v-theme-primary), 0);
+  }
 }
 @keyframes well-in {
   from {
@@ -560,6 +761,11 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   border-color: rgba(var(--v-border-color), var(--v-border-opacity));
   background: rgb(var(--v-theme-surface-variant));
 }
+/* Dark: a 6 % wash disappears on the dark ground, so "your turn" read as a plain box; the tone washes stronger. */
+.v-theme--cimhDark .well:not(.cimh) {
+  background: rgba(var(--tone), 0.14);
+  border-color: rgba(var(--tone), 0.6);
+}
 .well-text {
   flex: 1;
   min-width: 0;
@@ -591,6 +797,31 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 .well-expiry.soon {
   color: rgb(var(--v-theme-error));
 }
+.well-return {
+  margin-top: var(--sp-3) !important;
+  padding-top: var(--sp-3);
+  border-top: 1px solid rgba(var(--tone), 0.25);
+  font-size: 15px;
+  line-height: 24px;
+}
+.well-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  margin-left: 4px;
+  color: rgb(var(--v-theme-primary));
+  font-weight: 600;
+  text-underline-offset: 3px;
+}
+.well-acts {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Room between View and sign and Cancel request (owner, 2026-11-18), and for View and sign's ring. */
+  gap: var(--sp-4);
+}
 .well-act {
   flex: none;
 }
@@ -612,19 +843,155 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   letter-spacing: 0.02em;
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
-.quote-facts {
-  margin: 0 0 var(--sp-4);
+/* Papers: A4 tiles on the page ground, name and kind under each; the whole tile opens the reader. */
+.papers-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  margin-bottom: var(--sp-4);
 }
-.quote-facts dt {
+.papers-title {
+  border-bottom: 0;
+  margin-bottom: 0;
+}
+.papers-hint {
   font-size: 13px;
   line-height: 18px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: rgb(var(--v-theme-on-surface-variant));
 }
-.quote-facts dd {
+.tiles {
+  list-style: none;
   margin: 0;
-  font-size: 22px;
-  line-height: 30px;
-  font-weight: 700;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: var(--sp-5, 20px) var(--sp-4);
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.tile :deep(.thumb-sheet) {
+  margin-bottom: var(--sp-2);
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), box-shadow 200ms ease-out;
+}
+.tile:hover :deep(.thumb-sheet) {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18), 0 8px 18px -6px rgba(0, 0, 0, 0.22);
+}
+.tile:hover .tile-name {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.tile:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 4px;
+}
+.tile-name {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.tile-kind {
+  font-size: 13px;
+  line-height: 18px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+/* A paper still to come: an empty dashed sheet of the same size. */
+.tile.wait {
+  cursor: default;
+}
+.tile-empty {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 210 / 297;
+  margin-bottom: var(--sp-2);
+  border: 2px dashed rgb(var(--v-theme-field-outline));
+  border-radius: 3px;
+  font-size: 14px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+@media (prefers-reduced-motion: reduce) {
+  .tile :deep(.thumb-sheet) {
+    transition: none;
+  }
+  .tile:hover :deep(.thumb-sheet) {
+    transform: none;
+  }
+}
+
+/* History: a ruled section head that opens the dated list in place (native details: keyboard and readers). */
+.history-sum {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 32px;
+  margin-bottom: 0;
+  cursor: pointer;
+  list-style: none;
+}
+.history-sum::-webkit-details-marker {
+  display: none;
+}
+.history-sum:hover > span:first-child {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.history-sum:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+.history-n {
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.history-chev {
+  margin-left: auto;
+  transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.history[open] .history-chev {
+  transform: rotate(180deg);
+}
+.history[open] .history-sum {
+  margin-bottom: var(--sp-1);
+}
+.changes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.changes li {
+  display: grid;
+  grid-template-columns: 11.5rem minmax(0, 1fr);
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  font-size: 14px;
+  line-height: 20px;
+}
+.ch-when {
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.ch-what {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.ch-why {
+  font-weight: 400;
 }
 .group-label {
   margin: var(--sp-4) 0 var(--sp-1);
@@ -674,7 +1041,8 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 }
 .item-name {
   font-size: 15px;
-  line-height: 22px;
+  line-height: 24px; /* a 24 px target (WCAG 2.5.8) */
+  display: inline-block;
   font-weight: 600;
   color: inherit;
   text-decoration: none;
@@ -751,6 +1119,13 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
     grid-template-columns: 48px minmax(0, 1fr) auto;
     gap: var(--sp-3);
   }
+  .changes li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
   .thumb {
     width: 48px;
     height: 36px;
@@ -768,7 +1143,8 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   .stage.done .dot,
   .stage.current .dot,
   .stage.current .stage-label,
-  .path.your-turn .stage.current .dot::after {
+  .path.your-turn .stage.current .dot::after,
+  .well-cta {
     animation: none;
   }
   .path::after {

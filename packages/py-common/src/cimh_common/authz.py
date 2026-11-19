@@ -13,7 +13,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import Request
 
-from .auth import Principal, Role, TokenVerifier, check_csrf, extract_token
+from .auth import Principal, Role, TokenVerifier, check_csrf, extract_tokens
 from .errors import ProblemError, forbidden, not_found, unauthorized
 
 
@@ -24,12 +24,27 @@ def _verifier(request: Request) -> TokenVerifier:
     return verifier
 
 
+async def _first_valid(verifier: TokenVerifier, tokens: list[str]) -> Principal:
+    """The first token that verifies. Only a 401 moves on (a stray cookie of the same name, see `cookie_values`);
+    anything else (503: revocation check down) stops. None valid: the first token's error (ours, e.g. TOKEN_EXPIRED,
+    so the client still refreshes)."""
+    first: ProblemError | None = None
+    for token in tokens:
+        try:
+            return await verifier.verify(token)
+        except ProblemError as exc:
+            if exc.status != 401:
+                raise
+            first = first or exc
+    raise first or unauthorized()
+
+
 async def _token_principal(request: Request) -> Principal | None:
     """The verified token's principal, or None without a token. No role or MFA rules: building block only."""
-    token, from_cookie = extract_token(request)
-    if token is None:
+    tokens, from_cookie = extract_tokens(request)
+    if not tokens:
         return None
-    principal = await _verifier(request).verify(token)
+    principal = await _first_valid(_verifier(request), tokens)
     if from_cookie:
         check_csrf(request)
     request.state.principal = principal

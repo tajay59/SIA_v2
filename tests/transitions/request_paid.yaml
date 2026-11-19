@@ -1,5 +1,7 @@
 # Paid request status flow: TAD §7.2 (source of truth). Generated tests check every legal
 # transition succeeds and every other (from, to) pair returns 409 ORDER_ILLEGAL_TRANSITION.
+# "View and sign" (owner, 2026-11-17): staff fix the source of every line when sending the quote; the agreement
+# PDF comes with the quote; the customer signs and uploads it (accept) or cancels (decline). No customer choices.
 entity: request
 type: PAID
 initial: SUBMITTED
@@ -8,16 +10,13 @@ illegal_code: ORDER_ILLEGAL_TRANSITION
 transitions:
   - { from: SUBMITTED, to: QUOTING, action: start-quoting, actor: staff }
   - { from: SUBMITTED, to: CANCELLED, action: cancel, actor: requester|staff|admin }
-  - { from: QUOTING, to: QUOTED, action: send-quote, actor: staff }
+  - { from: QUOTING, to: QUOTED, action: send-quote, actor: staff, guard: every line has one source and a price; shipping estimate per source }
   - { from: QUOTING, to: CANCELLED, action: cancel, actor: requester|staff|admin }
-  - { from: QUOTED, to: QUOTED, action: send-quote, actor: staff, note: quote revised }
-  - { from: QUOTED, to: AWAITING_AGREEMENT, action: agreement, actor: requester|admin }
-  - { from: QUOTED, to: DECLINED, action: decline, actor: requester|admin }
+  - { from: QUOTED, to: QUOTED, action: send-quote, actor: staff, note: quote revised; earlier agreement void }
+  - { from: QUOTED, to: ACCEPTED, action: accept, actor: requester|admin, guard: signed agreement of this quote version }
+  - { from: QUOTED, to: DECLINED, action: decline, actor: requester|admin, note: the customer's Cancel request }
   - { from: QUOTED, to: CANCELLED, action: expire, actor: system, note: 30 days }
-  - { from: AWAITING_AGREEMENT, to: QUOTED, action: change-choices, actor: requester|admin }
-  - { from: AWAITING_AGREEMENT, to: ACCEPTED, action: accept, actor: requester|admin }
-  - { from: AWAITING_AGREEMENT, to: CANCELLED, action: cancel, actor: requester|staff|admin }
-  - { from: ACCEPTED, to: AWAITING_AGREEMENT, action: reject-agreement, actor: staff }
+  - { from: ACCEPTED, to: QUOTED, action: reject-agreement, actor: staff, note: quote valid at least 7 more days }
   - { from: ACCEPTED, to: PURCHASING, action: purchase, actor: staff, guard: agreementVerified }
   - { from: ACCEPTED, to: CANCELLED, action: cancel, actor: staff|admin }
   - { from: DECLINED, to: CANCELLED, action: close, actor: system }

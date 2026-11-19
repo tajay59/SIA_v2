@@ -32,7 +32,7 @@ import IAdd from '~icons/material-symbols/add-rounded'
 import IAttach from '~icons/material-symbols/attach-file-rounded'
 
 export const DAY = 86_400_000
-export const ALL_STATUS: RequestStatus[] = ['SUBMITTED', 'QUOTING', 'QUOTED', 'AWAITING_AGREEMENT', 'ACCEPTED',
+export const ALL_STATUS: RequestStatus[] = ['SUBMITTED', 'QUOTING', 'QUOTED', 'ACCEPTED',
   'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED', 'DECLINED', 'REJECTED', 'CANCELLED']  // prettier-ignore
 export const CLOSED_STATUS: RequestStatus[] = ['DELIVERED', 'DECLINED', 'REJECTED', 'CANCELLED']
 export const OPEN_STATUS: RequestStatus[] = ALL_STATUS.filter((s) => !CLOSED_STATUS.includes(s))
@@ -58,11 +58,9 @@ export function why(r: RequestSummary): { text: string; tone: Tone } {
     case 'QUOTED':
       return expiresSoon(r)
         ? { text: `Quote expires ${fmtDate(r.quoteExpiresAt)}`, tone: 'expiring' }
-        : { text: 'Customer is choosing options', tone: 'wait' }
-    case 'AWAITING_AGREEMENT':
-      return { text: 'Customer signs the agreement', tone: 'wait' }
+        : { text: 'Customer signs the agreement or cancels', tone: 'wait' }
     case 'ACCEPTED':
-      return { text: 'Verify signed agreement', tone: 'urgent' }
+      return { text: 'Check the signed agreement', tone: 'urgent' }
     case 'PURCHASING':
       return { text: 'Purchase, pick and ship', tone: 'fulfil' }
     case 'APPROVED':

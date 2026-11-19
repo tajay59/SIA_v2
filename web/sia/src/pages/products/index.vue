@@ -264,14 +264,16 @@ const summary = computed(() => {
           <TransitionGroup v-else tag="ul" name="prow" class="pgrid">
             <li v-for="(p, i) in list.items.value" :key="p.id" :style="{ '--i': Math.min(i, 12) }">
               <router-link :to="`/products/${p.id}`" class="pcard" @click.prevent="open(p)">
-                <span class="ptile"><ProductImage :image="primaryImage(p)" :alt="p.name" small sizes="220px" /></span>
+                <span class="ptile">
+                  <ProductImage :image="primaryImage(p)" :alt="p.name" small sizes="220px" />
+                  <span v-if="p.probono" class="pflag probono-badge">Pro Bono</span>
+                  <span v-if="!p.active" class="pflag pstate">Inactive</span>
+                  <span v-else-if="!p.sellable" class="pflag pstate">Hidden</span>
+                </span>
                 <span class="pname">{{ p.name }}</span>
-                <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" /></span>
-                <span class="sub">
+                <span class="pfoot">
                   <StockMeter :available="p.stockCount" :threshold="p.threshold" />
-                  <span v-if="p.probono" class="probono-badge">Pro Bono</span>
-                  <span v-if="!p.active" class="flag">Inactive</span>
-                  <span v-else-if="!p.sellable" class="flag">Hidden</span>
+                  <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" /></span>
                 </span>
               </router-link>
             </li>
@@ -558,22 +560,107 @@ const summary = computed(() => {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: var(--sp-4);
 }
+/* Photo cards (2026-11-19, owner's reference): bordered card, photo on a tinted plate with flags in its
+   corners, name, type tag, then a foot seam with the stock meter where a shop prints the price. */
 .pcard {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: var(--sp-2);
+  gap: 6px;
+  height: 100%;
+  padding: var(--sp-2) var(--sp-2) 0;
   color: inherit;
   text-decoration: none;
-  border-radius: 4px;
+  border-radius: 8px;
   min-width: 0;
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  transition: border-color 160ms ease-out, box-shadow 200ms ease-out;
 }
 .pcard:hover {
-  background: rgb(var(--v-theme-surface-variant));
+  border-color: rgba(var(--v-theme-primary), 0.7);
+  box-shadow: 0 10px 22px -14px rgba(0, 0, 0, 0.5);
+}
+.pcard:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.ptile {
+  position: relative;
+  display: block;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #eef2f6;
 }
 .ptile :deep(.frame) {
-  border-radius: 3px;
-  margin-bottom: var(--sp-1);
+  border-radius: 0;
+  background: transparent;
+}
+.ptile :deep(img) {
+  mix-blend-mode: multiply;
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.pcard:hover .ptile :deep(img) {
+  transform: scale(1.04);
+}
+.pflag {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+}
+.pflag.pstate {
+  left: auto;
+  right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #1b1e22;
+  color: #fff;
+}
+.pname {
+  margin-top: 4px;
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.ptag {
+  align-self: flex-start;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.12);
+}
+.pfoot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin: auto calc(-1 * var(--sp-2)) 0;
+  padding: var(--sp-2);
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  min-width: 0;
+}
+.pfoot .pid {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pgrid > li {
+  min-width: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pcard:hover .ptile :deep(img) {
+    transform: none;
+  }
 }
 @media (max-width: 1099.98px) {
   .row-h,

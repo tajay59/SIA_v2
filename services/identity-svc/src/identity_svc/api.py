@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from cimh_common.auth import CSRF_COOKIE, Principal, check_csrf
+from cimh_common.auth import CSRF_COOKIE, Principal, check_csrf, cookie_values
 from cimh_common.authz import (
     authenticated_principal,
     current_principal,
@@ -273,7 +273,9 @@ async def login(body: LoginIn, request: Request) -> JSONResponse:
 @router.post("/auth/refresh", tags=["auth"])
 async def refresh(request: Request, body: RefreshIn | None = None) -> JSONResponse:
     mobile = bool(body and body.refreshToken)
-    token = body.refreshToken if body and body.refreshToken else request.cookies.get("refresh_token")
+    # First refresh_token cookie = ours (most specific path; a stray one elsewhere on the host comes later).
+    cookies = cookie_values(request, "refresh_token")
+    token = body.refreshToken if body and body.refreshToken else (cookies[0] if cookies else None)
     if not token:
         raise unauthorized("No refresh token")
     if not mobile:

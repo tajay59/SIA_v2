@@ -25,9 +25,8 @@ const { counts, updatedAt, loading, refresh } = useWorkCounts()
 const flow: { key: CountKey; title: string; hint: string }[] = [
   { key: 'new', title: 'New', hint: 'Submitted, not started' },
   { key: 'quoting', title: 'Quoting', hint: 'Quote being prepared' },
-  { key: 'quoted', title: 'Quoted', hint: 'Waiting for the customer' },
-  { key: 'signature', title: 'Awaiting signature', hint: 'Customer signs the agreement' },
-  { key: 'verify', title: 'Agreements to verify', hint: 'Signed copy uploaded' },
+  { key: 'quoted', title: 'Waiting for signature', hint: 'Customer signs the agreement or cancels' },
+  { key: 'verify', title: 'Signatures to check', hint: 'Signed copy uploaded' },
   { key: 'fulfil', title: 'Pick & purchase', hint: 'Approved, picking or purchasing' },
 ]
 const URGENT: CountKey[] = ['verify']

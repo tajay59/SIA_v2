@@ -166,7 +166,7 @@ endpoints:
     - staff
     - admin
     ownership: requester
-    note: 'user: signed_agreement on own request while AWAITING_AGREEMENT only'
+    note: 'user: signed_agreement on own request while QUOTED only'
   DELETE /api/documents/v1/files/{fileId}:
     roles:
     - staff
@@ -191,6 +191,12 @@ endpoints:
     - staff
     - admin
     ownership: public
+  GET /api/documents/v1/requests/{requestId}/agreement-preview:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; agreement PDF priced from the draft, marked as a preview, never stored
   POST /api/documents/v1/internal/labels:
     roles:
     - service
@@ -626,6 +632,11 @@ endpoints:
     - service
     ownership: service
     note: document-svc; service token
+  GET /api/orders/v1/internal/requests/{requestId}/quote-preview:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; the request as send-quote would leave it, nothing saved
   POST /api/orders/v1/internal/requests/{requestId}/files:
     roles:
     - service
@@ -644,12 +655,6 @@ endpoints:
     roles: *id002
     ownership: same_org
   POST /api/orders/v1/requests/{requestId}/accept:
-    roles:
-    - user
-    - admin
-    ownership: requester
-    note: requester or admin
-  POST /api/orders/v1/requests/{requestId}/agreement:
     roles:
     - user
     - admin

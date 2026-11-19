@@ -18,8 +18,8 @@ def test_table_is_well_formed(name: str) -> None:
 
 def test_paid_flow_matches_business_rules() -> None:
     t = TABLES["request_paid"]
-    assert allowed(t, "QUOTED") == {"QUOTED", "AWAITING_AGREEMENT", "DECLINED", "CANCELLED"}
-    assert allowed(t, "ACCEPTED") == {"PURCHASING", "AWAITING_AGREEMENT", "CANCELLED"}
+    assert allowed(t, "QUOTED") == {"QUOTED", "ACCEPTED", "DECLINED", "CANCELLED"}  # view and sign, or cancel
+    assert allowed(t, "ACCEPTED") == {"PURCHASING", "QUOTED", "CANCELLED"}
     assert allowed(t, "DELIVERED") == set()
     pairs = {(x.src, x.dst) for x in illegal(t)}
     assert ("SUBMITTED", "ACCEPTED") in pairs  # can't skip the quote
