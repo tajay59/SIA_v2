@@ -196,6 +196,8 @@ Each dry run produces a **Migration Dry-run Report** (Documentation Index #19).
 
 ## 13.8 Cut-over runbook (production)
 
+Exact commands and the tooling still to build (G1–G6: production loaders, production count check, file loader, read-only source user, legacy maintenance page, missing uploads) are in `docs/runbooks/CUTOVER.md`. G1–G3 are built (`load_prod.sh`, `--verify-only`, `load_files_prod.sh`; first run in DR-2).
+
 Window: a weekday **after 17:00 Barbados time**, 2 hours reserved (expected ~45 min). Customers and staff notified 5 working days ahead.
 
 | T | Step | Owner |

@@ -215,7 +215,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning deploy/*/*.sh deploy/scripts/*.sh tools/infra/rehearsal/run.sh tools/perf/run_catalog.sh
+        run: shellcheck -S warning deploy/*/*.sh deploy/scripts/*.sh tools/infra/rehearsal/run.sh tools/perf/run_catalog.sh tools/migrate/*.sh
       - name: actionlint (workflow files)
         run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
       - name: compose files render

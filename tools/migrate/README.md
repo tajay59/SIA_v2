@@ -22,3 +22,15 @@ their organisation from their latest order (legacy had no org field); unknown co
 checks. Output in `db/v2/`: `report.json` (ids, counts, mapping summary), `mappings.local.json` (full free-text
 mapping table, may contain names: review locally, never share), `dr1/verify.{json,md}`. Exit code 1 if any check
 fails. `dr1.py` refuses any target that is not a localhost port other than 27017/27018, because it wipes it.
+
+## Production cut-over (docs/runbooks/CUTOVER.md)
+On sia-host, from the deploy directory (holds `compose.prod.yml` and `secrets/`):
+- `bash load_prod.sh <dir>` (G1): dumps the current db to `/srv/sia-backups/cutover/`, stops the apps, imports
+  the converted collections over TLS as `root` (password via stdin, never on a command line), empties Redis,
+  starts the apps (indexes, strict validators, `xuser`), then runs the count check. Refuses when accounts exist
+  unless `--replace`. `--verify-only` = the count check alone (G2): every collection's count must equal its file;
+  also prints validator levels, stock = product, `xuser` present.
+- `bash load_files_prod.sh <dir>` (G3): copies `media/` into `/srv/sia-data`, scans `protected/` with a one-off
+  `clamscan` (exit 1 on any infection), runs `apply.js`.
+Overrides for rehearsals: `PROJECT`, `COMPOSE_FILE`, `MONGO_CONTAINER`, `MONGO_SELF`, `SECRETS`, `REDIS_DATA`,
+`DATA_DIR`, `BACKUPS`. Not yet run against a real replica set: DR-2 is their first run.

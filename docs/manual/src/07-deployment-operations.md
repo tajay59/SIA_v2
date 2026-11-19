@@ -118,7 +118,7 @@ MongoDB port 27017 is reachable only from the host and the Pis' fixed IPs (ufw/n
 **Staged testing, single data cut-over.** v2 is tested on staging route group by route group, but production data moves **once**, in a ~45-minute maintenance window: freeze legacy → final dump → migrate (M01–M09) → verify → go/no-go → switch all `/api/*` routes, the new SHOP/SIA and the mobile app together. Legacy stays read-only for 30 days (rollback allowed within 48 h). Full runbook: [Chapter 13](13-data-migration.md) and the [Data Migration Plan](../MIGRATION_PLAN.md).
 ## Run books (P9)
 
-Five operating documents, written in P9 from the built platform (source: `docs/runbooks/`):
+Six operating documents, written in P9 from the built platform (source: `docs/runbooks/`):
 
 | Run book | Covers |
 |---|---|
@@ -127,3 +127,4 @@ Five operating documents, written in P9 from the built platform (source: `docs/r
 | Backup and disaster recovery | Nightly `mongodump --oplog` + files into restic (30 daily, 12 monthly); scenarios from one Pi lost to total loss, ransomware and power cuts (manual LUKS unlock); RPO 24 h, RTO 4 h; test log |
 | Monitoring and alerting | What Prometheus scrapes; every alert with its meaning and first steps; the TR-OBS-3 alerts still missing |
 | Incident response | Classify, contain, investigate, recover, notify (Data Protection Act 2019), blameless post-mortem template |
+| Cut-over | Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; production loaders (G1–G3 built); G4–G6 (read-only source user, legacy maintenance page, legacy uploads) before DR-2 |
