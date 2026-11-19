@@ -422,7 +422,7 @@ async function submitDeliver() {
             </div>
           </section>
 
-          <section v-if="r.shipments?.length" class="panel">
+          <section v-if="r.shipments?.length" class="panel" aria-label="Shipments">
             <header class="console-head">
               <h2 class="console-title">Shipments</h2>
               <span class="t-caption muted console-mono">{{ r.shipments.length }}</span>

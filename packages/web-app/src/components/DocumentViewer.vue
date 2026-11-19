@@ -228,7 +228,7 @@ onBeforeUnmount(() => {
     <!-- Focusable so keyboard users can scroll a long document (axe scrollable-region-focusable). -->
     <div ref="body" class="doc-body" tabindex="0" role="region" :aria-label="`${what} ${name}`" @scroll.passive="track">
       <template v-if="isPdf()">
-        <div v-if="state === 'loading'" class="doc-msg doc-skel" />
+        <div v-if="state === 'loading'" class="doc-msg doc-skel"><span class="doc-skel-text" role="status">Loading {{ name }}…</span></div>
         <div v-else-if="state === 'error' && reason" class="doc-msg doc-refused" role="alert">
           <v-icon :icon="mdiAlertCircleOutline" size="20" />
           <p>{{ reason }}</p>
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
         </div>
       </template>
       <template v-else>
-        <div v-if="!imgSrc && state === 'loading'" class="doc-msg doc-skel" />
+        <div v-if="!imgSrc && state === 'loading'" class="doc-msg doc-skel"><span class="doc-skel-text" role="status">Loading {{ name }}…</span></div>
         <img v-if="imgSrc" :key="file ? `${file.name}-${file.lastModified}` : url" :src="imgSrc" :alt="name" class="doc-img" :style="zoomStyle" @load="state = 'ready'" @error="state = 'error'" />
         <div v-if="state === 'error'" class="doc-msg">
           <v-icon :icon="mdiAlertCircleOutline" size="20" />
@@ -414,12 +414,18 @@ onBeforeUnmount(() => {
 }
 /* A blank sheet that shimmers while the file arrives. */
 .doc-skel {
+  justify-content: center;
+  align-items: center;
   aspect-ratio: 210 / 297;
   min-height: 0;
   max-height: 100%;
   background: linear-gradient(100deg, rgba(var(--v-theme-on-surface), 0.04) 30%, rgba(var(--v-theme-on-surface), 0.09) 50%, rgba(var(--v-theme-on-surface), 0.04) 70%)
     0 0 / 200% 100%;
   animation: doc-shimmer 1.4s linear infinite;
+}
+.doc-skel-text {
+  font-size: 14px;
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 @keyframes doc-shimmer {
   to {

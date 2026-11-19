@@ -47,7 +47,6 @@ import {
   mdiCheck,
   mdiChevronDown,
   mdiDownload,
-  mdiFileDocumentOutline,
   mdiFileImageOutline,
   mdiFilePdfBox,
   mdiTrayArrowUp,
@@ -126,6 +125,12 @@ const quoteFiles = computed(() => {
   return [...cimh, ...files.filter((f) => f.kind === 'supplier_quote')]
 })
 const quoteFile = ref<string | null>(null)
+/** Suppliers in this quote version whose own quote file is not on the request (their prices are in the list). */
+const unfiled = computed(() =>
+  (request.value?.quotes ?? [])
+    .filter((q) => q.version === quote.value?.version && q.lines.length && !(q.fileIds ?? []).length)
+    .map((q) => q.supplier ?? 'The supplier'),
+)
 /** Tab text for the supplier quote files: the supplier's name (numbered when it sent several), not the file name. */
 const fileLabels = computed(() => {
   const out: Record<string, string> = {}
@@ -483,7 +488,8 @@ async function cancel(reason: string) {
                       <div class="sum-total"><dt>Total to sign</dt><dd class="tnum">{{ money(quote.total) }}</dd></div>
                     </dl>
                     <!-- The band already states the version and validity; only what it doesn't say is repeated here. -->
-                    <p v-if="shipTo || request.cimhQuote?.exchangeRate" class="fine">
+                    <p v-if="shipTo || request.cimhQuote?.exchangeRate || unfiled.length" class="fine">
+                      <template v-if="unfiled.length">{{ unfiled.join(' and ') }}{{ unfiled.length > 1 ? '’s quotes are' : '’s own quote is' }} not attached; {{ unfiled.length > 1 ? 'their' : 'its' }} prices are in the list above. </template>
                       <template v-if="shipTo">Ships to {{ shipTo }}.</template>
                       <template v-if="request.cimhQuote?.exchangeRate"> Exchange rate {{ request.cimhQuote.exchangeRate }} BBD per USD.</template>
                     </p>
@@ -611,10 +617,10 @@ async function cancel(reason: string) {
         <aside
           v-if="split"
           class="reader"
-          :aria-label="shown === 1 ? 'The quotes behind these prices' : shown === 2 ? 'The agreement to sign' : 'Your signed copy'"
+          :aria-label="shown === 1 ? 'The quotes behind these prices' : shown === 2 || !previewable ? 'The agreement to sign' : 'Your signed copy'"
         >
           <Transition name="swap" mode="out-in">
-            <div :key="shown" class="reader-in">
+            <div :key="shown === 3 && !previewable ? 2 : shown" class="reader-in">
               <RequestDocuments
                 v-if="shown === 1"
                 v-model:selected="quoteFile"
@@ -622,10 +628,10 @@ async function cancel(reason: string) {
                 :files="quoteFiles"
                 label="Quote files"
                 empty-title="No quote files yet"
-                :empty-text="cimhQuotePending ? 'The CIMH stock quote is being prepared.' : 'Every price is in the list beside.'"
+                :empty-text="cimhQuotePending ? 'The CIMH stock quote is being prepared.' : 'Every price is in the list.'"
                 class="reader-doc"
               />
-              <template v-else-if="shown === 2">
+              <template v-else-if="shown === 2 || !previewable">
                 <DocumentViewer
                   v-if="agreementFile"
                   :key="agreementFile"
@@ -642,13 +648,8 @@ async function cancel(reason: string) {
                 </div>
               </template>
               <template v-else>
-                <DocumentViewer v-if="previewable" :file="file" name="Your signed copy" :mime="file!.type" what="Preview of" link="none" class="reader-doc" />
-                <!-- One drop slot (in the task); this sheet only says where the chosen copy will show. -->
-                <div v-else class="sheet">
-                  <v-icon :icon="mdiFileDocumentOutline" size="40" />
-                  <p class="sheet-title">Your signed copy shows here</p>
-                  <p>Choose it beside, then check it is the signed page before you send it.</p>
-                </div>
+                <!-- Until a copy is chosen the agreement stays here (above); the chosen copy replaces it, to check. -->
+                <DocumentViewer :file="file" name="Your signed copy" :mime="file!.type" what="Preview of" link="none" class="reader-doc" />
               </template>
             </div>
           </Transition>
@@ -744,6 +745,10 @@ async function cancel(reason: string) {
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: -0.015em;
+}
+.band-sub :deep(.short-ref),
+.band-sub > span {
+  white-space: nowrap;
 }
 .band-sub {
   display: flex;
@@ -1324,7 +1329,7 @@ async function cancel(reason: string) {
     padding: var(--sp-6) 0 120px; /* clear of the bottom bar and toasts */
   }
   .band-in {
-    padding: var(--sp-3) var(--sp-4) var(--sp-4);
+    padding: var(--sp-4) var(--sp-4) var(--sp-4);
     gap: var(--sp-3);
   }
   .band-total {

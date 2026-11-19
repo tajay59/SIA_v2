@@ -80,8 +80,9 @@ watch(open, (v) => {
     })
     return
   }
-  form.date = localToday()
-  form.notifyCustomer = true
+  // Every new parcel starts blank (the last one's tracking or note must never carry over); carrier stays as a guess.
+  Object.assign(form, { carrierName: '', tracking: '', trackingLink: '', note: '', cost: '', date: localToday(), notifyCustomer: true })
+  if (form.carrier === 'HAND' || form.carrier === 'OTHER') form.carrier = 'DHL'
   // Start on a source that can ship now (supplier parcels, or CIMH stock once picked).
   const ready = sources.value.find((x) => x.source === 'SUPPLIER' || x.lines.every((l) => (l.picked?.length ?? 0) >= l.qty))
   pickSource((ready ?? sources.value[0])?.key ?? '')
@@ -240,6 +241,8 @@ function submit() {
 }
 .sub {
   white-space: normal;
+  opacity: 1; /* Vuetify fades subtitles below 4.5:1 */
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .form {
   display: flex;
