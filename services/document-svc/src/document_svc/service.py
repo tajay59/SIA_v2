@@ -32,7 +32,7 @@ from cimh_common.outbox import EventEnvelope
 
 from . import pdfs
 from .clients import AUDIT_TOPIC, TOPIC, Orders, Publisher
-from .files import EXT, FileStore, Scanner, ScannerDown, reencode, safe_name, sniff
+from .files import EXT, FileStore, Scanner, ScannerDown, pdf_pages, reencode, safe_name, sniff
 
 log = logging.getLogger("document")
 
@@ -103,7 +103,11 @@ class DocumentService:
         mime = sniff(data)
         if mime is None:
             raise ProblemError(415, "UNSUPPORTED_FILE_TYPE", "Upload a PDF, JPEG, PNG or WebP file")
-        if mime != "application/pdf":
+        if mime == "application/pdf":
+            if await asyncio.to_thread(pdf_pages, data) < 1:
+                msg = "The PDF could not be read; save it again and upload it"
+                raise ProblemError(415, "UNSUPPORTED_FILE_TYPE", msg)
+        else:
             try:
                 data = reencode(data, mime)
             except Exception as exc:

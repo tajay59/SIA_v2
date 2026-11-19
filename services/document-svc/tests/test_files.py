@@ -102,6 +102,14 @@ def test_type_comes_from_the_bytes_not_the_name(ctx: Ctx) -> None:
     assert r.status_code == 415
 
 
+def test_pdf_without_pages_is_refused(ctx: Ctx) -> None:
+    """A file that only starts like a PDF draws nothing in the reader (seen with a 22-byte test upload)."""
+    r = ctx.upload("ORD1", data=b"%PDF-1.4 signed\n%%EOF\n")
+    assert r.status_code == 415
+    assert r.json()["code"] == "UNSUPPORTED_FILE_TYPE"
+    assert not (ctx.root / "protected").exists() or not any((ctx.root / "protected").rglob("*.pdf"))
+
+
 def test_over_20_mb_is_refused(ctx: Ctx) -> None:
     big = PDF + b"0" * (20 * 1024 * 1024)
     r = ctx.upload("ORD1", data=big)

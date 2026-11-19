@@ -47,7 +47,20 @@ def main() -> int:
         return c.post(f"{DOC}/files", headers=staff, data={"requestId": rid, "kind": "upload"},
                       files={"file": (name, data, "application/pdf")})  # fmt: skip
 
-    pdf = b"%PDF-1.4\n% document smoke\n%%EOF\n"
+    # A real one-page PDF (document-svc refuses a PDF it cannot read).
+    objs = [
+        b"<</Type/Catalog/Pages 2 0 R>>",
+        b"<</Type/Pages/Kids[3 0 R]/Count 1>>",
+        b"<</Type/Page/Parent 2 0 R/MediaBox[0 0 595 842]>>",
+    ]
+    pdf, offsets = b"%PDF-1.4\n", []
+    for i, o in enumerate(objs, 1):
+        offsets.append(len(pdf))
+        pdf += b"%d 0 obj\n%s\nendobj\n" % (i, o)
+    xref = len(pdf)
+    pdf += b"xref\n0 %d\n0000000000 65535 f \n" % (len(objs) + 1)
+    pdf += b"".join(b"%010d 00000 n \n" % n for n in offsets)
+    pdf += b"trailer\n<</Size %d/Root 1 0 R>>\nstartxref\n%d\n%%%%EOF\n" % (len(objs) + 1, xref)
     r = upload(pdf, "smoke.pdf")
     check(r.status_code == 201, "clean PDF uploaded", r)
     fid = r.json()["id"]
