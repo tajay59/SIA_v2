@@ -135,7 +135,11 @@ test.describe('J-11 password reset', () => {
     // Sign-in pages change with a View Transition: wait for the new page before typing (else the old field gets it).
     await expect(page).toHaveURL(/\/forgot-password/)
     await page.waitForFunction(() => !document.getAnimations().some((x) => String((x.effect as KeyframeEffect | null)?.pseudoElement ?? '').startsWith('::view-transition')))
-    await page.getByLabel('Email').fill(email)
+    // The SHOP route transition can still hold the leaving page's field: type until the new field keeps the address.
+    await expect(async () => {
+      await page.getByLabel('Email').fill(email)
+      await expect(page.getByLabel('Email')).toHaveValue(email, { timeout: 500 })
+    }).toPass({ timeout: 10_000 })
     await page.getByRole('button', { name: 'Send reset code' }).click()
     await expect(page).toHaveURL(/\/reset-password\?email=/)
 
