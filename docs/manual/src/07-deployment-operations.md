@@ -127,4 +127,4 @@ Six operating documents, written in P9 from the built platform (source: `docs/ru
 | Backup and disaster recovery | Nightly `mongodump --oplog` + files into restic (30 daily, 12 monthly); scenarios from one Pi lost to total loss, ransomware and power cuts (manual LUKS unlock); RPO 24 h, RTO 4 h; test log |
 | Monitoring and alerting | What Prometheus scrapes; every alert with its meaning and first steps; the TR-OBS-3 alerts still missing |
 | Incident response | Classify, contain, investigate, recover, notify (Data Protection Act 2019), blameless post-mortem template |
-| Cut-over | Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; tooling gaps G1–G6 to build before DR-2 |
+| Cut-over | Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; production loaders (G1–G3 built); G4–G6 (read-only source user, legacy maintenance page, legacy uploads) before DR-2 |

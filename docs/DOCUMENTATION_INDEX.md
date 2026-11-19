@@ -39,7 +39,7 @@ Every document to be produced for the CIMH Stores Platform (SHOP · SIA · SIA M
 | 23 | Backup and Disaster Recovery Plan | DRP | After | `runbooks/DISASTER_RECOVERY.md` | ✅ Drafted (P9) |
 | 24 | Monitoring and Alerting Guide | — | After | `runbooks/MONITORING.md` | ✅ Drafted (P9) |
 | 25 | Incident Response Plan + Post-mortem Template | IRP | After | `runbooks/INCIDENT_RESPONSE.md` | ✅ Drafted (P9) |
-| 25a | Cut-over Run Book | — | Before | `runbooks/CUTOVER.md` | ✅ Drafted (gaps G1–G6 to build before DR-2) |
+| 25a | Cut-over Run Book | — | Before | `runbooks/CUTOVER.md` | ✅ Drafted (G1–G3 built; G4–G6 owner, before DR-2) |
 | 26 | User Guides (SHOP, SIA, Mobile) | — | After | `guides/` | ⬜ Planned |
 | 27 | Admin Guide | — | After | `guides/ADMIN.md` | ⬜ Planned |
 | 28 | Training Material | — | After | `training/` | ⬜ Planned |

@@ -8,9 +8,9 @@ The plan's one-off `migrate --apply/--verify` container was never built. The wor
 
 | # | Gap | To build |
 |---|---|---|
-| G1 | No loader for production `rs0` (TLS, auth) | `tools/migrate/load_prod.sh`: same steps as `load_staging.sh` (dump first, stop apps, drop + `mongoimport`, flush Redis, start apps) but via `docker exec sia-prod-mongo1-1` with `--tls --tlsCAFile /run/secrets/ca.pem` and the `mongo_root` secret; refuses to run unless the target holds no `accounts` (or `--replace` is given) |
-| G2 | `dr1.py` only checks a throwaway localhost Mongo | Keep that (it is the full §6 check, run on the **same files** that are loaded); add `--counts-only` against production (counts per collection must equal `report.json`) |
-| G3 | Files loader is staging-only | `load_files_prod.sh` (volume `sia-prod_media`; same chmod rules as staging) |
+| G1 | Production loader | **Built** `tools/migrate/load_prod.sh` (2026-11-19); first run = DR-2 |
+| G2 | Production count check | **Built** `load_prod.sh --verify-only` (counts = files, validator levels, stock = product, `xuser`); the full §6 check stays `dr1.sh` on the same files |
+| G3 | Production files loader | **Built** `tools/migrate/load_files_prod.sh` (copy, one-off `clamscan`, `apply.js`) |
 | G4 | Read-only source user `svc_migrate_ro` not created | Create on 172.16.0.203 (`read` on `inventory`); drop after sign-off |
 | G5 | Legacy maintenance page not written | One nginx `server` block on the legacy box returning 503 + a static page for SHOP/SIA, and 503 JSON for `/sia/api/` |
 | G6 | 66 order uploads missing | Copy the legacy `uploads/` folder in the final file copy (step T-0:10) and re-run `files_to_v2.py` |
@@ -45,8 +45,8 @@ EXP=db/cutover          # git-ignored; real personal data
 | 0:10 | Final dump + files | `for c in accounts product storage history orders misc temp; do mongoexport --uri "$SRC" -c $c --jsonArray --jsonFormat=canonical -o "$OUT/inventory.$c.json"; done`; `tar czf $OUT/app-files.tgz -C <legacy app dir> productImages invoices uploads tempquotations`; `sha256sum $OUT/* > $OUT/SHA256SUMS`; copy `$OUT` to the workstation as `$EXP` and check the sums | Ops |
 | 0:20 | Convert + full check | `bash tools/migrate/dr1.sh $EXP` → **0 failures**, warnings reviewed (`$EXP/v2/dr1/verify.md`); `python tools/migrate/files_to_v2.py <unpacked app dir> $EXP/v2 $EXP/v2-files` | Tech lead |
 | 0:30 | Load data | copy `$EXP/v2/*.json` to the host (mode 600); `bash load_prod.sh <dir>` (G1); delete the json files | Tech lead |
-| 0:38 | Load files | `bash load_files_prod.sh $EXP/v2-files` (G3); ClamAV: `docker compose -p sia-prod exec clamav clamdscan --fdpass -m /srv/sia-data/protected` → 0 infected | Tech lead |
-| 0:42 | Verify production | `dr1.py --counts-only` (G2) = `report.json`; every service `/health/ready`; `docker exec sia-prod-mongo1-1 mongosh … --eval 'db.getCollectionInfos().map(c=>[c.name,c.options.validationLevel])'` → `strict` | Tech lead |
+| 0:38 | Load files | `bash load_files_prod.sh $EXP/v2-files` (G3); the script scans with ClamAV: 0 infected | Tech lead |
+| 0:42 | Verify production | `bash load_prod.sh <dir> --verify-only` (G2): all PASS, validators `strict`; every service `/health/ready` | Tech lead |
 | 0:45 | Spot-check + role logins | staff: 10 orders, 10 products, 10 units, 5 accounts side by side (legacy read-only copy vs v2); one admin, one staff, one customer log in with their **existing** password (admin then enrols MFA) | Staff + admin |
 | 0:55 | **Go / no-go** | all of 0:20–0:45 green and spot-check signed → go; anything else → §3 | Owner |
 | 1:00 | Switch | `mv /srv/sia-web/shop.new /srv/sia-web/shop` (same for sia); point DNS/edge at v2 (`deploy/nginx`, `test-config.sh`, `up -d nginx`); legacy routes removed | Ops |

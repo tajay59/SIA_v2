@@ -3254,7 +3254,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 <tr>
 <td>Cut-over</td>
-<td>Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; tooling gaps G1–G6 to build before DR-2</td>
+<td>Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; production loaders (G1–G3 built); G4–G6 (read-only source user, legacy maintenance page, legacy uploads) before DR-2</td>
 </tr>
 </tbody>
 </table></section>
@@ -6511,7 +6511,7 @@ export const cimhDark = {
 </table>
 <p>Each dry run produces a <strong>Migration Dry-run Report</strong> (Documentation Index #19).</p>
 <h2 id="138-cut-over-runbook-production">13.8 Cut-over runbook (production)</h2>
-<p>Exact commands and the tooling still to build (G1–G6: production loaders, production count check, file loader, read-only source user, legacy maintenance page, missing uploads) are in <code>docs/runbooks/CUTOVER.md</code>.</p>
+<p>Exact commands and the tooling still to build (G1–G6: production loaders, production count check, file loader, read-only source user, legacy maintenance page, missing uploads) are in <code>docs/runbooks/CUTOVER.md</code>. G1–G3 are built (<code>load_prod.sh</code>, <code>--verify-only</code>, <code>load_files_prod.sh</code>; first run in DR-2).</p>
 <p>Window: a weekday <strong>after 17:00 Barbados time</strong>, 2 hours reserved (expected ~45 min). Customers and staff notified 5 working days ahead.</p>
 <table>
 <thead>
