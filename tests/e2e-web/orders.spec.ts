@@ -367,7 +367,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await second.getByLabel('UPS').check()
     await second.getByLabel('Tracking number').fill('1Z999AA10123456784')
     await second.getByRole('button', { name: 'Record shipment' }).click()
-    await expect(page.getByText('Shipment recorded')).toBeVisible()
+    await expect(page.getByText('Shipment recorded').last()).toBeVisible() // the first parcel's toast may still show
     await expect(page.getByRole('region', { name: 'Shipments' }).getByRole('listitem')).toHaveCount(2)
     await page.getByRole('button', { name: 'Mark delivered' }).click()
     await page.getByLabel('Invoice number (optional)').fill(`INV-${run}`)
