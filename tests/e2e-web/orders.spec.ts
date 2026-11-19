@@ -108,6 +108,10 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('button', { name: 'Continue to delivery' }).click()
     await page.getByLabel('Notes for CIMH (optional)').fill('Needed for the hurricane season')
     await expect(page.getByText('Barbados dollars (BBD)')).toBeVisible() // every quote is in BBD
+    // The read-back is a table: one row per item with its quantity, total at the foot.
+    const items = page.getByRole('table', { name: 'Items in this request' })
+    await expect(items.getByRole('row', { name: new RegExp(paidName) })).toContainText('2')
+    await expect(items.getByRole('row', { name: /Total/ })).toContainText('3')
     await shot(page, 'shop-review')
     await page.getByRole('button', { name: 'Send request' }).click()
     await expect(page.getByRole('heading', { name: 'Requests sent' })).toBeVisible()
