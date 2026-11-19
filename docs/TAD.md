@@ -688,7 +688,7 @@ MongoDB's port 27017 is reachable **only from the Pis' fixed IPs and the host**,
 
 ## 11. Architecture Decision Records
 
-Each ADR is written in full in `docs/adr/NNNN-title.md` (context, options, decision, consequences). Summary:
+Each ADR is written in full in [`docs/adr/`](adr/README.md) (context, options, decision, consequences). Summary:
 
 | ADR | Decision | Status |
 |---|---|---|
@@ -705,8 +705,8 @@ Each ADR is written in full in `docs/adr/NNNN-title.md` (context, options, decis
 | 0011 | Monitoring with Prometheus + Alertmanager only (no Grafana, Loki or Sentry) | Accepted |
 | 0012 | Sites/shelves kept in `misc` (owned by catalog-svc) for now | Proposed (review after load tests) |
 | 0013 | Single application host; scaling out beyond one host deferred | Accepted |
-| 0014 | Carts stored in `orders` with `status: CART` | Proposed |
-| 0015 | Quote → accept workflow replaces online payment | Accepted |
+| 0014 | Carts stored in `orders` with `status: CART` | Accepted (implemented P5) |
+| 0015 | Quote → view and sign workflow replaces online payment | Accepted (amended 2026-11-17) |
 
 ---
 

@@ -40,8 +40,8 @@ The full list of 32 documents, covering before, during and after the build, is i
 | 0011 | Prometheus + Alertmanager only | Accepted |
 | 0012 | Sites/shelves stay in `misc` for now | Proposed |
 | 0013 | Single application host | Accepted |
-| 0014 | Carts stored in `orders` (`status: CART`) | Proposed |
-| 0015 | Quote → accept replaces online payment | Accepted |
+| 0014 | Carts stored in `orders` (`status: CART`) | Accepted (implemented P5) |
+| 0015 | Quote → view and sign replaces online payment | Accepted (amended 2026-11-17) |
 
 ## 9.3 Glossary
 
