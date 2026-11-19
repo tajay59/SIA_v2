@@ -13,7 +13,7 @@ The plan's one-off `migrate --apply/--verify` container was never built. The wor
 | G3 | Production files loader | **Built** `tools/migrate/load_files_prod.sh` (copy, one-off `clamscan`, `apply.js`) |
 | G4 | Read-only source user `svc_migrate_ro` not created | Create on 172.16.0.203 (`read` on `inventory`); drop after sign-off |
 | G5 | Legacy maintenance page not written | One nginx `server` block on the legacy box returning 503 + a static page for SHOP/SIA, and 503 JSON for `/sia/api/` |
-| G6 | 66 order uploads missing | Copy the legacy `uploads/` folder in the final file copy (step T-0:10) and re-run `files_to_v2.py` |
+| G6 | 66 order uploads missing (only on the legacy server: the local `SIA/app/uploads` copy holds files of 34 other orders, none in the export) | Owner fetches `uploads/` (+ `tempquotations/`); `files_to_v2.py --orders-only` then adds them to staging without duplicates (tested 2026-11-19); at cut-over they come with the final file copy |
 
 ## 1. Days before
 

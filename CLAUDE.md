@@ -165,6 +165,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-19: Missing order uploads (G6): the local `SIA/app/uploads` belongs to 34 other orders (none in the export), so the 66 files exist only on the legacy server. `files_to_v2.py` made re-runnable: ids from (order, legacy name), append-if-absent instead of `$set files` (a re-run would have dropped every file added since migration), `--orders-only` skips product images; tested on a throwaway Mongo.
 - 2026-11-19: ADRs 0001–0015 written in `docs/adr/` (context, options, decision, consequences, from TAD and what was built); TAD §11 + manual ch. 9: 0014 Accepted, 0015 view and sign; 0012 still Proposed (owner).
 - 2026-11-19: Cut-over G1–G3 built: `tools/migrate/load_prod.sh` (TLS root via stdin, pre-load dump, Redis emptied by data dir since prod Redis has no FLUSHALL user, `--verify-only` count check) + `load_files_prod.sh` (one-off `clamscan`: the clamd container does not mount `/srv/sia-data`); shellcheck in CI; not yet run on a real replica set (DR-2). Left: G4–G6 (owner).
 - 2026-11-19: Cut-over run book `docs/runbooks/CUTOVER.md` (exact P10 commands). Found: the plan's `migrate --apply/--verify` tool was never built; production needs G1–G6 (prod loaders, count check, files loader, `svc_migrate_ro`, legacy maintenance page, missing uploads) before DR-2. Staging: 0 open paid quotes, 0 `AWAITING_AGREEMENT`, nothing to re-send.
