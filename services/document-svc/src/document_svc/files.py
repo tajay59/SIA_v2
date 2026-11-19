@@ -38,6 +38,16 @@ def sniff(data: bytes) -> str | None:
     return None
 
 
+def pdf_pages(data: bytes) -> int:
+    """Pages in a PDF, or 0 when it cannot be read (a file that only starts like a PDF draws nothing)."""
+    from pypdf import PdfReader
+
+    try:
+        return len(PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return 0
+
+
 def reencode(data: bytes, mime: str) -> bytes:
     """Decode and re-encode an image: drops EXIF/GPS and anything appended to it. Raises on a bad image."""
     with Image.open(io.BytesIO(data)) as src:

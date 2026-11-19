@@ -11,6 +11,7 @@ dependencies = [
   "python-multipart>=0.0.18",
   "pillow>=11",
   "reportlab>=4.2",
+  "pypdf>=5",
   "aiokafka>=0.11",
 ]
 

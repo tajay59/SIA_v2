@@ -13,7 +13,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { auditDialog, auditPart, customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, stowUnits } from './support'
+import { auditDialog, auditPart, customerAccount, isRealPageError, mongo, onePagePdf, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -282,7 +282,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByText('Choose the signed copy first')).toBeVisible()
     // The real upload: type sniffed, scanned, stored, attached at once so the quote can be accepted. The chosen file
     // is shown on the page first (read in the browser), so the customer sends the page they meant to.
-    await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 signed\n%%EOF\n') })
+    await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: onePagePdf('Signed agreement') })
     await expect(page.getByRole('region', { name: 'Preview of Your signed copy' })).toBeVisible()
     await auditPart(page, '.sign-page', 'shop-agreement-send')
     await page.getByRole('button', { name: 'Send signed agreement' }).click()

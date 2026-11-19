@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import time
 from collections.abc import Iterator
@@ -27,7 +28,19 @@ KEY = Ed25519PrivateKey.generate()
 SCHEMAS = Path(__file__).resolve().parents[3] / "packages" / "event-schemas" / "schemas"
 # The standard anti-virus test file (not a virus; every scanner reports it as Eicar-Test-Signature).
 EICAR = b"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+
+
+def _one_page_pdf() -> bytes:
+    from reportlab.pdfgen import canvas
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, invariant=True)
+    c.drawString(72, 760, "Signed agreement")
+    c.save()
+    return buf.getvalue()
+
+
+PDF = _one_page_pdf()
 
 
 async def jwks() -> dict[str, Any]:
