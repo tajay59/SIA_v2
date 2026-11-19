@@ -200,6 +200,8 @@ Each dry run produces a **Migration Dry-run Report** (Documentation Index #19).
 
 ## 8. Cut-over runbook (production)
 
+The exact commands, and the tooling still to build (G1–G6), are in the [Cut-over run book](runbooks/CUTOVER.md).
+
 Window: a weekday **after 17:00 Barbados time**, 2 hours reserved (expected ~45 min). Customers and staff notified 5 working days ahead.
 
 | T | Step | Owner |

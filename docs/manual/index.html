@@ -3223,7 +3223,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <figure><a href="images/22-legacy-transition.svg" target="_blank" title="Open full size"><img alt="Legacy transition" src="images/22-legacy-transition.svg" loading="lazy"></a><figcaption>Legacy transition</figcaption></figure>
 <p><strong>Staged testing, single data cut-over.</strong> v2 is tested on staging route group by route group, but production data moves <strong>once</strong>, in a ~45-minute maintenance window: freeze legacy → final dump → migrate (M01–M09) → verify → go/no-go → switch all <code>/api/*</code> routes, the new SHOP/SIA and the mobile app together. Legacy stays read-only for 30 days (rollback allowed within 48 h). Full runbook: <a href="#13-data-migration">Chapter 13</a> and the <a href="../MIGRATION_PLAN.md">Data Migration Plan</a>.</p>
 <h2 id="run-books-p9">Run books (P9)</h2>
-<p>Five operating documents, written in P9 from the built platform (source: <code>docs/runbooks/</code>):</p>
+<p>Six operating documents, written in P9 from the built platform (source: <code>docs/runbooks/</code>):</p>
 <table>
 <thead>
 <tr>
@@ -3251,6 +3251,10 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <tr>
 <td>Incident response</td>
 <td>Classify, contain, investigate, recover, notify (Data Protection Act 2019), blameless post-mortem template</td>
+</tr>
+<tr>
+<td>Cut-over</td>
+<td>Exact P10 commands: legacy maintenance, final export, convert + full check, load, verify, go/no-go, switch, smoke, rollback; tooling gaps G1–G6 to build before DR-2</td>
 </tr>
 </tbody>
 </table></section>
@@ -6507,6 +6511,7 @@ export const cimhDark = {
 </table>
 <p>Each dry run produces a <strong>Migration Dry-run Report</strong> (Documentation Index #19).</p>
 <h2 id="138-cut-over-runbook-production">13.8 Cut-over runbook (production)</h2>
+<p>Exact commands and the tooling still to build (G1–G6: production loaders, production count check, file loader, read-only source user, legacy maintenance page, missing uploads) are in <code>docs/runbooks/CUTOVER.md</code>.</p>
 <p>Window: a weekday <strong>after 17:00 Barbados time</strong>, 2 hours reserved (expected ~45 min). Customers and staff notified 5 working days ahead.</p>
 <table>
 <thead>
