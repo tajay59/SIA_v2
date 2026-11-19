@@ -15,7 +15,7 @@ Every document to be produced for the CIMH Stores Platform (SHOP · SIA · SIA M
 |---|---|---|---|---|---|
 | 1 | Product Requirements Document | PRD | Before | [PRD.md](PRD.md) | ✅ Draft |
 | 2 | Technical Requirements Document | TRD | Before | [TRD.md](TRD.md) | ✅ Draft |
-| 3 | Technical Architecture Document + ADRs | TAD | Before | [TAD.md](TAD.md), `adr/` | ✅ Draft (ADR files pending) |
+| 3 | Technical Architecture Document + ADRs | TAD | Before | [TAD.md](TAD.md), `adr/` | ✅ Draft; ADRs 0001–0015 written (2026-11-19) |
 | 4 | Background (Backend) Schema Document | BSD | Before | [BSD.md](BSD.md) | ✅ Draft |
 | 5 | API Specification + Event Specification | API | Before | [api/README.md](api/README.md), `api/*.openapi.yaml`, `api/events.asyncapi.yaml` | ✅ Draft (validated) |
 | 6 | App Flow Document | APD | Before | [APD.md](APD.md) | ✅ Draft |
