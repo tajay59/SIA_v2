@@ -285,11 +285,14 @@ class OrderService:
         return self.cart_view(doc, live)
 
     @staticmethod
-    def cart_view(doc: dict[str, Any], live: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    def cart_view(
+        doc: dict[str, Any], live: dict[str, dict[str, Any]] | None = None, *, partial: bool = False
+    ) -> dict[str, Any]:
+        """`live` = catalogue products by id. `partial`: only the lines in `live` were looked up; leave the rest unmarked."""
         lines = []
         for ln in doc["lines"]:
             item: dict[str, Any] = {"productId": ln["productId"], "qty": ln["qty"], "product": ln["product"]}
-            if live is not None:
+            if live is not None and not (partial and ln["productId"] not in live):
                 prod = live.get(ln["productId"])
                 item["available"] = orderable(prod)
                 if prod:
@@ -342,7 +345,7 @@ class OrderService:
             if len(lines) >= 200:
                 raise invalid("productId", "A cart holds at most 200 products")
             lines.append({"productId": product_id, "qty": qty, "product": snapshot(prod), "addedAt": now()})
-        return self.cart_view(await self._save_cart(doc, lines), {product_id: prod} | {})
+        return self.cart_view(await self._save_cart(doc, lines), {product_id: prod}, partial=True)
 
     async def remove_line(self, p: Principal, product_id: str) -> dict[str, Any]:
         doc = await self._cart(p)
