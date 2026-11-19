@@ -288,7 +288,10 @@ class OrderService:
     def cart_view(
         doc: dict[str, Any], live: dict[str, dict[str, Any]] | None = None, *, partial: bool = False
     ) -> dict[str, Any]:
-        """`live` = catalogue products by id. `partial`: only the lines in `live` were looked up; leave the rest unmarked."""
+        """`live` = catalogue products by id.
+
+        `partial`: only the lines in `live` were looked up; leave the rest unmarked.
+        """
         lines = []
         for ln in doc["lines"]:
             item: dict[str, Any] = {"productId": ln["productId"], "qty": ln["qty"], "product": ln["product"]}

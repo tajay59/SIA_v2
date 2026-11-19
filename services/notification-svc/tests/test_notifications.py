@@ -154,7 +154,12 @@ CASES = [
         f"{SHOP}/requests/ORD9/agreement?task=send",
     ),
     ("order.expired", MOVE, ["una@met.bb"], f"{SHOP}/requests/ORD9"),
-    ("order.agreement_rejected", {**MOVE, "reason": "Not signed"}, ["una@met.bb"], f"{SHOP}/requests/ORD9/agreement?task=send"),
+    (
+        "order.agreement_rejected",
+        {**MOVE, "reason": "Not signed"},
+        ["una@met.bb"],
+        f"{SHOP}/requests/ORD9/agreement?task=send",
+    ),
     (
         "order.shipped",
         {**ORDER, "carrier": "DHL", "tracking": "JD0001", "notifyCustomer": True},
