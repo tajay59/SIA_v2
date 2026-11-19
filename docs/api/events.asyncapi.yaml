@@ -60,7 +60,6 @@ channels:
       orderSubmitted: { $ref: '#/components/messages/orderSubmitted' }
       orderStatusChanged: { $ref: '#/components/messages/orderStatusChanged' }
       orderQuoted: { $ref: '#/components/messages/orderQuoted' }
-      orderAgreementRequested: { $ref: '#/components/messages/orderAgreementRequested' }
       orderQuoteExpiring: { $ref: '#/components/messages/orderQuoteExpiring' }
       orderAccepted: { $ref: '#/components/messages/orderAccepted' }
       orderProbonoApproved: { $ref: '#/components/messages/orderProbonoApproved' }
@@ -128,11 +127,11 @@ operations:
   inventoryConsumesOrders:
     action: receive
     channel: { $ref: '#/channels/orderEvents' }
-    summary: reserve on accepted / probono_approved, release on cancelled, mark picked on shipped
+    summary: reserve CIMH stock lines on quoted (replace on quote_revised; accepted retries a missing reservation) and probono_approved; release on declined / cancelled / expired
   documentConsumesOrders:
     action: receive
     channel: { $ref: '#/channels/orderEvents' }
-    summary: generate CIMH quote, payment agreement, invoice, commercial invoice PDFs
+    summary: generate the payment agreement and CIMH quote (on quoted / quote_revised), invoice, commercial invoice PDFs
   notificationConsumesOrders:
     action: receive
     channel: { $ref: '#/channels/orderEvents' }
@@ -208,7 +207,16 @@ components:
         lineId: { type: string }
         productId: { type: string }
         qty: { type: integer }
-        choice: { type: [string, 'null'], enum: [CIMH, SUPPLIER, null] }
+        source: { type: [string, 'null'], enum: [CIMH, SUPPLIER, null], description: 'Where a paid line comes from, fixed by staff when the quote is sent (null before, and on Pro Bono lines)' }
+        supplier: { type: [string, 'null'], description: Supplier name for SUPPLIER lines }
+        choice: { type: [string, 'null'], enum: [CIMH, SUPPLIER, null], deprecated: true, description: 'Old name of `source` (events written before 2026-11-17); consumers read source, else choice' }
+    ShippingEstimate:
+      type: object
+      required: [source, amount]
+      properties:
+        source: { type: string, enum: [CIMH, SUPPLIER] }
+        supplier: { type: [string, 'null'] }
+        amount: { type: string, description: 'Money in the request currency, 2 decimals' }
 
   messages:
     userRegistered:
@@ -447,7 +455,7 @@ components:
                   lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
                   splitFrom: { type: [string, 'null'], description: Sibling request id when a mixed cart was split }
     orderStatusChanged:
-      name: order.quoting_started / order.agreement_rejected / order.declined / order.purchasing / order.probono_rejected / order.delivered / order.expired / order.quote_revised
+      name: order.quoting_started / order.agreement_rejected / order.declined / order.purchasing / order.probono_rejected / order.delivered / order.expired
       description: Generic transition event; `type` carries the specific name.
       payload:
         allOf:
@@ -464,21 +472,33 @@ components:
                   to: { type: string }
                   reason: { type: [string, 'null'] }
     orderQuoted:
-      name: order.quoted
+      name: order.quoted / order.quote_revised
+      description: |
+        Staff sent the quote (or a revised version, which voids the earlier agreement). Every line has its source.
+        document-svc generates the agreement PDF for `quoteVersion` (and the CIMH stock quote when there are CIMH lines);
+        inventory reserves the CIMH lines (replacing the earlier reservation on a revision); notification-svc emails
+        the customer to view and sign.
       payload:
         allOf:
           - $ref: '#/components/schemas/Envelope'
           - properties:
               payload:
                 type: object
-                required: [orderId, customer, quoteVersion, expiresAt, currency]
+                required: [orderId, customer, quoteVersion, expiresAt, currency, total, lines]
                 properties:
                   orderId: { type: string }
+                  orderType: { type: string, enum: [PAID] }
                   customer: { type: string }
                   quoteVersion: { type: integer }
                   expiresAt: { type: string, format: date-time }
                   currency: { type: string, enum: [BBD, USD] }
-                  cimhLineIds: { type: array, items: { type: string }, description: Lines offered from CIMH stock (document-svc renders the CIMH quote PDF) }
+                  total: { type: string, description: 'Agreement total (lines + estimated shipping + admin fee), Money' }
+                  lines: { type: array, items: { $ref: '#/components/schemas/Line' }, description: Every line with its source }
+                  shippingEstimates: { type: array, items: { $ref: '#/components/schemas/ShippingEstimate' } }
+                  cimhLineIds: { type: array, items: { type: string }, description: Lines supplied from CIMH stock (document-svc renders the CIMH quote PDF) }
+                  from: { type: string, description: order.quote_revised only }
+                  to: { type: string, description: order.quote_revised only }
+                  reason: { type: [string, 'null'], description: order.quote_revised only }
     orderQuoteExpiring:
       name: order.quote_expiring
       description: The live quote expires within the reminder window (3 days); order-jobs sends it once per quote expiry. notification-svc reminds the customer.
@@ -494,23 +514,6 @@ components:
                   customer: { type: string }
                   quoteVersion: { type: integer }
                   expiresAt: { type: string, format: date-time }
-    orderAgreementRequested:
-      name: order.agreement_requested
-      description: Customer chose options; document-svc generates the agreement PDF (kind agreement).
-      payload:
-        allOf:
-          - $ref: '#/components/schemas/Envelope'
-          - properties:
-              payload:
-                type: object
-                required: [orderId, customer, quoteVersion, lines, total, currency]
-                properties:
-                  orderId: { type: string }
-                  customer: { type: string }
-                  quoteVersion: { type: integer }
-                  lines: { type: array, items: { $ref: '#/components/schemas/Line' } }
-                  total: { type: string, description: 'Money, 2 decimals' }
-                  currency: { type: string, enum: [BBD, USD] }
     orderAccepted:
       name: order.accepted
       payload:
@@ -524,7 +527,7 @@ components:
                   orderId: { type: string }
                   customer: { type: string }
                   quoteVersion: { type: integer }
-                  lines: { type: array, items: { $ref: '#/components/schemas/Line' }, description: inventory reserves lines with choice=CIMH }
+                  lines: { type: array, items: { $ref: '#/components/schemas/Line' }, description: 'CIMH lines were reserved when the quote was sent; inventory reserves them now only if nothing is held for the request' }
     orderProbonoApproved:
       name: order.probono_approved
       payload:
@@ -576,6 +579,7 @@ components:
                   customer: { type: string, description: 'Requester account id (generated documents; notification-svc mails the agreement)' }
                   fileId: { type: string }
                   kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
+                  quoteVersion: { type: [integer, 'null'], description: 'Quote version of a generated agreement / CIMH quote, or of the quote a signed agreement was uploaded for' }
                   name: { type: string }
                   mime: { type: string }
                   size: { type: integer }

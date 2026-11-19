@@ -5,7 +5,8 @@
   inventory.stock.events  stock.reserved            -> lines[].reservation RESERVED + units
                           stock.reservation_failed  -> short lines FAILED (staff requote them)
                           stock.released            -> RESERVED lines -> RELEASED
-  document.events         document.uploaded / document.generated -> files[] (agreement / CIMH quote ids)
+  document.events         document.uploaded / document.generated -> files[] (agreement / CIMH quote ids, only for
+                          the quote version they were made for)
                           document.deleted -> files[].deleted
   identity.user.events    user.suspended -> cart blocked (403 ACCOUNT_SUSPENDED); user.reactivated -> unblocked
                           (defence in depth: suspension already revokes every session)
@@ -58,6 +59,7 @@ def make_handler(service: OrderService) -> Any:
                     "mime": p.get("mime"),
                     "size": p.get("size"),
                     "sha256": p.get("sha256"),
+                    "quoteVersion": p.get("quoteVersion"),
                     "uploadedAt": event.occurredAt,
                 },
             )

@@ -48,8 +48,12 @@
           "type": "object",
           "required": [
             "orderId",
-            "from",
-            "to"
+            "customer",
+            "quoteVersion",
+            "expiresAt",
+            "currency",
+            "total",
+            "lines"
           ],
           "properties": {
             "orderId": {
@@ -58,24 +62,135 @@
             "orderType": {
               "type": "string",
               "enum": [
-                "PAID",
-                "PROBONO"
+                "PAID"
               ]
             },
             "customer": {
               "type": "string"
             },
+            "quoteVersion": {
+              "type": "integer"
+            },
+            "expiresAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "currency": {
+              "type": "string",
+              "enum": [
+                "BBD",
+                "USD"
+              ]
+            },
+            "total": {
+              "type": "string",
+              "description": "Agreement total (lines + estimated shipping + admin fee), Money"
+            },
+            "lines": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "lineId",
+                  "productId",
+                  "qty"
+                ],
+                "properties": {
+                  "lineId": {
+                    "type": "string"
+                  },
+                  "productId": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "type": "integer"
+                  },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "CIMH",
+                      "SUPPLIER",
+                      null
+                    ],
+                    "description": "Where a paid line comes from, fixed by staff when the quote is sent (null before, and on Pro Bono lines)"
+                  },
+                  "supplier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Supplier name for SUPPLIER lines"
+                  },
+                  "choice": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "CIMH",
+                      "SUPPLIER",
+                      null
+                    ],
+                    "deprecated": true,
+                    "description": "Old name of `source` (events written before 2026-11-17); consumers read source, else choice"
+                  }
+                }
+              },
+              "description": "Every line with its source"
+            },
+            "shippingEstimates": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "source",
+                  "amount"
+                ],
+                "properties": {
+                  "source": {
+                    "type": "string",
+                    "enum": [
+                      "CIMH",
+                      "SUPPLIER"
+                    ]
+                  },
+                  "supplier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "amount": {
+                    "type": "string",
+                    "description": "Money in the request currency, 2 decimals"
+                  }
+                }
+              }
+            },
+            "cimhLineIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Lines supplied from CIMH stock (document-svc renders the CIMH quote PDF)"
+            },
             "from": {
-              "type": "string"
+              "type": "string",
+              "description": "order.quote_revised only"
             },
             "to": {
-              "type": "string"
+              "type": "string",
+              "description": "order.quote_revised only"
             },
             "reason": {
               "type": [
                 "string",
                 "null"
-              ]
+              ],
+              "description": "order.quote_revised only"
             }
           }
         }

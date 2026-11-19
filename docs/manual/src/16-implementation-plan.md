@@ -98,7 +98,7 @@ Outlines **what gets built and in what order**: the project broken into phases, 
 |---|---|
 | order-svc: cart (one per user, Pro Bono limits, CIMH restriction), submission with split, staff queue, status machines (paid and Pro Bono) | O1–O4, O12–O14 |
 | Quoting: start-quoting with stock check, quote builder (supplier + CIMH option, exchange rate), send/revise, expiry job + reminders | O5, O5a, O7, O15 |
-| Agreement: choose options → agreement PDF request → signed upload → accept; staff verify/reject signature; purchase orders | O6, O6a, O8 |
+| Agreement: view and sign (agreement PDF with the quote) → signed upload → accept; staff verify/reject signature; purchase orders ("view and sign" rework 2026-11-17) | O6, O6a, O8 |
 | Picking (CIMH/Pro Bono lines only), shipping (manual carrier + tracking), delivery | O9–O11 |
 | Screens: S-07 … S-12, A-01, A-02, A-03, A-04 | APD |
 

@@ -2,7 +2,7 @@
 
   catalog    POST /internal/products/summaries    product snapshots, cost, Pro Bono limits
              GET  /internal/fees                   admin fee (BBD)
-  inventory  POST /internal/availability           full-quantity check when quoting starts
+  inventory  POST /internal/availability           full-quantity check when quoting starts and when a quote is sent
              POST /internal/picks                  pick a unit reserved for a request
   identity   GET  /internal/accounts/{id}          names + organisation at submission, file-access checks
 
@@ -23,7 +23,7 @@ from cimh_common.errors import ProblemError
 class Deps(Protocol):
     async def products(self, ids: list[str]) -> list[dict[str, Any]]: ...
     async def admin_fee(self) -> Decimal: ...
-    async def availability(self, lines: list[dict[str, Any]]) -> list[dict[str, Any]]: ...
+    async def availability(self, lines: list[dict[str, Any]], order_id: str | None = None) -> list[dict[str, Any]]: ...
     async def pick(self, unit: str, order_id: str, picked_by: str, key: str) -> dict[str, Any]: ...
     async def account(self, account_id: str) -> dict[str, Any] | None: ...
 
@@ -92,8 +92,11 @@ class HttpDeps:
                 return Decimal(str(t.get("fee") or "0"))
         return Decimal("0")
 
-    async def availability(self, lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        r = await self._call("inventory", "POST", self.inventory + "/availability", json={"lines": lines})
+    async def availability(self, lines: list[dict[str, Any]], order_id: str | None = None) -> list[dict[str, Any]]:
+        body: dict[str, Any] = {"lines": lines}
+        if order_id:
+            body["orderId"] = order_id
+        r = await self._call("inventory", "POST", self.inventory + "/availability", json=body)
         if r.status_code >= 400:
             raise _unavailable("inventory")
         return list(r.json()["lines"])

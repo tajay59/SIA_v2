@@ -311,6 +311,7 @@ paths:
               required: [lines]
               properties:
                 lines: { type: array, maxItems: 200, items: { type: object, required: [lineId, productId, qty], properties: { lineId: { type: string }, productId: { type: string }, qty: { type: integer, minimum: 1 } } } }
+                orderId: { type: [string, 'null'], description: 'Units already reserved for this request count as available (a revised quote re-checks the stock it holds)' }
       responses:
         '200':
           description: Per-line answer

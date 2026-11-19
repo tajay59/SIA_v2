@@ -4,9 +4,13 @@
 
   catalog.product.events  product.created / product.updated -> stock.productName, type, threshold, active
                           product.deleted                   -> stock.active = false
-  order.events            order.accepted         -> reserve the lines the customer chose from CIMH stock
+  order.events            order.quoted           -> reserve the lines staff quoted from CIMH stock ("view and sign":
+                                                    the agreement the customer signs promises those units)
+                          order.quote_revised    -> swap the reservation for the revised CIMH lines (one transaction)
+                          order.accepted         -> reserve the CIMH lines only if nothing is held (e.g. it failed)
                           order.probono_approved -> reserve every line
-                          order.cancelled / order.expired / order.agreement_rejected -> release what is held
+                          order.declined / order.cancelled / order.expired -> release what is held
+                          (a rejected signature keeps the stock: the quote is still live)
 The catalog topic is compacted, so a new consumer group starts from a full snapshot of the catalogue.
 Reservations are all-or-nothing; a shortfall publishes stock.reservation_failed (order-svc flags the lines).
 Delivery is at-least-once; the handlers are idempotent (an older event never overwrites a newer one).
@@ -30,7 +34,13 @@ from .service import InventoryService
 
 log = logging.getLogger("inventory.consumer")
 TOPICS = ["catalog.product.events", "order.events"]
-RELEASE_ON = ("order.cancelled", "order.expired", "order.agreement_rejected")
+RELEASE_ON = ("order.declined", "order.cancelled", "order.expired")
+RESERVE_ON = ("order.quoted", "order.quote_revised", "order.accepted", "order.probono_approved")
+
+
+def _cimh(line: dict[str, Any]) -> bool:
+    # `choice` is the field's name in events written before 2026-11-17.
+    return (line.get("source") or line.get("choice")) == "CIMH"
 
 
 def make_handler(service: InventoryService) -> Any:
@@ -44,7 +54,7 @@ def make_handler(service: InventoryService) -> Any:
             if not isinstance(p.get("productId"), str):
                 raise ValueError(f"product.deleted {event.eventId} lacks productId")
             await service.product_deleted(p, event.occurredAt)
-        elif event.type in ("order.accepted", "order.probono_approved", *RELEASE_ON):
+        elif event.type in (*RESERVE_ON, *RELEASE_ON):
             order_id = p.get("orderId")
             if not isinstance(order_id, str):
                 raise ValueError(f"{event.type} {event.eventId} lacks orderId")
@@ -56,12 +66,13 @@ def make_handler(service: InventoryService) -> Any:
             lines = [
                 {"lineId": x["lineId"], "productId": x["productId"], "qty": int(x["qty"])}
                 for x in p.get("lines") or []
-                if event.type == "order.probono_approved" or x.get("choice") == "CIMH"
+                if event.type == "order.probono_approved" or _cimh(x)
             ]
-            if not lines:
+            replace = event.type == "order.quote_revised"
+            if not lines and not replace:
                 return
             try:
-                await service.reserve(actor, order_id, lines, cid)
+                await service.reserve(actor, order_id, lines, cid, replace=replace)
             except ProblemError as exc:
                 if exc.code != "RESERVATION_FAILED":  # the failure event is already in the outbox
                     raise

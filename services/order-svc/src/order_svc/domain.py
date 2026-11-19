@@ -28,13 +28,10 @@ TRANSITIONS: dict[tuple[str, str, str], tuple[str, str]] = {
     (PAID, "QUOTING", "QUOTED"): ("send-quote", "staff"),
     (PAID, "QUOTING", "CANCELLED"): ("cancel", "any"),
     (PAID, "QUOTED", "QUOTED"): ("send-quote", "staff"),
-    (PAID, "QUOTED", "AWAITING_AGREEMENT"): ("agreement", "requester"),
+    (PAID, "QUOTED", "ACCEPTED"): ("accept", "requester"),
     (PAID, "QUOTED", "DECLINED"): ("decline", "requester"),
     (PAID, "QUOTED", "CANCELLED"): ("expire", "system"),
-    (PAID, "AWAITING_AGREEMENT", "QUOTED"): ("change-choices", "requester"),
-    (PAID, "AWAITING_AGREEMENT", "ACCEPTED"): ("accept", "requester"),
-    (PAID, "AWAITING_AGREEMENT", "CANCELLED"): ("cancel", "any"),
-    (PAID, "ACCEPTED", "AWAITING_AGREEMENT"): ("reject-agreement", "staff"),
+    (PAID, "ACCEPTED", "QUOTED"): ("reject-agreement", "staff"),
     (PAID, "ACCEPTED", "PURCHASING"): ("purchase", "staff"),
     (PAID, "ACCEPTED", "CANCELLED"): ("cancel", "staff"),
     (PAID, "DECLINED", "CANCELLED"): ("close", "system"),
@@ -49,8 +46,11 @@ TRANSITIONS: dict[tuple[str, str, str], tuple[str, str]] = {
     (PROBONO, "SHIPPED", "DELIVERED"): ("deliver", "staff"),
 }
 
-# Statuses where the quote clock runs (expiry job; agreement/accept refuse an expired quote).
-QUOTE_LIVE = ("QUOTED", "AWAITING_AGREEMENT")
+# Statuses where the quote clock runs (expiry job; accept refuses an expired quote). "View and sign" (2026-11-17):
+# QUOTED is the only one; the agreement comes with the quote, so there is no separate waiting status.
+QUOTE_LIVE = ("QUOTED",)
+# A rejected signature leaves the customer at least this long to upload a correct copy.
+RESIGN_DAYS = 7
 
 
 def legal(order_type: str, src: str, dst: str) -> tuple[str, str] | None:
@@ -116,13 +116,10 @@ def usd_to_bbd(amount_usd: Decimal, exchange_rate: Decimal) -> Decimal:
     return money(amount_usd * exchange_rate)
 
 
-def line_options(line_id: str, supplier_lines: dict[str, Any], cimh_lines: dict[str, Any]) -> list[str]:
-    out = []
-    if line_id in cimh_lines:
-        out.append(CIMH)
-    if line_id in supplier_lines:
-        out.append(SUPPLIER)
-    return out
+def line_source(line: dict[str, Any]) -> str | None:
+    """CIMH / SUPPLIER for a paid line once quoted. Requests written before 2026-11-17 call it `choice`."""
+    value = line.get("source") or line.get("choice")
+    return value if value in (CIMH, SUPPLIER) else None
 
 
 def tracking_url(carrier: str | None, tracking: str | None) -> str | None:

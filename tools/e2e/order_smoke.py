@@ -3,10 +3,10 @@
     docker run --rm --network sia-dev_default -v "$PWD/tools:/w/tools:ro" cimh/order-svc:dev \
         python /w/tools/e2e/order_smoke.py
 
-Path: customer cart -> submit -> staff start-quoting (inventory availability) -> CIMH quote (catalog cost + fee)
--> customer agreement -> signed copy attached (as document-svc would, P6) -> accept -> order.accepted over Kafka
--> inventory reserves -> stock.reserved over Kafka -> order line RESERVED -> purchase -> picks (inventory
-internal pick) -> ship -> deliver. Dev only: refuses non-local Mongo hosts.
+Path ("view and sign", 2026-11-17): customer cart -> submit -> staff start-quoting (inventory availability) -> CIMH
+quote (catalog cost + fee + estimated shipping) -> order.quoted over Kafka -> inventory reserves -> stock.reserved
+over Kafka -> order line RESERVED -> signed copy attached (as document-svc would) -> customer accepts -> purchase
+-> picks (inventory internal pick) -> ship -> deliver. Dev only: refuses non-local Mongo hosts.
 """
 
 from __future__ import annotations
@@ -131,29 +131,29 @@ def main() -> int:
     # Staff: quote from CIMH stock.
     r = act(rid, "start-quoting", staff)
     check(r.status_code == 200 and r.json()["lines"][0]["cimhAvailable"] is True, "quoting: full quantity in stock", r)
-    r = act(rid, "quote-draft", staff, {"supplierQuotes": [], "cimh": {"lineIds": ["L1"]}}, "PUT")
-    check(r.status_code == 200, "draft: offer L1 from CIMH stock", r)
+    draft = {"supplierQuotes": [], "cimh": {"lineIds": ["L1"], "shippingEstimate": "20.00"}}
+    r = act(rid, "quote-draft", staff, draft, "PUT")
+    check(r.status_code == 200, "draft: L1 from CIMH stock, estimated shipping 20.00", r)
     r = act(rid, "send-quote", staff)
-    check(r.status_code == 200 and r.json()["cimhQuote"]["total"] == "300.00", "CIMH quote sent (2 x 150.00)", r)
-
-    # Customer: agreement, signed upload, acceptance.
-    r = act(rid, "agreement", me, {"quoteVersion": 1, "choices": []})
-    check(r.status_code == 200 and r.json()["status"] == "AWAITING_AGREEMENT", "agreement requested", r)
-    fid = "FIL" + uuid.uuid4().hex
-    r = c.post(f"{ORD}/internal/requests/{rid}/files", headers=service_token(c, "document"),
-               json={"id": fid, "kind": "signed_agreement", "name": "signed.pdf", "mime": "application/pdf",
-                     "size": 1})  # fmt: skip
-    check(r.status_code == 204, "signed agreement attached (document-svc stand-in)", r)
-    r = act(rid, "accept", me, {"quoteVersion": 1, "signedAgreementFileId": fid})
-    check(r.status_code == 200 and r.json()["status"] == "ACCEPTED", "customer accepts with the signed copy", r)
+    ok = r.status_code == 200 and r.json()["cimhQuote"]["total"] == "300.00" and r.json()["status"] == "QUOTED"
+    check(ok, "quote sent (2 x 150.00) with the agreement to sign", r)
 
     def reserved() -> bool:
         line = c.get(f"{ORD}/requests/{rid}", headers=staff).json()["lines"][0]
         return (line.get("reservation") or {}).get("status") == "RESERVED"
 
-    wait_for(reserved, "order.accepted -> inventory reserved -> stock.reserved -> line RESERVED (Kafka round trip)")
+    wait_for(reserved, "order.quoted -> inventory reserved -> stock.reserved -> line RESERVED (Kafka round trip)")
     held = c.get(f"{ORD}/requests/{rid}", headers=staff).json()["lines"][0]["reservation"]["units"]
-    check(sorted(held) == sorted(units), "the two stowed units are held for the request")
+    check(sorted(held) == sorted(units), "the two stowed units are held for the quote")
+
+    # Customer: view and sign (signed upload, then accept).
+    fid = "FIL" + uuid.uuid4().hex
+    r = c.post(f"{ORD}/internal/requests/{rid}/files", headers=service_token(c, "document"),
+               json={"id": fid, "kind": "signed_agreement", "name": "signed.pdf", "mime": "application/pdf",
+                     "size": 1, "quoteVersion": 1})  # fmt: skip
+    check(r.status_code == 204, "signed agreement attached (document-svc stand-in)", r)
+    r = act(rid, "accept", me, {"quoteVersion": 1, "signedAgreementFileId": fid})
+    check(r.status_code == 200 and r.json()["status"] == "ACCEPTED", "customer accepts with the signed copy", r)
 
     # Staff: verify, pick, ship, deliver.
     r = act(rid, "purchase-orders", staff, {"agreementVerified": True, "purchaseOrders": []})

@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * A-04 quote builder (staff; QUOTING, or revising a QUOTED request), Graphite Console, "supplier tabs with viewer".
+ *   "View and sign" (owner, 2026-11-17): staff fix where every line comes from; the customer only signs or cancels.
  *   One tab per supplier, plus CIMH stock. A supplier tab shows its quote files as large tiles and the selected file
  *   open on the left (QuoteDocument: pdf.js / img), and every request line on the right: typing a price gives the
- *   line to this supplier, a line another supplier holds says so and can be moved here. Every quote is in BBD; a
- *   supplier may quote in USD with its own BBD-per-USD rate.
- *   CIMH stock tab: offer lines that are fully in stock (the server prices them from the catalogue cost).
- *   Footer: supplier prices, CIMH estimate, admin fee (once), the agreement total or its range, what is missing,
- *   Send quote (confirm dialog; the customer is emailed).
+ *   line to this supplier (taking it from CIMH stock or another supplier), a line held elsewhere says so and can be
+ *   moved here. Every quote is in BBD; a supplier may quote in USD with its own BBD-per-USD rate. Each supplier and
+ *   CIMH stock carry their estimated shipping to the customer.
+ *   CIMH stock tab: lines fully in stock start there (the server prices them from the catalogue cost).
+ *   Footer: supplier prices, CIMH estimate, shipping, admin fee (once), the total the customer signs, what is
+ *   missing, Send quote (confirm dialog; the customer is emailed the quote and its agreement).
  * Each supplier has a local key, so renaming one keeps its prices; two suppliers may not share a name.
  * The draft saves itself (PUT quote-draft, If-Match) shortly after each change; a failed save never stops later
  * saves; a version conflict re-reads the version and saves the same draft again (local edits win). Leaving the
@@ -15,6 +17,7 @@
  */
 import {
   act,
+  agreementPreviewUrl,
   ApiError,
   call,
   catalog,
@@ -28,30 +31,45 @@ import {
 import { formatMoney } from '@cimh/web-ui'
 import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import IPdf from '~icons/material-symbols/picture-as-pdf-rounded'
 import IImage from '~icons/material-symbols/image-rounded'
 import IUpload from '~icons/material-symbols/upload-file-rounded'
 import IClose from '~icons/material-symbols/close-rounded'
 import IStock from '~icons/material-symbols/shelves-rounded'
 import IWarn from '~icons/material-symbols/error-rounded'
+import ICheck from '~icons/material-symbols/check-rounded'
+import IPreview from '~icons/material-symbols/contract-rounded'
+import ITodo from '~icons/material-symbols/radio-button-unchecked'
 import QuoteDocument from '../../../components/quote/QuoteDocument.vue'
 import { BTN } from '../../../request-queue'
 
 definePage({ meta: { guard: 'staff', title: 'Quote builder', ownHeading: true } })
-const ICON = { pdf: markRaw(IPdf), image: markRaw(IImage), upload: markRaw(IUpload), close: markRaw(IClose), stock: markRaw(IStock), warn: markRaw(IWarn) }
+const ICON = {
+  pdf: markRaw(IPdf), image: markRaw(IImage), upload: markRaw(IUpload), close: markRaw(IClose), stock: markRaw(IStock),
+  warn: markRaw(IWarn), check: markRaw(ICheck), preview: markRaw(IPreview), todo: markRaw(ITodo),
+} // prettier-ignore
+const CURRENCIES = ['BBD', 'USD'] as const
+const { xs } = useDisplay()
 const route = useRoute('/requests/[id]/quote')
 const router = useRouter()
 const notify = useNotify()
 const r = ref<OrderRequest | null>(null)
 const loadFailed = ref(false)
 
-interface Supplier { key: number; name: string; fileIds: string[]; uploading: boolean; currency: 'BBD' | 'USD'; rate: string }
+/** `ship`: estimated shipping straight to the customer, in the supplier's currency. */
+interface Supplier { key: number; name: string; fileIds: string[]; uploading: boolean; currency: 'BBD' | 'USD'; rate: string; ship: string }
+/** A line comes from one place: CIMH stock (`cimh`) or one supplier, never both. */
 interface LineState { cimh: boolean; supplier: number | null; unitPrice: string }
-type Draft = { supplierQuotes: { supplier: string; currency?: 'BBD' | 'USD'; exchangeRate?: string | null; fileIds: string[]; lines: { lineId: string; unitPrice: string }[] }[]; cimh?: { lineIds: string[]; exchangeRate?: string | null } | null }
+type Draft = {
+  supplierQuotes: { supplier: string; currency?: 'BBD' | 'USD'; exchangeRate?: string | null; shippingEstimate?: string | null; fileIds: string[]; lines: { lineId: string; unitPrice: string }[] }[]
+  cimh?: { lineIds: string[]; exchangeRate?: string | null; shippingEstimate?: string | null } | null
+}
 
 const suppliers = ref<Supplier[]>([])
 const lines = reactive<Record<string, LineState>>({})
 const exchangeRate = ref('')
+const cimhShip = ref('') // estimated shipping of the CIMH stock lines, BBD
 const fileMeta = reactive<Record<string, { name: string; mime: string }>>({})
 let nextKey = 1
 let ready = false
@@ -146,20 +164,25 @@ async function load() {
   const sq: Draft['supplierQuotes'] = draft?.supplierQuotes ??
     (x.quotes ?? []).filter((q) => q.version === latest).map((q) => ({ supplier: q.supplier ?? '', fileIds: q.fileIds ?? [],
       currency: q.sourceCurrency ?? 'BBD', exchangeRate: q.exchangeRate ?? null,
+      shippingEstimate: q.sourceShippingEstimate ?? q.shippingEstimate ?? null,
       lines: q.lines.map((l) => ({ lineId: l.lineId, unitPrice: l.sourceUnitPrice ?? l.unitPrice })) }))  // prettier-ignore
+  // Nothing priced yet: every line CIMH holds in full starts in CIMH stock.
+  const fresh = !draft && !x.quotes?.length && !x.cimhQuote
   const cimhIds = draft?.cimh?.lineIds ?? x.cimhQuote?.lines.map((l) => l.lineId) ?? []
   suppliers.value = sq.map((s) => ({ key: nextKey++, name: s.supplier, fileIds: [...s.fileIds], uploading: false,
-    currency: s.currency ?? 'BBD', rate: s.exchangeRate ?? '' }))  // prettier-ignore
+    currency: s.currency ?? 'BBD', rate: s.exchangeRate ?? '', ship: s.shippingEstimate ?? '' }))  // prettier-ignore
   for (const s of suppliers.value) if (s.fileIds[0]) openFile[s.key] = s.fileIds[0]
   for (const l of x.lines) {
     const i = sq.findIndex((s) => s.lines.some((y) => y.lineId === l.lineId))
+    // A draft from before 2026-11-17 could hold a line in both places: the supplier price wins.
     lines[l.lineId] = {
-      cimh: cimhIds.includes(l.lineId) && !!l.cimhAvailable,
+      cimh: i < 0 && !!l.cimhAvailable && (fresh || cimhIds.includes(l.lineId)),
       supplier: i >= 0 ? suppliers.value[i]!.key : null,
       unitPrice: i >= 0 ? (sq[i]!.lines.find((y) => y.lineId === l.lineId)?.unitPrice ?? '') : '',
     }
   }
   exchangeRate.value = draft?.cimh?.exchangeRate ?? x.cimhQuote?.exchangeRate ?? ''
+  cimhShip.value = draft?.cimh?.shippingEstimate ?? x.cimhQuote?.shippingEstimate ?? ''
   tab.value = suppliers.value[0]?.key ?? 'cimh'
   void loadReference(x)
   await nextTick()
@@ -199,9 +222,35 @@ const supRateError = (s: Supplier) => {
   return Number(s.rate) > 0 ? '' : 'Must be more than 0'
 }
 const ratesMissing = computed(() => suppliers.value.filter((s) => supRateError(s)).length)
+// Every place that supplies a line carries its estimated shipping (0.00 is fine; empty is not).
+const SHIP_HINT = 'Enter the estimated shipping (0.00 if there is none)'
+const shipError = (s: Supplier) => (usedBy(s) && !MONEY.test(s.ship) ? (s.ship ? 'Use 2 decimals, e.g. 45.00' : SHIP_HINT) : '')
+const cimhShipError = computed(() => (anyCimh.value && !MONEY.test(cimhShip.value) ? (cimhShip.value ? 'Use 2 decimals, e.g. 45.00' : SHIP_HINT) : ''))
+const shipMissing = computed(() => suppliers.value.filter((s) => shipError(s)).length + (cimhShipError.value ? 1 : 0))
 const supOf = (key: number | null) => suppliers.value.find((s) => s.key === key)
 /** The currency staff type a supplier's prices in: its own on BBD requests, else the request's. */
 const typeCur = (s: Supplier) => (supUsd(s) ? 'USD' : cur.value)
+
+// ---- field messages: a wrong value says so at once; a missing one only after Send or Preview was pressed
+const tried = ref(false)
+const nameMsg = (s: Supplier) =>
+  dupName(s) ? 'Another supplier has this name' : tried.value && !s.name.trim() && usedBy(s) ? 'Name the supplier' : ''
+function rateMsg(s: Supplier) {
+  if (!supUsd(s) || (!s.rate && !tried.value)) return ''
+  return s.rate ? supRateError(s) : 'Needed for a USD quote'
+}
+function shipMsg(s: Supplier) {
+  if (s.ship && !MONEY.test(s.ship)) return 'Use 2 decimals, e.g. 45.00'
+  return tried.value && !s.ship && usedBy(s) ? 'Needed: 0.00 if none' : ''
+}
+const cimhShipMsg = computed(() => {
+  if (cimhShip.value && !MONEY.test(cimhShip.value)) return 'Use 2 decimals, e.g. 45.00'
+  return tried.value && !cimhShip.value && anyCimh.value ? 'Needed: 0.00 if none' : ''
+})
+const cimhRateMsg = computed(() => (exchangeRate.value || tried.value ? rateError.value : ''))
+const supFlag = (s: Supplier) => !!(nameMsg(s) || rateMsg(s) || shipMsg(s))
+const todoClass = computed(() => (tried.value ? 'err-line' : 'todo-line'))
+const todoIcon = computed(() => (tried.value ? ICON.warn : ICON.todo))
 
 // ---- draft body: only valid, unique suppliers and valid prices travel; the rest stays on screen
 function draftBody(): Draft {
@@ -211,6 +260,7 @@ function draftBody(): Draft {
       .map((s) => ({
         supplier: s.name.trim(),
         ...(usd.value ? {} : { currency: s.currency, exchangeRate: s.currency === 'USD' && !supRateError(s) ? s.rate : null }),
+        shippingEstimate: MONEY.test(s.ship) ? s.ship : null,
         fileIds: s.fileIds,
         lines: Object.entries(lines)
           .filter(([, v]) => v.supplier === s.key && MONEY.test(v.unitPrice))
@@ -219,6 +269,7 @@ function draftBody(): Draft {
     cimh: {
       lineIds: Object.entries(lines).filter(([, v]) => v.cimh).map(([k]) => k),
       exchangeRate: rateOk.value ? exchangeRate.value : null,
+      shippingEstimate: MONEY.test(cimhShip.value) ? cimhShip.value : null,
     },
   }
 }
@@ -260,7 +311,7 @@ function save(): Promise<void> {
   return run
 }
 watch(
-  [suppliers, lines, exchangeRate],
+  [suppliers, lines, exchangeRate, cimhShip],
   () => {
     if (!ready) return
     pending = true
@@ -291,7 +342,7 @@ onBeforeUnmount(() => {
 
 // ---- suppliers
 function addSupplier() {
-  const s: Supplier = { key: nextKey++, name: '', fileIds: [], uploading: false, currency: 'BBD', rate: '' }
+  const s: Supplier = { key: nextKey++, name: '', fileIds: [], uploading: false, currency: 'BBD', rate: '', ship: '' }
   suppliers.value.push(s)
   tab.value = s.key
   void nextTick(() => (document.getElementById(`sup-name-${s.key}`) as HTMLInputElement | null)?.focus())
@@ -339,7 +390,7 @@ function detach(s: Supplier, id: string) {
   if (openFile[s.key] === id) openFile[s.key] = s.fileIds[0] ?? ''
 }
 
-// ---- prices in a supplier tab: typing gives the line to this supplier, clearing it frees the line
+// ---- prices in a supplier tab: typing gives the line to this supplier (out of CIMH stock), clearing it frees it
 function priceFor(s: Supplier, lineId: string) {
   const v = lines[lineId]
   return v?.supplier === s.key ? v.unitPrice : ''
@@ -348,14 +399,21 @@ function setPrice(s: Supplier, lineId: string, value: string) {
   const v = lines[lineId]
   if (!v) return
   const t = value.trim()
-  if (t) Object.assign(v, { supplier: s.key, unitPrice: t })
+  if (t) Object.assign(v, { supplier: s.key, unitPrice: t, cimh: false })
   else if (v.supplier === s.key) Object.assign(v, { supplier: null, unitPrice: '' })
 }
 function moveHere(s: Supplier, lineId: string) {
   const v = lines[lineId]
   if (!v) return
-  Object.assign(v, { supplier: s.key, unitPrice: '' })
+  Object.assign(v, { supplier: s.key, unitPrice: '', cimh: false })
   void nextTick(() => (document.getElementById(`price-${s.key}-${lineId}`) as HTMLInputElement | null)?.focus())
+}
+/** CIMH stock tab: taking a line from stock frees it from any supplier price (one place per line). */
+function setStock(lineId: string, on: boolean) {
+  const v = lines[lineId]
+  if (!v) return
+  if (on) Object.assign(v, { cimh: true, supplier: null, unitPrice: '' })
+  else v.cimh = false
 }
 const holder = (lineId: string) => {
   const v = lines[lineId]
@@ -413,64 +471,106 @@ const supTotal = (lineId: string) => {
   return u === null ? null : u * qtyOf(lineId)
 }
 const noCost = computed(() => r.value?.lines.filter((l) => lines[l.lineId]?.cimh && !costBBD[l.productId] && l.productId in costBBD) ?? [])
+/** A supplier's estimated shipping in the request currency (its USD figure converted at its rate). */
+function supShip(s: Supplier): number | null {
+  if (!MONEY.test(s.ship)) return null
+  return supUsd(s) ? usdToBbd(cents(s.ship), s.rate) : cents(s.ship)
+}
+/** What the customer signs for: every line once, estimated shipping per source, the admin fee once. */
 const totals = computed(() => {
   const x = r.value
   if (!x) return null
   let sup = 0
   let cimh = 0
-  let lo = 0
-  let hi = 0
+  let ship = 0
   let complete = true
   for (const l of x.lines) {
-    const opts: number[] = []
-    const s = supTotal(l.lineId)
-    if (s !== null) {
-      sup += s
-      opts.push(s)
-    }
-    if (lines[l.lineId]?.cimh) {
-      const c = cimhTotal(l.lineId)
-      if (c === null) complete = false
-      else {
-        cimh += c
-        opts.push(c)
-      }
-    }
-    if (!opts.length) complete = false
-    else {
-      lo += Math.min(...opts)
-      hi += Math.max(...opts)
-    }
+    const v = lines[l.lineId]
+    const t = v?.cimh ? cimhTotal(l.lineId) : supTotal(l.lineId)
+    if (t === null) complete = false
+    else if (v?.cimh) cimh += t
+    else sup += t
+  }
+  for (const s of suppliers.value) {
+    if (!usedBy(s)) continue
+    const c = supShip(s)
+    if (c === null) complete = false
+    else ship += c
+  }
+  if (anyCimh.value) {
+    const c = MONEY.test(cimhShip.value) ? convert(cents(cimhShip.value)) : null
+    if (c === null) complete = false
+    else ship += c
   }
   const fee = feeKnown.value ? convert(feeCents.value) : null
-  return { sup, cimh, fee, lo: fee === null ? null : lo + fee, hi: fee === null ? null : hi + fee, complete }
+  const total = complete && fee !== null ? sup + cimh + ship + fee : null
+  return { sup, cimh, ship, fee, total, complete }
 })
 
 // ---- send
 const sending = ref(false)
 const problems = computed(
-  () => missing.value.length + (needsRate.value ? 1 : 0) + (dupes.value ? 1 : 0) + unsavedPrices.value + ratesMissing.value + unnamed.value,
+  () => missing.value.length + (needsRate.value ? 1 : 0) + (dupes.value ? 1 : 0) + unsavedPrices.value + ratesMissing.value + unnamed.value + shipMissing.value,
 )
-const confirmSend = ref(false)
-const nextVersion = computed(() => Math.max(0, ...(r.value?.quotes ?? []).map((q) => q.version)) + 1)
+/** The review dialog: the agreement as the customer will get it (a marked preview) beside what is sent. Opened by
+ * Preview agreement or Send quote; both can email it from there. */
+const review = ref<'preview' | 'send' | null>(null)
+const previewKey = ref(0)
+/** A refused preview (the server says why in the document pane) offers no Email: that send would be refused too. */
+const previewState = ref<'loading' | 'ready' | 'error'>('loading')
+// A quote may be CIMH stock only (no supplier quotes), so every place a version is kept counts.
+const nextVersion = computed(() => {
+  const x = r.value
+  const sent = [...(x?.quotes ?? []).map((q) => q.version), x?.cimhQuote?.version ?? 0, x?.agreement?.quoteVersion ?? 0]
+  return Math.max(0, ...sent) + 1
+})
 const pricedLines = computed(() => (r.value?.lines.length ?? 0) - missing.value.length)
-/** Never disabled for missing input: a press says what is missing and goes to the first gap. */
-function askSend() {
-  if (!problems.value) return void (confirmSend.value = true)
-  if (missing.value[0]) void jumpTo(missing.value[0].lineId)
-  else document.querySelector<HTMLElement>('.qfoot-problems')?.focus()
+/** Never disabled for missing input: a press marks what is missing and goes to the first gap. */
+async function askReview(mode: 'preview' | 'send') {
+  if (problems.value) {
+    tried.value = true
+    return goToProblem()
+  }
+  // The preview is drawn from the saved draft, so a change still waiting (or a failed save) is saved first; if
+  // that fails the review stays closed: the PDF would show an older draft than the screen ("Not saved" + toast).
+  try {
+    if (pending || saveState.value === 'error') await save()
+    else await chain
+  } catch {
+    return
+  }
+  previewKey.value++
+  previewState.value = 'loading'
+  review.value = mode
+}
+async function goToProblem() {
+  if (missing.value[0]) return jumpTo(missing.value[0].lineId)
+  const s = suppliers.value.find(supFlag)
+  if (s) {
+    tab.value = s.key
+    await nextTick()
+    const field = nameMsg(s) ? 'name' : rateMsg(s) ? 'rate' : 'ship'
+    return document.getElementById(`sup-${field}-${s.key}`)?.focus()
+  }
+  if (cimhRateMsg.value || cimhShipMsg.value) {
+    tab.value = 'cimh'
+    await nextTick()
+    return document.getElementById(cimhRateMsg.value ? 'cimh-rate' : 'cimh-ship')?.focus()
+  }
+  document.querySelector<HTMLElement>('.qfoot-problems')?.focus()
 }
 async function send() {
   if (!r.value || sending.value) return
   sending.value = true
   try {
     await save()
+    const version = nextVersion.value
     r.value = await act(r.value, '/requests/{requestId}/send-quote', undefined)
-    notify.toast(`Quote version ${Math.max(...(r.value.quotes ?? []).map((q) => q.version))} sent to the customer`, 'success')
-    confirmSend.value = false
+    notify.toast(`Quote version ${r.value.agreement?.quoteVersion ?? version} sent to the customer`, 'success')
+    review.value = null
     await router.push(`/requests/${r.value.id}`)
   } catch (e) {
-    confirmSend.value = false // the reason shows on the page (toast, marked prices)
+    review.value = null // the reason shows on the page (toast, marked prices)
     if (e instanceof ApiError) notify.report(e)
   } finally {
     sending.value = false
@@ -530,7 +630,7 @@ async function send() {
           >
             <span class="tab-name">{{ s.name.trim() || 'New supplier' }}</span>
             <span class="tab-meta console-mono">{{ usd ? cur : s.currency }}<template v-if="supUsd(s) && !supRateError(s)">{{ ' at ' + s.rate }}</template> · {{ linesOf(s) }} of {{ r.lines.length }} priced</span>
-            <span v-if="dupName(s) || supRateError(s) || (!s.name.trim() && usedBy(s))" class="tab-flag" aria-label="needs attention" />
+            <span v-if="supFlag(s)" class="tab-flag" aria-label="needs attention" />
           </button>
           <button
             v-if="anyCimhAvailable || anyCimh"
@@ -545,7 +645,7 @@ async function send() {
             @click="tab = 'cimh'"
           >
             <span class="tab-name">CIMH stock</span>
-            <span class="tab-meta console-mono">{{ Object.values(lines).filter((v) => v.cimh).length }} of {{ r.lines.length }} offered</span>
+            <span class="tab-meta console-mono">{{ Object.values(lines).filter((v) => v.cimh).length }} of {{ r.lines.length }} from stock</span>
           </button>
         </div>
           <button type="button" class="tab tab-add" aria-label="Add supplier" @click="addSupplier">
@@ -556,40 +656,84 @@ async function send() {
         <!-- Supplier tab: settings strip, then the document beside the lines. -->
         <!-- String key: v-if branches get automatic keys 0, 1, 2, and a numeric supplier key collided with them. -->
         <div v-if="current" id="offer-panel" :key="`sup-${current.key}`" role="tabpanel" :aria-labelledby="`tab-${current.key}`" class="panel-body">
-          <div class="sup-strip">
-            <v-text-field
-              :id="`sup-name-${current.key}`"
-              v-model="current.name"
-              label="Supplier name"
-              hide-details="auto"
-              class="sup-name"
-              :error-messages="dupName(current) ? 'Another supplier has this name' : !current.name.trim() && usedBy(current) ? 'Name the supplier' : undefined"
-            />
-            <template v-if="!usd">
-              <v-btn-toggle v-model="current.currency" mandatory variant="outlined" divided class="sup-cur" :aria-label="`Currency of ${current.name || 'this supplier'}'s quote`">
-                <v-btn value="BBD">BBD</v-btn>
-                <v-btn value="USD">USD</v-btn>
-              </v-btn-toggle>
+          <!-- The supplier's terms: who, the currency of their quote, its rate, their shipping. A caption over each
+               field (labels inside the fields were cut off) and one message line under each, so the row never jumps. -->
+          <div class="terms" role="group" :aria-label="`Terms of the quote from ${current.name.trim() || 'this supplier'}`">
+            <div class="term term-name">
+              <label class="term-label" :for="`sup-name-${current.key}`">Supplier</label>
               <v-text-field
-                v-if="current.currency === 'USD'"
-                v-model="current.rate"
-                label="BBD per 1 USD"
-                inputmode="decimal"
-                class="sup-rate mono-input"
-                hide-details="auto"
-                hint="Type the USD prices; the customer sees BBD"
-                :error-messages="current.rate || ratesMissing ? supRateError(current) || undefined : undefined"
+                :id="`sup-name-${current.key}`"
+                v-model="current.name"
+                placeholder="Name as on their quote"
+                hide-details
+                :error="!!nameMsg(current)"
+                :aria-describedby="`sup-name-msg-${current.key}`"
               />
-            </template>
+              <p :id="`sup-name-msg-${current.key}`" class="term-msg" :class="{ bad: nameMsg(current) }">
+                <template v-if="nameMsg(current)"><v-icon :icon="ICON.warn" size="14" />{{ nameMsg(current) }}</template>
+                <template v-else>The customer sees this name</template>
+              </p>
+            </div>
+            <fieldset v-if="!usd" class="term term-cur">
+              <legend class="term-label">Their currency</legend>
+              <div class="seg">
+                <template v-for="c in CURRENCIES" :key="c">
+                  <input :id="`sup-cur-${current.key}-${c}`" v-model="current.currency" type="radio" class="seg-input" :name="`sup-cur-${current.key}`" :value="c" />
+                  <label :for="`sup-cur-${current.key}-${c}`" class="seg-btn">
+                    <v-icon v-if="current.currency === c" :icon="ICON.check" size="18" />{{ c }}
+                  </label>
+                </template>
+              </div>
+              <p class="term-msg">{{ current.currency === 'USD' ? 'Type their USD prices' : 'Prices as on their quote' }}</p>
+            </fieldset>
+            <div v-if="supUsd(current)" class="term term-rate">
+              <label class="term-label" :for="`sup-rate-${current.key}`">Exchange rate</label>
+              <v-text-field
+                :id="`sup-rate-${current.key}`"
+                v-model="current.rate"
+                prefix="1 USD ="
+                suffix="BBD"
+                placeholder="rate"
+                persistent-placeholder
+                inputmode="decimal"
+                class="mono-input"
+                hide-details
+                :error="!!rateMsg(current)"
+                :aria-describedby="`sup-rate-msg-${current.key}`"
+              />
+              <p :id="`sup-rate-msg-${current.key}`" class="term-msg" :class="{ bad: rateMsg(current) }">
+                <template v-if="rateMsg(current)"><v-icon :icon="ICON.warn" size="14" />{{ rateMsg(current) }}</template>
+                <template v-else>The customer sees BBD</template>
+              </p>
+            </div>
+            <div class="term term-ship">
+              <label class="term-label" :for="`sup-ship-${current.key}`">Estimated shipping</label>
+              <v-text-field
+                :id="`sup-ship-${current.key}`"
+                v-model="current.ship"
+                :prefix="typeCur(current)"
+                placeholder="amount"
+                persistent-placeholder
+                inputmode="decimal"
+                class="mono-input"
+                hide-details
+                :error="!!shipMsg(current)"
+                :aria-describedby="`sup-ship-msg-${current.key}`"
+              />
+              <p :id="`sup-ship-msg-${current.key}`" class="term-msg" :class="{ bad: shipMsg(current) }">
+                <template v-if="shipMsg(current)"><v-icon :icon="ICON.warn" size="14" />{{ shipMsg(current) }}</template>
+                <template v-else>To the customer, 0.00 if none</template>
+              </p>
+            </div>
             <v-btn
-              variant="text"
-              color="error"
-              class="sup-remove"
-              :icon="BTN.remove"
+              variant="outlined"
+              class="m3 m3-danger sup-remove"
               :aria-label="`Remove ${current.name.trim() || 'this supplier'}`"
               title="Remove supplier"
               @click="askRemove(current)"
-            />
+            >
+              <v-icon :icon="BTN.remove" size="20" /><span class="rm-word">Remove supplier</span>
+            </v-btn>
           </div>
 
           <div class="split">
@@ -671,12 +815,17 @@ async function send() {
               >
                 <span role="cell" class="item">
                   <span class="item-name">{{ l.product.name }}</span>
-                  <span v-if="lines[l.lineId]?.cimh" class="item-note"><v-icon :icon="ICON.stock" size="14" />CIMH stock offered too</span>
                   <span v-if="!lineReady(l.lineId)" class="todo-word">No price yet</span>
                 </span>
                 <span role="cell" class="num console-mono qty"><span class="cell-label">Qty </span>{{ l.qty }}</span>
                 <span role="cell" class="price-cell">
-                  <template v-if="holder(l.lineId) && holder(l.lineId) !== current">
+                  <template v-if="lines[l.lineId]?.cimh">
+                    <span class="held">
+                      <span><v-icon :icon="ICON.stock" size="14" /> From <strong>CIMH stock</strong></span>
+                      <button type="button" class="console-retry held-move" :aria-label="`Price ${l.product.name} from ${current.name.trim() || 'this supplier'} instead`" @click="moveHere(current, l.lineId)">Price it here instead</button>
+                    </span>
+                  </template>
+                  <template v-else-if="holder(l.lineId) && holder(l.lineId) !== current">
                     <span class="held">
                       <span>Priced by <strong>{{ holder(l.lineId)!.name.trim() || 'another supplier' }}</strong>
                         · <span class="console-mono">{{ heldPrice(l.lineId) }}</span></span>
@@ -709,26 +858,56 @@ async function send() {
 
         <!-- CIMH stock tab: lines fully in stock can be offered from the shelves. -->
         <div v-else-if="tab === 'cimh'" id="offer-panel" role="tabpanel" aria-labelledby="tab-cimh" class="panel-body">
-          <div class="sup-strip">
-            <p class="t-body">
-              Offer lines that CIMH stock covers in full. The server prices them from the catalogue cost when the quote is sent;
-              the customer chooses CIMH or the supplier per line.
+          <div class="terms" role="group" aria-label="Terms of the CIMH stock items">
+            <p class="terms-note t-body">
+              Lines CIMH stock covers in full come from the shelves; the server prices them from the catalogue cost and
+              holds the units when the quote is sent. A line comes from CIMH stock or one supplier, not both.
             </p>
-            <v-text-field
-              v-if="usd"
-              v-model="exchangeRate"
-              label="Exchange rate (BBD per 1 USD)"
-              inputmode="decimal"
-              class="sup-rate mono-input"
-              hide-details="auto"
-              :error-messages="rateError || undefined"
-            />
+            <div v-if="usd" class="term term-rate">
+              <label class="term-label" for="cimh-rate">Exchange rate</label>
+              <v-text-field
+                id="cimh-rate"
+                v-model="exchangeRate"
+                prefix="1 USD ="
+                suffix="BBD"
+                placeholder="rate"
+                persistent-placeholder
+                inputmode="decimal"
+                class="mono-input"
+                hide-details
+                :error="!!cimhRateMsg"
+                aria-describedby="cimh-rate-msg"
+              />
+              <p id="cimh-rate-msg" class="term-msg" :class="{ bad: cimhRateMsg }">
+                <template v-if="cimhRateMsg"><v-icon :icon="ICON.warn" size="14" />{{ cimhRateMsg }}</template>
+                <template v-else>Stock and the admin fee are in BBD</template>
+              </p>
+            </div>
+            <div class="term term-ship">
+              <label class="term-label" for="cimh-ship">Estimated shipping</label>
+              <v-text-field
+                id="cimh-ship"
+                v-model="cimhShip"
+                prefix="BBD"
+                placeholder="amount"
+                persistent-placeholder
+                inputmode="decimal"
+                class="mono-input"
+                hide-details
+                :error="!!cimhShipMsg"
+                aria-describedby="cimh-ship-msg"
+              />
+              <p id="cimh-ship-msg" class="term-msg" :class="{ bad: cimhShipMsg }">
+                <template v-if="cimhShipMsg"><v-icon :icon="ICON.warn" size="14" />{{ cimhShipMsg }}</template>
+                <template v-else>CIMH to the customer, 0.00 if none</template>
+              </p>
+            </div>
           </div>
           <div class="lines cimh-lines" role="table" aria-label="CIMH stock">
             <div class="lrow lhead" role="row">
               <span role="columnheader">Item</span>
               <span role="columnheader" class="num">Qty</span>
-              <span role="columnheader">Offer from stock</span>
+              <span role="columnheader">From stock</span>
               <span role="columnheader" class="num">Estimate</span>
             </div>
             <div v-for="l in r.lines" :key="l.lineId" class="lrow" :class="{ mine: lines[l.lineId]?.cimh }" role="row">
@@ -738,7 +917,15 @@ async function send() {
               </span>
               <span role="cell" class="num console-mono qty"><span class="cell-label">Qty </span>{{ l.qty }}</span>
               <span role="cell">
-                <v-checkbox v-if="l.cimhAvailable" :id="`offer-${l.lineId}`" v-model="lines[l.lineId]!.cimh" label="Offer" hide-details density="compact" />
+                <v-checkbox
+                  v-if="l.cimhAvailable"
+                  :id="`offer-${l.lineId}`"
+                  :model-value="lines[l.lineId]!.cimh"
+                  label="From stock"
+                  hide-details
+                  density="compact"
+                  @update:model-value="(v: boolean | null) => setStock(l.lineId, !!v)"
+                />
                 <span v-else class="t-caption muted">Not fully in stock</span>
               </span>
               <span role="cell" class="num console-mono total" :title="usd ? 'Catalogue cost converted at the exchange rate (estimate)' : 'Catalogue cost (estimate)'">
@@ -756,11 +943,12 @@ async function send() {
           <v-btn color="primary" class="m3" :prepend-icon="BTN.add" @click="addSupplier">Add supplier</v-btn>
         </div>
 
-        <!-- What the customer sees, what is missing, Send. -->
+        <!-- What the customer sees, what is missing, Preview and Send. -->
         <footer class="qfoot" aria-label="Quote summary">
           <dl class="figs">
             <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
-            <div><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ anyCimh ? fmt(totals?.cimh ?? null) : '—' }}</dd></div>
+            <div><dt>CIMH stock</dt><dd class="console-mono">{{ anyCimh ? fmt(totals?.cimh ?? null) : '—' }}</dd></div>
+            <div><dt>Shipping</dt><dd class="console-mono">{{ fmt(totals?.ship ?? 0) }}</dd></div>
             <div>
               <dt>Admin fee, once</dt>
               <dd v-if="!feeKnown" class="console-mono">Unknown</dd>
@@ -768,18 +956,14 @@ async function send() {
               <dd v-else class="console-mono">{{ fmt(totals?.fee ?? null) }}</dd>
             </div>
             <div class="grand">
-              <dt>Agreement total</dt>
-              <dd class="console-mono">
-                <template v-if="!totals?.complete || totals.lo === null">—</template>
-                <template v-else-if="totals.lo === totals.hi">{{ fmt(totals.lo) }}</template>
-                <template v-else>{{ fmt(totals.lo) }} – {{ fmt(totals.hi) }}</template>
-              </dd>
+              <dt>Total to sign (Estimate)</dt>
+              <dd class="console-mono">{{ totals?.total == null ? '—' : fmt(totals.total) }}</dd>
             </div>
           </dl>
           <div class="qfoot-problems" tabindex="-1">
             <template v-if="problems">
-              <p v-if="missing.length" class="warn-line">
-                <v-icon :icon="ICON.warn" size="16" />
+              <p v-if="missing.length" :class="tried ? 'warn-line' : 'todo-line'">
+                <v-icon :icon="tried ? ICON.warn : ICON.todo" size="16" />
                 <span>{{ missing.length }} line{{ missing.length > 1 ? 's' : '' }} without a price:
                   <template v-for="(l, i) in missing.slice(0, 3)" :key="l.lineId">
                     <button type="button" class="console-retry" @click="jumpTo(l.lineId)">{{ l.product.name }}</button><template v-if="i < Math.min(missing.length, 3) - 1">, </template>
@@ -787,55 +971,87 @@ async function send() {
                   <template v-if="missing.length > 3"> and {{ missing.length - 3 }} more</template>
                 </span>
               </p>
-              <p v-if="dupes" class="err-line"><v-icon :icon="BTN.reject" size="16" />Two suppliers share a name.</p>
-              <p v-if="unnamed" class="err-line"><v-icon :icon="BTN.reject" size="16" />A supplier with prices has no name.</p>
-              <p v-if="ratesMissing" class="err-line"><v-icon :icon="BTN.reject" size="16" />Enter the BBD per USD rate for each USD supplier quote.</p>
-              <p v-if="needsRate" class="err-line"><v-icon :icon="BTN.reject" size="16" />Enter the exchange rate (CIMH stock tab).</p>
-              <p v-if="unsavedPrices" class="err-line"><v-icon :icon="BTN.reject" size="16" />Fix the price{{ unsavedPrices > 1 ? 's' : '' }} marked in red.</p>
+              <p v-if="dupes" class="err-line"><v-icon :icon="ICON.warn" size="16" />Two suppliers share a name.</p>
+              <p v-if="unnamed" :class="todoClass"><v-icon :icon="todoIcon" size="16" />A supplier with prices has no name.</p>
+              <p v-if="ratesMissing" :class="todoClass"><v-icon :icon="todoIcon" size="16" />Enter the BBD per USD rate for each USD supplier quote.</p>
+              <p v-if="needsRate" :class="todoClass"><v-icon :icon="todoIcon" size="16" />Enter the exchange rate (CIMH stock tab).</p>
+              <p v-if="shipMissing" :class="todoClass"><v-icon :icon="todoIcon" size="16" />Enter the estimated shipping for each supplier used and for CIMH stock (0.00 if none).</p>
+              <p v-if="unsavedPrices" class="err-line"><v-icon :icon="ICON.warn" size="16" />Fix the price{{ unsavedPrices > 1 ? 's' : '' }} marked in red.</p>
             </template>
-            <p v-else class="ok-line"><v-icon :icon="BTN.approve" size="16" />Every line priced. Valid 30 days once sent.</p>
+            <p v-else class="ok-line"><v-icon :icon="BTN.approve" size="16" />Every line priced, shipping estimated. Valid 30 days once sent.</p>
             <p v-if="noCost.length" class="err-line">
               <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
             </p>
           </div>
-          <v-btn color="primary" size="large" class="m3 send" :prepend-icon="BTN.verify" @click="askSend">
-            {{ r.status === 'QUOTED' ? 'Send revised quote…' : 'Send quote…' }}
-          </v-btn>
+          <div class="qfoot-actions">
+            <v-btn variant="outlined" size="large" class="m3" :prepend-icon="ICON.preview" @click="askReview('preview')">Preview agreement</v-btn>
+            <v-btn color="primary" size="large" class="m3 send" :prepend-icon="BTN.verify" @click="askReview('send')">
+              {{ r.status === 'QUOTED' ? 'Send revised quote…' : 'Send quote…' }}
+            </v-btn>
+          </div>
         </footer>
       </section>
 
-      <v-dialog v-model="confirmSend" max-width="520" :persistent="sending">
-        <v-card>
-          <v-card-title class="t-h3">{{ r.status === 'QUOTED' ? 'Email the revised quote?' : 'Email this quote?' }}</v-card-title>
-          <v-card-subtitle><span class="console-mono"><ShortRef :id="r.id" /></span></v-card-subtitle>
+      <!-- Review: the agreement exactly as the customer will get it (a marked preview, drawn by document-svc from the
+           saved draft) beside what is about to be emailed. Preview agreement and Send quote both open it. -->
+      <v-dialog
+        :model-value="!!review"
+        max-width="1240"
+        :fullscreen="xs"
+        :persistent="sending"
+        scrollable
+        @update:model-value="(v: boolean) => !v && (review = null)"
+      >
+        <v-card class="review">
+          <v-card-title class="t-h3">
+            {{ review === 'preview' ? 'Agreement preview' : r.status === 'QUOTED' ? 'Email the revised quote?' : 'Email this quote?' }}
+          </v-card-title>
+          <v-card-subtitle>
+            <span class="console-mono"><ShortRef :id="r.id" /></span> · quote version {{ nextVersion }} · not sent yet
+          </v-card-subtitle>
           <v-divider />
-          <v-card-text class="stack">
-            <dl class="sum check">
-              <div><dt>To</dt><dd>{{ r.customerName }}<template v-if="r.organisationName">, {{ r.organisationName }}</template></dd></div>
-              <div><dt>Quote version</dt><dd class="console-mono">{{ nextVersion }}</dd></div>
-              <div><dt>Lines priced</dt><dd class="console-mono">{{ pricedLines }} of {{ r.lines.length }}</dd></div>
-              <div><dt>Suppliers</dt><dd>{{ suppliers.filter((s) => usedBy(s)).map((s) => s.name.trim()).join(', ') || '—' }}</dd></div>
-              <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
-              <div v-if="anyCimh"><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ fmt(totals?.cimh ?? null) }}</dd></div>
-              <div class="grand">
-                <dt>Agreement total <span class="muted">(estimate)</span></dt>
-                <dd class="console-mono">
-                  <template v-if="!totals?.complete || totals.lo === null">—</template>
-                  <template v-else-if="totals.lo === totals.hi">{{ fmt(totals.lo) }}</template>
-                  <template v-else>{{ fmt(totals.lo) }} – {{ fmt(totals.hi) }}</template>
-                </dd>
-              </div>
-            </dl>
-            <p v-if="noCost.length" class="err-line">
-              <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
-            </p>
-            <p class="t-body muted">
-              The email goes out at once and can't be recalled. The quote is valid 30 days; to change it afterwards you send a revised version.
-            </p>
-          </v-card-text>
+          <div class="review-body">
+            <QuoteDocument
+              v-if="review"
+              :key="previewKey"
+              :src="agreementPreviewUrl(r.id)"
+              :name="`Agreement v${nextVersion} · preview`"
+              mime="application/pdf"
+              what="Agreement preview"
+              class="review-doc"
+              @state="(v: 'loading' | 'ready' | 'error') => (previewState = v)"
+            />
+            <aside class="review-side" aria-label="What is emailed">
+              <dl class="sum check">
+                <div><dt>To</dt><dd>{{ r.customerName }}<template v-if="r.organisationName">, {{ r.organisationName }}</template></dd></div>
+                <div><dt>Quote version</dt><dd class="console-mono">{{ nextVersion }}</dd></div>
+                <div><dt>Lines priced</dt><dd class="console-mono">{{ pricedLines }} of {{ r.lines.length }}</dd></div>
+                <div><dt>Suppliers</dt><dd>{{ suppliers.filter((s) => usedBy(s)).map((s) => s.name.trim()).join(', ') || '—' }}</dd></div>
+                <div><dt>Supplier prices</dt><dd class="console-mono">{{ fmt(totals?.sup ?? 0) }}</dd></div>
+                <div v-if="anyCimh"><dt>CIMH stock <span class="muted">(estimate)</span></dt><dd class="console-mono">{{ fmt(totals?.cimh ?? null) }}</dd></div>
+                <div><dt>Shipping <span class="muted">(estimated)</span></dt><dd class="console-mono">{{ fmt(totals?.ship ?? 0) }}</dd></div>
+                <div><dt>Admin fee, once</dt><dd class="console-mono">{{ feeCents === 0 ? 'None' : fmt(totals?.fee ?? null) }}</dd></div>
+                <div class="grand">
+                  <dt>Total to sign (Estimate)</dt>
+                  <dd class="console-mono">{{ totals?.total == null ? '—' : fmt(totals.total) }}</dd>
+                </div>
+              </dl>
+              <p v-if="noCost.length" class="err-line">
+                <v-icon :icon="BTN.reject" size="16" />No catalogue cost for {{ noCost.map((l) => l.product.name).join(', ') }}: sending will be refused.
+              </p>
+              <p class="t-body muted">
+                Emailing sends the customer the quote and this agreement to sign, without the preview mark; it can't be
+                recalled. CIMH stock lines are held for the request. The quote is valid 30 days; to change it afterwards
+                you send a revised version, which replaces the agreement.
+              </p>
+            </aside>
+          </div>
+          <v-divider />
           <v-card-actions class="row-end">
-            <v-btn class="m3" variant="text" :disabled="sending" @click="confirmSend = false">Keep editing</v-btn>
-            <v-btn class="m3" color="primary" variant="flat" :prepend-icon="BTN.verify" :loading="sending" @click="send">Email the customer</v-btn>
+            <v-btn class="m3" variant="text" :disabled="sending" @click="review = null">Keep editing</v-btn>
+            <v-btn v-if="previewState !== 'error'" class="m3" color="primary" variant="flat" :prepend-icon="BTN.verify" :loading="sending" @click="send">
+              Email the customer
+            </v-btn>
           </v-card-actions>
         </v-card>
       </v-dialog>
@@ -927,10 +1143,12 @@ async function send() {
 .tabs {
   display: flex;
   overflow-x: auto;
+  scroll-padding-inline: 0 176px;
   scrollbar-width: thin;
   border-bottom: 1px solid rgb(var(--v-theme-seam));
 }
 .tablist {
+  flex: none; /* shrinking let the sticky Add supplier cover the last tab on phones */
   display: flex;
 }
 .tab {
@@ -1019,30 +1237,151 @@ async function send() {
     transform: translateY(4px);
   }
 }
-.sup-strip {
+/* Terms row: each cell = caption, a 40 px field, one message line. Cells keep their width and wrap as a whole,
+   so nothing is cut off; every cell lines up on the same three rows. */
+.terms {
+  container: terms / inline-size;
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
+  align-items: flex-start;
+  gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
   border-bottom: 1px solid rgb(var(--v-theme-seam));
 }
-.sup-strip {
-  flex-wrap: nowrap;
+.term {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
-.sup-strip > .t-body {
+.term-label {
+  padding: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  letter-spacing: 0.1px;
+  color: rgb(var(--v-theme-secondary));
+}
+.term-msg {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 16px;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.1px;
+  color: rgb(var(--v-theme-secondary));
+}
+.term-msg.bad {
+  color: rgb(var(--v-theme-error));
+  font-weight: 500;
+}
+.term-msg .v-icon {
+  flex: none;
+}
+.term-name {
+  flex: 1 1 240px;
+  max-width: 380px;
+}
+.term-rate {
+  flex: 0 0 216px;
+}
+.term-ship {
+  flex: 0 0 216px;
+}
+.terms-note {
   flex: 1 1 420px;
   max-width: 75ch;
+  align-self: center;
 }
-.sup-name {
-  flex: 1 1 260px;
-  max-width: 420px;
+/* An empty field must not read as filled: the placeholder is a word, in muted ink, not a number. */
+.term :deep(input::placeholder) {
+  font-family: 'Inter Variable', Inter, system-ui, sans-serif;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 1;
 }
-.sup-rate {
-  flex: 0 1 200px;
+.term :deep(.v-field__prefix),
+.term :deep(.v-field__suffix) {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 1;
 }
-.sup-remove {
-  margin-left: auto;
+/* The remove button sits on the field row, apart from the fields (DESIGN: danger alone). */
+.v-btn.m3.sup-remove {
+  margin: 22px 0 0 auto;
+}
+.sup-remove :deep(.v-btn__content) {
+  gap: 8px;
+}
+/* A desk row without room for the word: the icon alone (named by aria-label and title). Phones keep the word. */
+@container terms (min-width: 560px) and (max-width: 1099.98px) {
+  .v-btn.m3.sup-remove {
+    width: 40px;
+    min-width: 40px;
+    padding: 0 !important; /* the M3 pill padding (console.css) is more specific */
+  }
+  .rm-word {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* Their currency: a Material 3 segmented button (two native radios), as tall as the fields beside it. */
+.seg {
+  display: inline-flex;
+  height: 40px;
+  border: 1px solid rgb(var(--v-theme-field-outline));
+  border-radius: 999px;
+  overflow: hidden;
+}
+.seg-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 84px;
+  padding: 0 14px;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 500;
+  letter-spacing: 0.00625em;
+  color: rgb(var(--v-theme-on-surface));
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 160ms ease-out;
+}
+.seg-btn + .seg-input + .seg-btn {
+  border-left: 1px solid rgb(var(--v-theme-field-outline));
+}
+.seg-btn:hover {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+.seg-input:checked + .seg-btn {
+  background: rgb(var(--v-theme-primary-subtle));
+  font-weight: 600;
+}
+.seg-input:focus-visible + .seg-btn {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
+.seg-btn .v-icon {
+  margin-left: -4px;
+  color: rgb(var(--v-theme-primary));
 }
 
 /* The document beside the lines: equal halves, the document stays in view while the lines scroll. */
@@ -1300,8 +1639,8 @@ async function send() {
   bottom: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: var(--sp-3) var(--sp-6);
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--sp-2) var(--sp-6);
   align-items: center;
   padding: var(--sp-3) var(--sp-4);
   border-top: 1px solid rgb(var(--v-theme-seam));
@@ -1311,13 +1650,15 @@ async function send() {
 .figs {
   margin: 0;
   display: flex;
-  gap: var(--sp-6);
+  flex-wrap: wrap;
+  gap: 4px var(--sp-6);
 }
 .figs > div {
   display: flex;
   flex-direction: column;
 }
 .figs dt {
+  white-space: nowrap;
   font-size: 12px;
   color: rgb(var(--v-theme-secondary));
 }
@@ -1336,7 +1677,8 @@ async function send() {
   font-weight: 600;
 }
 .qfoot-problems {
-  min-width: 180px;
+  grid-column: 1 / -1;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1345,7 +1687,8 @@ async function send() {
 }
 .warn-line,
 .err-line,
-.ok-line {
+.ok-line,
+.todo-line {
   display: flex;
   gap: var(--sp-2);
   align-items: flex-start;
@@ -1363,14 +1706,48 @@ async function send() {
   color: rgb(var(--v-theme-success));
   font-weight: 600;
 }
+.todo-line {
+  color: rgb(var(--v-theme-on-surface));
+}
+.todo-line .v-icon {
+  color: rgb(var(--v-theme-secondary));
+}
 .warn-line .v-icon,
 .err-line .v-icon,
-.ok-line .v-icon {
+.ok-line .v-icon,
+.todo-line .v-icon {
   flex: none;
   margin-top: 2px;
 }
+.qfoot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+}
 .send {
   min-width: 200px;
+}
+
+/* Review dialog: the agreement large on the left, what is emailed on the right. */
+.review-body {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  height: min(76vh, 900px);
+  min-height: 0;
+}
+.review-doc {
+  border: 0;
+  border-right: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 0;
+}
+.review-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-4);
+  overflow: auto;
 }
 
 /* Dialog figures */
@@ -1390,6 +1767,9 @@ async function send() {
 .sum dt {
   color: rgb(var(--v-theme-secondary));
 }
+.sum dt .muted {
+  color: inherit;
+}
 .sum dd {
   margin: 0;
   text-align: right;
@@ -1404,13 +1784,14 @@ async function send() {
   color: rgb(var(--v-theme-on-surface));
 }
 
-/* One footer row down to 900 px, so the document keeps its height on a 720 px desk screen. */
+/* What is missing sits above the figures and both buttons, which share one row so the document keeps its
+   height on a 720 px desk screen. */
 @media (max-width: 1439.98px) {
   .qfoot {
     gap: var(--sp-2) var(--sp-4);
   }
   .figs {
-    gap: var(--sp-4);
+    gap: 4px var(--sp-3);
   }
   .figs .grand dd {
     font-size: 16px;
@@ -1439,9 +1820,6 @@ async function send() {
   .viewer .viewer-doc {
     flex: none;
     height: min(60vh, 560px); /* its own scroll: a price field stays one swipe from the figure */
-  }
-  .sup-strip {
-    flex-wrap: wrap;
   }
 }
 @container qlines (max-width: 479.98px) {
@@ -1476,8 +1854,41 @@ async function send() {
   .send {
     width: 100%;
   }
-  .sup-remove {
-    margin-left: 0;
+  .term-name,
+  .term-cur {
+    flex: 1 1 100%;
+    max-width: none;
+  }
+  .term-rate,
+  .term-ship {
+    flex: 1 1 100%;
+  }
+  .seg {
+    width: 100%;
+  }
+  .seg-btn {
+    flex: 1;
+  }
+  .v-btn.m3.sup-remove {
+    margin: 0;
+  }
+  .qfoot-actions .v-btn {
+    flex: 1 1 100%;
+  }
+  .review-body {
+    display: flex;
+    flex-direction: column;
+    height: auto;
+    overflow: auto;
+  }
+  .review-side {
+    order: -1;
+    overflow: visible;
+  }
+  .review-doc {
+    height: 70vh;
+    border-right: 0;
+    border-top: 1px solid rgb(var(--v-theme-seam));
   }
   .tile {
     width: 132px;
@@ -1496,6 +1907,9 @@ async function send() {
   }
   .add-word {
     display: none;
+  }
+  .tabs {
+    scroll-padding-inline: 0 120px;
   }
   .tab {
     padding: 10px 14px 12px;

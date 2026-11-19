@@ -1,4 +1,4 @@
-"""Generated PDFs (PRD D*): CIMH quote, agreement, invoice, Pro Bono invoice, commercial invoice, unit labels.
+"""Generated PDFs (PRD D*): CIMH quote, quote agreement, invoice, Pro Bono invoice, commercial invoice, unit labels.
 
 Rendered from order-svc's staff view of the request (GET /internal/requests/{id}). Values are drawn as text, never
 interpreted as markup (reportlab Paragraph markup is escaped). Brand: logo blue #0084C8 for the header rule only;
@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from decimal import Decimal, InvalidOperation
 from html import escape
 from typing import Any
 
@@ -29,6 +30,7 @@ BRAND = colors.HexColor("#0084C8")
 INK = colors.HexColor("#1A1C1E")
 MUTED = colors.HexColor("#5B6168")
 RULE = colors.HexColor("#D0D5DB")
+PREVIEW_MARK = colors.Color(0.80, 0.11, 0.09, alpha=0.16)  # expiring red, faint: readable figures stay on top
 ORG = "Caribbean Institute for Meteorology and Hydrology"
 ORG_ADDRESS = "Husbands, St. James, Barbados"
 
@@ -83,7 +85,9 @@ def _product(line: dict[str, Any]) -> str:
     return " — ".join(bits)
 
 
-def _build(title: str, req: dict[str, Any], body: list[Any], *, subtitle: str | None = None) -> bytes:
+def _build(
+    title: str, req: dict[str, Any], body: list[Any], *, subtitle: str | None = None, mark: str | None = None
+) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm, topMargin=22 * mm, bottomMargin=18 * mm,
@@ -98,6 +102,12 @@ def _build(title: str, req: dict[str, Any], body: list[Any], *, subtitle: str | 
         c.setFont("Helvetica", 7.5)
         c.drawString(18 * mm, 10 * mm, f"{ORG} · {ORG_ADDRESS}")
         c.drawRightString(A4[0] - 18 * mm, 10 * mm, f"{req.get('id', '')} · page {d.page}")
+        if mark:  # a preview: across every page, under the content, so a printed copy can't pass for the real one
+            c.setFillColor(PREVIEW_MARK)
+            c.setFont("Helvetica-Bold", 54)
+            c.translate(A4[0] / 2, A4[1] / 2)
+            c.rotate(35)
+            c.drawCentredString(0, 0, mark)
         c.restoreState()
 
     head = [
@@ -148,34 +158,76 @@ def _lines_by_id(req: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {ln["lineId"]: ln for ln in req.get("lines") or []}
 
 
-def _quote(req: dict[str, Any], version: int | None) -> dict[str, Any] | None:
-    quotes = req.get("quotes") or []
-    for q in quotes:
-        if version is not None and q.get("version") == version:
-            return dict(q)
-    return dict(quotes[-1]) if quotes else None
+def _version(req: dict[str, Any]) -> int | None:
+    """The quote version the agreement belongs to (else the latest sent)."""
+    v = (req.get("agreement") or {}).get("quoteVersion")
+    if v is None:
+        v = max((q.get("version") or 0 for q in req.get("quotes") or []), default=None)
+    return v if v is not None else (req.get("cimhQuote") or {}).get("version")
 
 
 def _latest_quotes(req: dict[str, Any]) -> list[dict[str, Any]]:
     """Every supplier quote of the agreed (else the latest) quote version."""
-    quotes = req.get("quotes") or []
-    version = (req.get("agreement") or {}).get("quoteVersion") or (quotes[-1].get("version") if quotes else None)
-    return [q for q in quotes if q.get("version") == version]
+    version = _version(req)
+    return [q for q in req.get("quotes") or [] if q.get("version") == version]
 
 
-def _chosen_prices(req: dict[str, Any]) -> list[tuple[dict[str, Any], str, str, str]]:
-    """(line, source, unit price, total) for the agreed choices."""
-    ag = req.get("agreement") or req.get("acceptance") or {}
-    choices = {c["lineId"]: c["choice"] for c in ag.get("choices") or []}
-    supplier = {x["lineId"]: x for x in (_quote(req, ag.get("quoteVersion")) or {}).get("lines") or []}
+def _source(line: dict[str, Any]) -> str | None:
+    return line.get("source") or line.get("choice")  # `choice`: requests written before 2026-11-17
+
+
+def _priced(req: dict[str, Any]) -> list[tuple[dict[str, Any], str, str, str, str | None]]:
+    """(line, where it comes from, unit price, total, source) for every line, as staff fixed it in the quote."""
+    supplier: dict[str, tuple[dict[str, Any], str | None]] = {}
+    for q in _latest_quotes(req):
+        for x in q.get("lines") or []:
+            supplier[x["lineId"]] = (x, q.get("supplier"))
     cimh = {x["lineId"]: x for x in (req.get("cimhQuote") or {}).get("lines") or []}
     out = []
     for line in req.get("lines") or []:
-        choice = choices.get(line["lineId"]) or line.get("choice") or "SUPPLIER"
-        price = (cimh if choice == "CIMH" else supplier).get(line["lineId"]) or {}
-        src = "CIMH stock" if choice == "CIMH" else "Supplier (ships direct)"
-        out.append((line, src, price.get("unitPrice") or "—", price.get("total") or "—"))
+        src = _source(line)
+        if src == "CIMH" and line["lineId"] in cimh:
+            price, where = cimh[line["lineId"]], "CIMH stock"
+        else:
+            price, name = supplier.get(line["lineId"], ({}, None))
+            name = name or line.get("supplier")
+            where = f"{name} (ships direct)" if name else "Supplier (ships direct)"
+        out.append((line, where, price.get("unitPrice") or "—", price.get("total") or "—", src))
     return out
+
+
+def _shipping(req: dict[str, Any]) -> list[tuple[str, str]]:
+    """Estimated shipping per source: (label, amount)."""
+    rows = []
+    cq = req.get("cimhQuote") or {}
+    if cq.get("lines") and cq.get("shippingEstimate") is not None:
+        rows.append(("Estimated shipping, CIMH stock", cq["shippingEstimate"]))
+    for q in _latest_quotes(req):
+        if q.get("lines") and q.get("shippingEstimate") is not None:
+            rows.append((f"Estimated shipping, {q.get('supplier') or 'supplier'}", q["shippingEstimate"]))
+    return rows
+
+
+def _money(value: Any) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
+
+def _price_table(req: dict[str, Any], cur: str) -> Table:
+    rows = [[_product(ln), where, str(ln.get("qty", "")), unit, total] for ln, where, unit, total, _ in _priced(req)]
+    return _table(["Item", "From", "Qty", f"Unit ({cur})", f"Total ({cur})"], rows, [70, 40, 12, 26, 26])
+
+
+def _price_totals(req: dict[str, Any], cur: str, last: str) -> Table:
+    items = sum((_money(t) for _, _, _, t, _ in _priced(req)), Decimal("0"))
+    rows = [("Items", f"{cur} {items:.2f}")]
+    rows += [(label, f"{cur} {_money(amount):.2f}") for label, amount in _shipping(req)]
+    if req.get("adminFee") and _money(req["adminFee"]) > 0:
+        rows.append(("Administrative fee (once per request)", f"{cur} {req['adminFee']}"))
+    rows.append((last, f"{cur} {(req.get('agreement') or {}).get('total', '0.00')}"))
+    return _totals(rows)
 
 
 # ---------------------------------------------------------------- documents
@@ -196,65 +248,66 @@ def cimh_quote(req: dict[str, Any], line_ids: list[str] | None = None) -> bytes:
         for x in cq.get("lines") or []
         if x["lineId"] in wanted
     ]
-    body: list[Any] = [_parties(req), Spacer(1, 6 * mm), _p("Items offered from CIMH stock", H2)]
+    body: list[Any] = [_parties(req), Spacer(1, 6 * mm), _p("Items supplied from CIMH stock", H2)]
     body.append(_table(["Item", "Qty", f"Unit ({cur})", f"Total ({cur})"], rows, [104, 14, 28, 28]))
-    totals = []
-    if req.get("adminFee"):
-        totals.append(("Administrative fee (once per request)", f"{cur} {req['adminFee']}"))
-    totals.append(("CIMH stock total", f"{cur} {cq.get('total', '0.00')}"))
+    totals = [("CIMH stock items", f"{cur} {cq.get('total', '0.00')}")]
+    if cq.get("shippingEstimate") is not None:
+        totals.append(("Estimated shipping from CIMH", f"{cur} {cq['shippingEstimate']}"))
     body += [Spacer(1, 3 * mm), _totals(totals)]
     if cq.get("exchangeRate"):
         body.append(_p(f"Exchange rate used: 1 USD = {cq['exchangeRate']} BBD", SMALL))
     expires = _date(req.get("quoteExpiresAt"))
-    body += [Spacer(1, 6 * mm), _p(f"This quote is valid until {expires or '30 days from issue'}. "
-             "Stock is reserved only when you accept the quote with a signed agreement.", SMALL)]  # fmt: skip
+    held = f"These items are held for this request until the quote expires ({expires or '30 days from issue'}). "
+    rest = "The quote agreement lists every item of the request, the admin fee and the total to sign."
+    body += [Spacer(1, 6 * mm), _p(held + rest, SMALL)]
     return _build("CIMH stock quote", req, body)
 
 
-def agreement(req: dict[str, Any]) -> bytes:
+def agreement(req: dict[str, Any], *, preview: bool = False) -> bytes:
+    """The one page the customer signs ("view and sign"): every item, its price and source, estimated shipping,
+    the total, and a signature line. `preview`: staff check it before sending; marked, never emailed."""
     cur = req.get("currency") or "BBD"
     ag = req.get("agreement") or {}
-    rows = [[_product(ln), src, str(ln.get("qty", "")), unit, total] for ln, src, unit, total in _chosen_prices(req)]
-    body: list[Any] = [_parties(req), Spacer(1, 6 * mm), _p("Your choices", H2)]
-    body.append(_table(["Item", "Source", "Qty", f"Unit ({cur})", f"Total ({cur})"], rows, [74, 36, 12, 26, 26]))
-    totals = []
-    if req.get("adminFee"):
-        totals.append(("Administrative fee", f"{cur} {req['adminFee']}"))
-    totals.append(("Agreed total", f"{cur} {ag.get('total', '0.00')}"))
-    body += [Spacer(1, 3 * mm), _totals(totals)]
+    version = ag.get("quoteVersion", _version(req))
+    expires = _date(req.get("quoteExpiresAt"))
+    body: list[Any] = [_parties(req), Spacer(1, 6 * mm), _p("Items in this request", H2), _price_table(req, cur)]
+    body += [Spacer(1, 3 * mm), _price_totals(req, cur, "Total to sign")]
     # Supplier quotes priced in USD were converted to BBD per supplier; name each rate so the customer can
     # check the converted prices against the supplier's own quote attached to the request.
-    rates = sorted({str(q["exchangeRate"]) for q in _latest_quotes(req) if q.get("sourceCurrency") == "USD"})
-    for r in rates:
-        body.append(_p(f"Supplier prices quoted in USD converted at 1 USD = {r} BBD.", SMALL))
+    for q in _latest_quotes(req):
+        if q.get("sourceCurrency") == "USD" and q.get("exchangeRate"):
+            body.append(_p(f"{q.get('supplier') or 'Supplier'} quoted in USD, converted at 1 USD = "
+                           f"{q['exchangeRate']} BBD.", SMALL))  # fmt: skip
     body += [Spacer(1, 8 * mm), _p("Agreement", H2)]
     body.append(_p(
-        f"By signing, the customer agrees to pay CIMH the agreed total above for request {req.get('id', '')} "
-        f"(quote version {ag.get('quoteVersion', '')}). Supplier items are shipped directly by the supplier. "
-        "CIMH stock is reserved when this signed agreement is accepted. Return the signed copy through the "
-        "CIMH Stores website."
+        f"By signing, the customer agrees to pay CIMH the total above for request {req.get('id', '')} "
+        f"(quote version {version}). Items from CIMH stock are held for this request until the quote expires"
+        f"{' on ' + expires if expires else ''} and are shipped by CIMH. Supplier items are ordered by CIMH once the "
+        "signed agreement is received and are shipped directly to the customer by the supplier. Shipping amounts "
+        "are estimates; the total above is the amount CIMH invoices."
     ))  # fmt: skip
+    body.append(Spacer(1, 2 * mm))
+    body.append(_p("Sign below and upload the signed copy (a scan or a phone photo is fine) on the CIMH Stores "
+                   "website, where you can also cancel the request.", SMALL))  # fmt: skip
     sig = Table(
         [[_p("Signature"), _p("Name"), _p("Date")], ["", "", ""], [_p("Position / organisation"), "", ""]],
         colWidths=[70 * mm, 64 * mm, 40 * mm], rowHeights=[6 * mm, 16 * mm, 6 * mm],
     )  # fmt: skip
     sig.setStyle(TableStyle([("LINEBELOW", (0, 1), (-1, 1), 0.6, INK), ("VALIGN", (0, 0), (-1, -1), "BOTTOM")]))
     body += [Spacer(1, 10 * mm), sig]
-    return _build("Agreement", req, body)
+    subtitle = f"Request {req.get('id', '')} · quote version {version} · {_today()}"
+    subtitle += f" · valid until {expires}" if expires else ""
+    if preview:
+        subtitle = "Preview, not sent · " + subtitle
+    return _build("Quote agreement", req, body, subtitle=subtitle, mark="PREVIEW · NOT SENT" if preview else None)
 
 
 def invoice(req: dict[str, Any]) -> bytes:
     cur = req.get("currency") or "BBD"
     inv = req.get("invoice") or {}
     number = inv.get("number") or req.get("id", "")
-    rows = [[_product(ln), src, str(ln.get("qty", "")), unit, total] for ln, src, unit, total in _chosen_prices(req)]
-    body: list[Any] = [_parties(req, "Bill to"), Spacer(1, 6 * mm)]
-    body.append(_table(["Item", "Source", "Qty", f"Unit ({cur})", f"Total ({cur})"], rows, [74, 36, 12, 26, 26]))
-    totals = []
-    if req.get("adminFee"):
-        totals.append(("Administrative fee", f"{cur} {req['adminFee']}"))
-    totals.append(("Amount due", f"{cur} {(req.get('agreement') or {}).get('total', '0.00')}"))
-    body += [Spacer(1, 3 * mm), _totals(totals)]
+    body: list[Any] = [_parties(req, "Bill to"), Spacer(1, 6 * mm), _price_table(req, cur)]
+    body += [Spacer(1, 3 * mm), _price_totals(req, cur, "Amount due")]  # the signed total (owner, 2026-11-17)
     return _build("Invoice", req, body, subtitle=f"Invoice {number} · request {req.get('id', '')} · "
                   f"{_date(inv.get('date')) or _today()}")  # fmt: skip
 
@@ -275,8 +328,8 @@ def commercial_invoice(req: dict[str, Any]) -> bytes:
         rows = [[_product(ln), str(ln.get("qty", "")), "0.00", "0.00"] for ln in req.get("lines") or []]
         note = "No commercial value: Pro Bono items donated by CIMH."
     else:
-        rows = [[_product(ln), str(ln.get("qty", "")), u, t] for ln, src, u, t in _chosen_prices(req)
-                if src == "CIMH stock"]  # fmt: skip
+        rows = [[_product(ln), str(ln.get("qty", "")), u, t] for ln, _, u, t, src in _priced(req)
+                if src == "CIMH"]  # fmt: skip
         note = "Supplier items ship directly from the supplier and are invoiced by them."
     shipper = [_p("Shipper", H2), _p(ORG), _p(ORG_ADDRESS)]
     consignee = [_p("Consignee", H2)] + [_p(x) for x in _address(req.get("shipTo"))]

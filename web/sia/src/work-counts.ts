@@ -8,7 +8,7 @@
 import { call, identity, inventory, orders, type RequestSummary, useSession } from '@cimh/web-app'
 import { reactive, ref } from 'vue'
 
-export type CountKey = 'new' | 'quoting' | 'quoted' | 'signature' | 'verify' | 'fulfil' | 'low' | 'approvals'
+export type CountKey = 'new' | 'quoting' | 'quoted' | 'verify' | 'fulfil' | 'low' | 'approvals'
 export type Count = { n: number | null; failed: boolean }
 
 const PAGE = 100
@@ -16,7 +16,6 @@ const state = reactive<Record<CountKey, Count>>({
   new: { n: null, failed: false },
   quoting: { n: null, failed: false },
   quoted: { n: null, failed: false },
-  signature: { n: null, failed: false },
   verify: { n: null, failed: false },
   fulfil: { n: null, failed: false },
   low: { n: null, failed: false },
@@ -29,7 +28,6 @@ export const REQUEST_STATUS: Partial<Record<CountKey, string>> = {
   new: 'SUBMITTED',
   quoting: 'QUOTING',
   quoted: 'QUOTED',
-  signature: 'AWAITING_AGREEMENT',
   verify: 'ACCEPTED',
   fulfil: 'APPROVED,PICKING,PURCHASING',
 }

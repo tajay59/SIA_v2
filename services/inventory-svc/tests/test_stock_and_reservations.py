@@ -160,6 +160,14 @@ def test_availability(ctx: Ctx) -> None:
     ]
     r = ctx.client.post(ctx.url("/internal/availability"), headers=CATALOG, json={"lines": lines})
     assert r.status_code == 403  # order-svc only
+    # A revised quote re-checks stock: units already held for the same request count as available.
+    held = {"orderId": "ORDQ", "lines": [{"lineId": "L1", "productId": P1, "qty": 2}]}
+    assert ctx.client.post(ctx.url("/internal/reservations"), headers=ORDER, json=held).status_code == 200
+    ask = {"lines": lines[:1]}
+    r = ctx.client.post(ctx.url("/internal/availability"), headers=ORDER, json=ask)
+    assert r.json()["lines"][0]["available"] == 0
+    r = ctx.client.post(ctx.url("/internal/availability"), headers=ORDER, json={**ask, "orderId": "ORDQ"})
+    assert r.json()["lines"][0] == {"lineId": "L1", "available": 2, "fullQuantity": True}
 
 
 @pytest.mark.req("I9")
@@ -234,9 +242,15 @@ def test_catalog_events_keep_the_stock_copy(ctx: Ctx) -> None:
         asyncio.run(handle(new_event("product.deleted", {}, correlation_id="c").envelope()))
 
 
+def _quoted(order_id: str, lines: list[dict[str, Any]]) -> dict[str, Any]:
+    return {"orderId": order_id, "customer": "USRUSER", "quoteVersion": 1, "expiresAt": "2026-12-17T00:00:00Z",
+            "currency": "BBD", "total": "1.00", "lines": lines}  # fmt: skip
+
+
 @pytest.mark.req("O6")
 def test_order_events_reserve_and_release(ctx: Ctx) -> None:
-    """order.accepted reserves CIMH-chosen lines only; Pro Bono approval reserves all; cancellation releases."""
+    """View and sign: order.quoted reserves the CIMH lines only (the signed agreement promises them); a rejected
+    signature keeps them; declining releases; Pro Bono approval reserves all; cancellation releases."""
     ctx.product(P1)
     ctx.product(P2)
     shelf = ctx.shelves(1)[0]
@@ -247,12 +261,26 @@ def test_order_events_reserve_and_release(ctx: Ctx) -> None:
     def send(etype: str, payload: dict[str, Any]) -> None:
         asyncio.run(handle(new_event(etype, payload, correlation_id="c", actor_id="USRUSER").envelope()))
 
-    lines = [{"lineId": "L1", "productId": P1, "qty": 2, "choice": "CIMH"},
-             {"lineId": "L2", "productId": P2, "qty": 5, "choice": "SUPPLIER"}]  # fmt: skip
+    def held(order_id: str) -> int:
+        return int(ctx.run(ctx.db["storage"].count_documents({"reservedFor": order_id})))
+
+    lines = [{"lineId": "L1", "productId": P1, "qty": 2, "source": "CIMH"},
+             {"lineId": "L2", "productId": P2, "qty": 5, "source": "SUPPLIER", "supplier": "Vaisala"}]  # fmt: skip
+    send("order.quoted", _quoted("ORDA", lines))
+    assert held("ORDA") == 2  # supplier line untouched
+    send("order.agreement_rejected", {"orderId": "ORDA", "from": "ACCEPTED", "to": "QUOTED"})
+    assert held("ORDA") == 2  # the quote is still live
     send("order.accepted", {"orderId": "ORDA", "customer": "USRUSER", "quoteVersion": 1, "lines": lines})
-    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDA"})) == 2  # supplier line untouched
-    send("order.agreement_rejected", {"orderId": "ORDA", "from": "ACCEPTED", "to": "AWAITING_AGREEMENT"})
-    assert ctx.run(ctx.db["storage"].count_documents({"reservedFor": "ORDA"})) == 0
+    assert held("ORDA") == 2  # already held: nothing new
+    assert len(ctx.events(P1, "stock.reserved")) == 1
+    send("order.declined", {"orderId": "ORDA", "from": "QUOTED", "to": "DECLINED", "reason": "Too dear"})
+    assert held("ORDA") == 0
+    # Events written before 2026-11-17 name the field `choice`.
+    old = [{"lineId": "L1", "productId": P1, "qty": 1, "choice": "CIMH"}]
+    send("order.accepted", {"orderId": "ORDE", "customer": "U", "quoteVersion": 1, "lines": old})
+    assert held("ORDE") == 1
+    send("order.expired", {"orderId": "ORDE", "from": "QUOTED", "to": "CANCELLED"})
+    assert held("ORDE") == 0
     # A shortfall is reported, not raised (the consumer must not DLQ a business outcome).
     send("order.probono_approved", {"orderId": "ORDB", "lines": [{"lineId": "L1", "productId": P2, "qty": 2}]})
     assert ctx.events(P2, "stock.reservation_failed")[0]["payload"]["orderId"] == "ORDB"
@@ -263,6 +291,47 @@ def test_order_events_reserve_and_release(ctx: Ctx) -> None:
     send("order.accepted", {"orderId": "ORDD", "customer": "U", "quoteVersion": 1, "lines": [lines[1]]})  # no-op
     with pytest.raises(ValueError, match="lacks orderId"):
         send("order.cancelled", {"customer": "U"})
+
+
+@pytest.mark.req("O5a")
+def test_a_revised_quote_swaps_the_reservation(ctx: Ctx) -> None:
+    ctx.product(P1)
+    ctx.product(P2)
+    shelf = ctx.shelves(1)[0]
+    _stock(ctx, P1, 3, shelf)
+    _stock(ctx, P2, 1, shelf)
+    handle = make_handler(ctx.client.app.state.inventory)  # type: ignore[attr-defined]
+
+    def revise(lines: list[dict[str, Any]]) -> None:
+        payload = {**_quoted("ORDR", lines), "from": "QUOTED", "to": "QUOTED", "reason": "quote version 2"}
+        asyncio.run(handle(new_event("order.quote_revised", payload, correlation_id="c").envelope()))
+
+    def held() -> dict[str, int]:
+        out: dict[str, int] = {}
+        for u in ctx.run(ctx.db["storage"].find({"reservedFor": "ORDR"}).to_list()):
+            out[u["product"]] = out.get(u["product"], 0) + 1
+        return out
+
+    l1 = {"lineId": "L1", "productId": P1, "qty": 2, "source": "CIMH"}
+    l2 = {"lineId": "L2", "productId": P2, "qty": 1, "source": "CIMH"}
+    asyncio.run(handle(new_event("order.quoted", _quoted("ORDR", [l1]), correlation_id="c").envelope()))
+    assert held() == {P1: 2}
+    revise([l1])  # same CIMH lines: nothing changes, no new event
+    assert len(ctx.events(P1, "stock.reserved")) == 1
+    revise([l1, l2])  # a line added: one stock.reserved with the whole new allocation
+    assert held() == {P1: 2, P2: 1}
+    (last,) = [e for e in ctx.events(P1, "stock.reserved") + ctx.events(P2, "stock.reserved")
+               if len(e["payload"]["lines"]) == 2]  # fmt: skip
+    assert [x["lineId"] for x in last["payload"]["lines"]] == ["L1", "L2"]
+    revise([{**l1, "qty": 3}, {**l2, "qty": 2}])  # P2 short: everything is given back, one failure event
+    assert held() == {}
+    failed = ctx.events(P1, "stock.reservation_failed") + ctx.events(P2, "stock.reservation_failed")
+    assert failed[-1]["payload"]["lines"] == [{"lineId": "L2", "requested": 2, "available": 1}]
+    revise([l1])
+    assert held() == {P1: 2}
+    revise([{**l1, "source": "SUPPLIER"}])  # no CIMH line left: released
+    assert held() == {}
+    assert (ctx.stock_doc(P1)["available"], ctx.stock_doc(P1)["reserved"]) == (3, 0)
 
 
 def test_internal_pick_for_order_svc(ctx: Ctx) -> None:

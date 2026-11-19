@@ -28,7 +28,7 @@ from . import domain as d
 from .clients import Deps
 from .store import Store, now
 
-PUBLIC_LINE = ("lineId", "productId", "product", "qty", "cimhAvailable", "choice", "picked")
+PUBLIC_LINE = ("lineId", "productId", "product", "qty", "cimhAvailable", "supplier", "picked")
 
 
 # ---------------------------------------------------------------- small helpers
@@ -191,13 +191,17 @@ def _move(
     return _event(etype, doc, payload, p, cid)
 
 
-def _lines_payload(lines: list[dict[str, Any]], only_cimh: bool = False) -> list[dict[str, Any]]:
-    out = []
-    for ln in lines:
-        if only_cimh and ln.get("choice") != d.CIMH:
-            continue
-        out.append({"lineId": ln["lineId"], "productId": ln["productId"], "qty": ln["qty"], "choice": ln.get("choice")})
-    return out
+def _lines_payload(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "lineId": ln["lineId"],
+            "productId": ln["productId"],
+            "qty": ln["qty"],
+            "source": d.line_source(ln),
+            "supplier": ln.get("supplier"),
+        }
+        for ln in lines
+    ]
 
 
 @dataclass
@@ -281,11 +285,17 @@ class OrderService:
         return self.cart_view(doc, live)
 
     @staticmethod
-    def cart_view(doc: dict[str, Any], live: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+    def cart_view(
+        doc: dict[str, Any], live: dict[str, dict[str, Any]] | None = None, *, partial: bool = False
+    ) -> dict[str, Any]:
+        """`live` = catalogue products by id.
+
+        `partial`: only the lines in `live` were looked up; leave the rest unmarked.
+        """
         lines = []
         for ln in doc["lines"]:
             item: dict[str, Any] = {"productId": ln["productId"], "qty": ln["qty"], "product": ln["product"]}
-            if live is not None:
+            if live is not None and not (partial and ln["productId"] not in live):
                 prod = live.get(ln["productId"])
                 item["available"] = orderable(prod)
                 if prod:
@@ -338,7 +348,7 @@ class OrderService:
             if len(lines) >= 200:
                 raise invalid("productId", "A cart holds at most 200 products")
             lines.append({"productId": product_id, "qty": qty, "product": snapshot(prod), "addedAt": now()})
-        return self.cart_view(await self._save_cart(doc, lines), {product_id: prod} | {})
+        return self.cart_view(await self._save_cart(doc, lines), {product_id: prod}, partial=True)
 
     async def remove_line(self, p: Principal, product_id: str) -> dict[str, Any]:
         doc = await self._cart(p)
@@ -388,7 +398,8 @@ class OrderService:
                     "product": ln["product"],
                     "qty": ln["qty"],
                     "cimhAvailable": None,
-                    "choice": None,
+                    "source": None,
+                    "supplier": None,
                     "reservation": None,
                     "picked": [],
                 }
@@ -533,6 +544,7 @@ class OrderService:
         lines = []
         for ln in doc.get("lines") or []:
             item = {k: ln.get(k) for k in PUBLIC_LINE}
+            item["source"] = d.line_source(ln)
             item["picked"] = [
                 {"barcode": x.get("barcode"), "pickedBy": x.get("pickedby"), "pickedDate": iso(x.get("pickeddate"))}
                 for x in ln.get("picked") or []
@@ -549,6 +561,8 @@ class OrderService:
             item = {
                 "id": qt["id"],
                 "version": qt["version"],
+                # Customers see the supplier too: they hold the supplier's own quote (owner, 2026-11-17).
+                "supplier": qt.get("supplier"),
                 "lines": [
                     {
                         "lineId": x["lineId"],
@@ -559,14 +573,14 @@ class OrderService:
                     for x in qt["lines"]
                 ],
                 "total": d.money_str(qt["total"]),
+                "shippingEstimate": d.money_str(qt.get("shippingEstimate")),
+                "sourceShippingEstimate": d.money_str(qt.get("sourceShippingEstimate")),
                 "sourceCurrency": qt.get("sourceCurrency"),
                 "exchangeRate": qt.get("exchangeRate"),
                 "fileIds": list(qt.get("fileIds") or []),
                 "expiresAt": iso(qt["expiresAt"]),
                 "sentAt": iso(qt.get("sentAt")),
             }
-            if staff:
-                item["supplier"] = qt.get("supplier")
             quotes.append(item)
         cq = doc.get("cimhQuote")
         cimh = None
@@ -576,6 +590,7 @@ class OrderService:
                 "exchangeRate": str(cq["exchangeRate"]) if cq.get("exchangeRate") is not None else None,
                 "lines": [],
                 "total": d.money_str(cq["total"]),
+                "shippingEstimate": d.money_str(cq.get("shippingEstimate")),
                 "fileId": cq.get("fileId"),
             }
             for x in cq["lines"]:
@@ -592,7 +607,6 @@ class OrderService:
         if ag:
             agreement = {
                 "quoteVersion": ag["quoteVersion"],
-                "choices": ag["choices"],
                 "total": d.money_str(ag["total"]),
                 "fileId": ag.get("fileId"),
                 "signedFileId": ag.get("signedFileId"),
@@ -612,7 +626,6 @@ class OrderService:
             "adminFee": d.money_str(doc.get("adminFee")),
             "acceptance": {
                 "quoteVersion": acc["quoteVersion"],
-                "choices": acc["choices"],
                 "signedAgreementFileId": acc["agreementFileId"],
                 "by": acc["by"],
                 "at": iso(acc["at"]),
@@ -655,6 +668,7 @@ class OrderService:
                             "supplier": s["supplier"],
                             "currency": s.get("currency") or "BBD",
                             "exchangeRate": s.get("exchangeRate"),
+                            "shippingEstimate": d.money_str(s.get("shippingEstimate")),
                             "fileIds": s.get("fileIds", []),
                             "lines": [
                                 {"lineId": x["lineId"], "unitPrice": d.money_str(x["unitPrice"])} for x in s["lines"]
@@ -662,7 +676,13 @@ class OrderService:
                         }
                         for s in draft.get("supplierQuotes", [])
                     ],
-                    "cimh": draft.get("cimh"),
+                    "cimh": {
+                        "lineIds": list(draft["cimh"].get("lineIds") or []),
+                        "exchangeRate": draft["cimh"].get("exchangeRate"),
+                        "shippingEstimate": d.money_str(draft["cimh"].get("shippingEstimate")),
+                    }
+                    if draft.get("cimh")
+                    else None,
                     "savedAt": iso(draft.get("savedAt")),
                 }
         return out
@@ -681,6 +701,7 @@ class OrderService:
             "name": f.get("name") or f["id"],
             "mime": f.get("mime") or "application/octet-stream",
             "size": int(f.get("size") or 0),
+            "quoteVersion": f.get("quoteVersion"),
             "uploadedAt": iso(f.get("uploadedAt")),
             "url": f"/api/documents/v1/files/{f['id']}",
         }
@@ -689,13 +710,8 @@ class OrderService:
         t, st = doc["type"], doc["status"]
         requester = p.sub == doc["customer"] or p.is_admin
         out: list[str] = []
-        if requester:
-            if t == d.PAID and st in d.QUOTE_LIVE:
-                out.append("agreement")
-            if st == "AWAITING_AGREEMENT":
-                out.append("accept")
-            if st == "QUOTED":
-                out.append("decline")
+        if requester and t == d.PAID and st == "QUOTED":
+            out += ["accept", "decline"]  # view and sign, or cancel
         who = d.who_may(t, st, "CANCELLED")
         if who and who != "system" and (p.is_staff or (who == "any" and requester)):
             out.append("cancel")
@@ -722,7 +738,7 @@ class OrderService:
 
     @staticmethod
     def _pickable(doc: dict[str, Any]) -> list[dict[str, Any]]:
-        return [ln for ln in doc.get("lines") or [] if doc["type"] == d.PROBONO or ln.get("choice") == d.CIMH]
+        return [ln for ln in doc.get("lines") or [] if doc["type"] == d.PROBONO or d.line_source(ln) == d.CIMH]
 
     # ================================================================== transitions
 
@@ -730,18 +746,16 @@ class OrderService:
         self, p: Principal, rid: str, version: int, action: str, build: Build, *, who_check: bool = True
     ) -> dict[str, Any]:
         doc = await self._visible(p, rid)
-        if action in ("agreement", "accept", "decline") or (action == "cancel" and not p.is_staff):
+        if action in ("accept", "decline") or (action == "cancel" and not p.is_staff):
             ensure_can_act(p, owner_id=doc["customer"], org_id=doc.get("organisationId"))
         if int(doc.get("version") or 1) != version:
             raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
         src = doc["status"]
         moves = d.sources(doc["type"], action)
-        if action == "agreement" and doc["type"] == d.PAID:
-            moves["AWAITING_AGREEMENT"] = "AWAITING_AGREEMENT"  # new choices replace the agreement (contract)
         if src not in moves:
             raise illegal(src, action)
         dst = moves[src]
-        who = d.who_may(doc["type"], src, dst) or ("requester" if action == "agreement" else "staff")
+        who = d.who_may(doc["type"], src, dst) or "staff"
         if who_check and who == "staff" and not p.is_staff:
             raise forbidden("Only staff can do this now")
         change = await build(doc, dst)
@@ -791,16 +805,21 @@ class OrderService:
         if doc["type"] != d.PAID or doc["status"] not in ("QUOTING", "QUOTED"):
             raise illegal(doc["status"], "quote-draft")
         by_id = {ln["lineId"]: ln for ln in doc["lines"]}
-        seen: set[str] = set()
+        placed: dict[str, str] = {}  # lineId -> the supplier pricing it: a line comes from ONE place (2026-11-17)
         quotes = []
         for i, sq in enumerate(body.get("supplierQuotes") or []):
             rows = []
             for x in sq["lines"]:
                 if x["lineId"] not in by_id:
                     raise invalid(f"supplierQuotes[{i}]", f"Unknown line {x['lineId']}")
-                if x["lineId"] in seen:
-                    raise invalid(f"supplierQuotes[{i}]", f"Line {x['lineId']} has a price from two suppliers")
-                seen.add(x["lineId"])
+                if x["lineId"] in placed:
+                    name = by_id[x["lineId"]]["product"]["name"]
+                    raise invalid(
+                        f"supplierQuotes[{i}]",
+                        f"{name} is already priced by {placed[x['lineId']]}; a line comes from one supplier",
+                        "LINE_SOURCE_CONFLICT",
+                    )
+                placed[x["lineId"]] = sq["supplier"]
                 rows.append({"lineId": x["lineId"], "unitPrice": d.to_db(d.money(x["unitPrice"]))})
             cur_s = sq.get("currency") or "BBD"
             rate_s = sq.get("exchangeRate") if cur_s == "USD" else None
@@ -813,6 +832,7 @@ class OrderService:
                         "The exchange rate must be more than 0",
                         "EXCHANGE_RATE_REQUIRED",
                     ) from None
+            ship = sq.get("shippingEstimate")
             quotes.append(
                 {
                     "supplier": sq["supplier"],
@@ -820,6 +840,7 @@ class OrderService:
                     "exchangeRate": rate_s,
                     "lines": rows,
                     "fileIds": list(sq.get("fileIds") or []),
+                    "shippingEstimate": d.to_db(d.money(ship)) if ship is not None else None,
                 }
             )
         cimh = body.get("cimh")
@@ -827,7 +848,19 @@ class OrderService:
             for lid in cimh.get("lineIds") or []:
                 if not by_id.get(lid, {}).get("cimhAvailable"):
                     raise invalid("cimh.lineIds", f"Line {lid} is not fully in CIMH stock")
-            cimh = {"lineIds": list(dict.fromkeys(cimh.get("lineIds") or [])), "exchangeRate": cimh.get("exchangeRate")}
+                if lid in placed:
+                    name = by_id[lid]["product"]["name"]
+                    raise invalid(
+                        "cimh.lineIds",
+                        f"{name} is priced by {placed[lid]}; a line comes from CIMH stock or a supplier, not both",
+                        "LINE_SOURCE_CONFLICT",
+                    )
+            ship = cimh.get("shippingEstimate")
+            cimh = {
+                "lineIds": list(dict.fromkeys(cimh.get("lineIds") or [])),
+                "exchangeRate": cimh.get("exchangeRate"),
+                "shippingEstimate": d.to_db(d.money(ship)) if ship is not None else None,
+            }
         draft = {"supplierQuotes": quotes, "cimh": cimh, "savedBy": actor(p), "savedAt": now()}
         res = await self.store.orders.find_one_and_update(
             {"id": rid, "version": version, "status": doc["status"]},
@@ -839,236 +872,279 @@ class OrderService:
         return self.view(res, p)
 
     async def send_quote(self, p: Principal, rid: str, version: int, cid: str) -> dict[str, Any]:
+        """Fix the source of every line, price it, and make the agreement the customer signs ("view and sign")."""
+
         async def build(doc: dict[str, Any], dst: str) -> Change:
-            draft = doc.get("quoteDraft") or {}
-            cur = doc["currency"] or "BBD"
-            supplier_lines = {x["lineId"] for sq in draft.get("supplierQuotes") or [] for x in sq["lines"]}
-            cimh_cfg = draft.get("cimh") or {}
-            cimh_ids = [x for x in cimh_cfg.get("lineIds") or [] if x in {ln["lineId"] for ln in doc["lines"]}]
-            missing = [ln["lineId"] for ln in doc["lines"] if ln["lineId"] not in supplier_lines | set(cimh_ids)]
-            if missing:
-                raise invalid("lines", f"No price yet for {', '.join(missing)}", "QUOTE_INCOMPLETE")
-            fee_bbd = await self.deps.admin_fee()
-            raw_rate = cimh_cfg.get("exchangeRate")
-            try:
-                ex = d.rate(raw_rate) if raw_rate else None
-            except ValueError:  # "0" passes the draft pattern; refuse it here instead of failing with a 500
-                raise invalid(
-                    "cimh.exchangeRate", "The exchange rate must be more than 0", "EXCHANGE_RATE_REQUIRED"
-                ) from None
-            if cur == "USD" and ex is None and (cimh_ids or fee_bbd > 0):
-                raise invalid("cimh.exchangeRate", "Enter the BBD-per-USD exchange rate", "EXCHANGE_RATE_REQUIRED")
-            t = now()
-            qv = int(doc.get("quoteVersion") or 0) + 1
-            expires = t + timedelta(days=self.quote_days)
-            quotes = []
-            for i, sq in enumerate(draft.get("supplierQuotes") or []):
-                # A USD supplier quote on a BBD request is converted line by line (unit price first, then qty).
-                # Legacy USD requests keep the old rule: supplier prices are already in the request currency.
-                src_cur = sq.get("currency") or "BBD"
-                convert = cur == "BBD" and src_cur == "USD"
-                sq_rate = None
-                if convert:
-                    try:
-                        sq_rate = d.rate(sq.get("exchangeRate")) if sq.get("exchangeRate") else None
-                    except ValueError:
-                        sq_rate = None
-                    if sq_rate is None:
-                        raise invalid(
-                            f"supplierQuotes[{i}].exchangeRate",
-                            f"Enter the BBD-per-USD exchange rate for {sq['supplier']}",
-                            "EXCHANGE_RATE_REQUIRED",
-                        )
-                rows, total = [], Decimal("0")
-                qty = {ln["lineId"]: ln["qty"] for ln in doc["lines"]}
-                for x in sq["lines"]:
-                    src = d.money(x["unitPrice"])
-                    unit = d.usd_to_bbd(src, sq_rate) if sq_rate is not None else src
-                    line_total = d.money(unit * qty[x["lineId"]])
-                    total += line_total
-                    row = {"lineId": x["lineId"], "unitPrice": d.to_db(unit), "total": d.to_db(line_total)}
-                    if convert:
-                        row["sourceUnitPrice"] = d.to_db(src)
-                    rows.append(row)
-                quotes.append(
-                    {
-                        "id": "QTE" + uuid.uuid4().hex,
-                        "version": qv,
-                        "supplier": sq["supplier"],
-                        "sourceCurrency": src_cur if convert else None,
-                        "exchangeRate": str(sq_rate) if sq_rate is not None else None,
-                        "lines": rows,
-                        "total": d.to_db(total),
-                        "fileIds": sq.get("fileIds", []),
-                        "expiresAt": expires,
-                        "sentAt": t,
-                        "sentBy": actor(p),
-                    }
-                )
-            cimh_quote = None
-            if cimh_ids:
-                prods = {x["id"]: x for x in await self.deps.products([ln["productId"] for ln in doc["lines"]])}
-                rows, total = [], Decimal("0")
-                for ln in doc["lines"]:
-                    if ln["lineId"] not in cimh_ids:
-                        continue
-                    cost = (prods.get(ln["productId"]) or {}).get("cost")
-                    if cost in (None, ""):
-                        raise invalid(
-                            ln["lineId"], f"{ln['product']['name']} has no catalogue cost", "QUOTE_INCOMPLETE"
-                        )
-                    unit = d.convert_bbd(d.money(cost), cur, ex)
-                    line_total = d.money(unit * ln["qty"])
-                    total += line_total
-                    rows.append(
-                        {
-                            "lineId": ln["lineId"],
-                            "unitCostBBD": d.to_db(d.money(cost)),
-                            "unitPrice": d.to_db(unit),
-                            "total": d.to_db(line_total),
-                        }
-                    )
-                cimh_quote = {
-                    "version": qv,
-                    "exchangeRate": str(ex) if ex is not None else None,
-                    "lines": rows,
-                    "total": d.to_db(total),
-                    "fileId": None,
-                }
-            fee = d.convert_bbd(fee_bbd, cur, ex) if fee_bbd > 0 else Decimal("0")
+            fields, payload = await self._compose_quote(doc, p)
+            qv = fields["quoteVersion"]
             src = doc["status"]
+            reason = None if src == "QUOTING" else f"quote version {qv}"
             if src == "QUOTING":
-                payload = {
-                    "orderId": doc["id"],
-                    "customer": doc["customer"],
-                    "quoteVersion": qv,
-                    "expiresAt": iso(expires),
-                    "currency": cur,
-                    "cimhLineIds": cimh_ids,
-                }
                 event = _event("order.quoted", doc, payload, p, cid)
             else:
-                event = _move("order.quote_revised", doc, src, dst, p, cid, f"quote version {qv}")
-            change = Change(
-                set={
-                    "quoteVersion": qv,
-                    "quoteExpiresAt": expires,
-                    "cimhQuote": cimh_quote,
-                    "adminFee": d.to_db(fee),
-                    "quotes": [*doc.get("quotes", []), *quotes],
-                },
-                events=[event],
-                reason=None if src == "QUOTING" else f"quote version {qv}",
-            )
-            return change
+                event = _event("order.quote_revised", doc, payload | {"from": src, "to": dst, "reason": reason}, p, cid)
+            return Change(set=fields, events=[event], reason=reason)
 
         return await self._act(p, rid, version, "send-quote", build)
 
-    # ---------------------------------------------------------------- paid: agreement and acceptance (O6, O6a)
+    async def quote_preview(self, rid: str) -> dict[str, Any]:
+        """The staff view of the request as Send quote would leave it, without saving anything: document-svc draws
+        the agreement preview from it. Same checks as send-quote (422 / 409 when the draft can't be sent yet)."""
+        doc = await self._load(rid)
+        moves = d.sources(doc["type"], "send-quote") if doc["type"] == d.PAID else {}
+        if doc["status"] not in moves:
+            raise illegal(doc["status"], "send-quote")
+        who = Principal(sub="svc:document", role="staff")
+        fields, _ = await self._compose_quote(doc, who)
+        return self.view({**doc, **fields, "status": moves[doc["status"]]}, who)
+
+    async def _compose_quote(self, doc: dict[str, Any], p: Principal) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Price the draft as the next quote version: the fields send-quote sets and its event payload."""
+        draft = doc.get("quoteDraft") or {}
+        cur = doc["currency"] or "BBD"
+        by_id = {ln["lineId"]: ln for ln in doc["lines"]}
+        # A supplier quote without lines (a supplier that was not chosen) is not part of the quote; its files stay.
+        priced = [sq for sq in draft.get("supplierQuotes") or [] if sq.get("lines")]
+        supplier_of = {x["lineId"]: sq["supplier"] for sq in priced for x in sq["lines"]}
+        cimh_cfg = draft.get("cimh") or {}
+        cimh_ids = [x for x in dict.fromkeys(cimh_cfg.get("lineIds") or []) if x in by_id]
+        both = [x for x in cimh_ids if x in supplier_of]
+        if both:
+            name = by_id[both[0]]["product"]["name"]
+            raise invalid(
+                "lines",
+                f"{name} is priced from CIMH stock and by {supplier_of[both[0]]}; keep one",
+                "LINE_SOURCE_CONFLICT",
+            )
+        missing = [ln for ln in doc["lines"] if ln["lineId"] not in supplier_of and ln["lineId"] not in cimh_ids]
+        if missing:
+            names = ", ".join(ln["product"]["name"] for ln in missing)
+            raise invalid("lines", f"No source or price yet for {names}", "QUOTE_INCOMPLETE")
+        for i, sq in enumerate(priced):
+            if sq.get("shippingEstimate") is None:
+                raise invalid(
+                    f"supplierQuotes[{i}].shippingEstimate",
+                    f"Enter the estimated shipping from {sq['supplier']} (0.00 if there is none)",
+                    "SHIPPING_ESTIMATE_REQUIRED",
+                )
+        if cimh_ids and cimh_cfg.get("shippingEstimate") is None:
+            raise invalid(
+                "cimh.shippingEstimate",
+                "Enter the estimated shipping for the items from CIMH stock (0.00 if there is none)",
+                "SHIPPING_ESTIMATE_REQUIRED",
+            )
+        if cimh_ids:
+            # The signed agreement promises these units, so check they are still there (units this request
+            # already holds count: a revision keeps its own reservation).
+            ask = [{"lineId": x, "productId": by_id[x]["productId"], "qty": by_id[x]["qty"]} for x in cimh_ids]
+            short = [x for x in await self.deps.availability(ask, doc["id"]) if not x.get("fullQuantity")]
+            if short:
+                ln = by_id[short[0]["lineId"]]
+                raise conflict(
+                    "CIMH_STOCK_SHORT",
+                    f"Only {short[0].get('available', 0)} of {ln['qty']} {ln['product']['name']} are in stock "
+                    "now; quote it from a supplier",
+                )
+        fee_bbd = await self.deps.admin_fee()
+        raw_rate = cimh_cfg.get("exchangeRate")
+        try:
+            ex = d.rate(raw_rate) if raw_rate else None
+        except ValueError:  # "0" passes the draft pattern; refuse it here instead of failing with a 500
+            raise invalid(
+                "cimh.exchangeRate", "The exchange rate must be more than 0", "EXCHANGE_RATE_REQUIRED"
+            ) from None
+        if cur == "USD" and ex is None and (cimh_ids or fee_bbd > 0):
+            raise invalid("cimh.exchangeRate", "Enter the BBD-per-USD exchange rate", "EXCHANGE_RATE_REQUIRED")
+        t = now()
+        qv = int(doc.get("quoteVersion") or 0) + 1
+        expires = t + timedelta(days=self.quote_days)
+        qty = {ln["lineId"]: ln["qty"] for ln in doc["lines"]}
+        total = Decimal("0")
+        quotes: list[dict[str, Any]] = []
+        shipping: list[dict[str, Any]] = []  # estimated shipping per source, in the request currency
+        for i, sq in enumerate(priced):
+            # A USD supplier quote on a BBD request is converted line by line (unit price first, then qty), and
+            # its shipping at the same rate. Legacy USD requests keep the old rule: prices are already in USD.
+            src_cur = sq.get("currency") or "BBD"
+            convert = cur == "BBD" and src_cur == "USD"
+            sq_rate = None
+            if convert:
+                try:
+                    sq_rate = d.rate(sq.get("exchangeRate")) if sq.get("exchangeRate") else None
+                except ValueError:
+                    sq_rate = None
+                if sq_rate is None:
+                    raise invalid(
+                        f"supplierQuotes[{i}].exchangeRate",
+                        f"Enter the BBD-per-USD exchange rate for {sq['supplier']}",
+                        "EXCHANGE_RATE_REQUIRED",
+                    )
+            rows, sq_total = [], Decimal("0")
+            for x in sq["lines"]:
+                src = d.money(x["unitPrice"])
+                unit = d.usd_to_bbd(src, sq_rate) if sq_rate is not None else src
+                line_total = d.money(unit * qty[x["lineId"]])
+                sq_total += line_total
+                row = {"lineId": x["lineId"], "unitPrice": d.to_db(unit), "total": d.to_db(line_total)}
+                if convert:
+                    row["sourceUnitPrice"] = d.to_db(src)
+                rows.append(row)
+            ship_src = d.money(sq["shippingEstimate"])
+            ship = d.usd_to_bbd(ship_src, sq_rate) if sq_rate is not None else ship_src
+            total += sq_total + ship
+            shipping.append({"source": d.SUPPLIER, "supplier": sq["supplier"], "amount": ship})
+            quotes.append(
+                {
+                    "id": "QTE" + uuid.uuid4().hex,
+                    "version": qv,
+                    "supplier": sq["supplier"],
+                    "sourceCurrency": src_cur if convert else None,
+                    "exchangeRate": str(sq_rate) if sq_rate is not None else None,
+                    "lines": rows,
+                    "total": d.to_db(sq_total),
+                    "shippingEstimate": d.to_db(ship),
+                    "sourceShippingEstimate": d.to_db(ship_src) if convert else None,
+                    "fileIds": sq.get("fileIds", []),
+                    "expiresAt": expires,
+                    "sentAt": t,
+                    "sentBy": actor(p),
+                }
+            )
+        cimh_quote = None
+        if cimh_ids:
+            prods = {x["id"]: x for x in await self.deps.products([by_id[x]["productId"] for x in cimh_ids])}
+            rows, cq_total = [], Decimal("0")
+            for ln in doc["lines"]:
+                if ln["lineId"] not in cimh_ids:
+                    continue
+                cost = (prods.get(ln["productId"]) or {}).get("cost")
+                if cost in (None, ""):
+                    raise invalid(ln["lineId"], f"{ln['product']['name']} has no catalogue cost", "QUOTE_INCOMPLETE")
+                unit = d.convert_bbd(d.money(cost), cur, ex)
+                line_total = d.money(unit * ln["qty"])
+                cq_total += line_total
+                rows.append(
+                    {
+                        "lineId": ln["lineId"],
+                        "unitCostBBD": d.to_db(d.money(cost)),
+                        "unitPrice": d.to_db(unit),
+                        "total": d.to_db(line_total),
+                    }
+                )
+            ship = d.convert_bbd(d.money(cimh_cfg["shippingEstimate"]), cur, ex)
+            total += cq_total + ship
+            shipping.append({"source": d.CIMH, "supplier": None, "amount": ship})
+            cimh_quote = {
+                "version": qv,
+                "exchangeRate": str(ex) if ex is not None else None,
+                "lines": rows,
+                "total": d.to_db(cq_total),
+                "shippingEstimate": d.to_db(ship),
+                "fileId": None,
+            }
+        fee = d.convert_bbd(fee_bbd, cur, ex) if fee_bbd > 0 else Decimal("0")
+        total += fee
+        lines = []
+        for ln in doc["lines"]:
+            base = {k: v for k, v in ln.items() if k != "choice"}
+            if ln["lineId"] in cimh_ids:
+                # Inventory reserves CIMH lines on this event (D2). A line that stays CIMH keeps a reservation
+                # it already has (an unchanged revision is a no-op for inventory); others wait for stock.reserved.
+                held = ln.get("reservation") if d.line_source(ln) == d.CIMH else None
+                keep = isinstance(held, dict) and held.get("status") == "RESERVED"
+                res = held if keep else {"status": "NONE", "units": []}
+                lines.append({**base, "source": d.CIMH, "supplier": None, "reservation": res})
+            else:
+                supplier = supplier_of[ln["lineId"]]
+                lines.append({**base, "source": d.SUPPLIER, "supplier": supplier, "reservation": None})
+        old = doc.get("agreement") or {}
+        agreement = {
+            "quoteVersion": qv,
+            "total": d.to_db(total),
+            "fileId": None,
+            "signedFileId": None,
+            "verified": None,
+            "rejections": old.get("rejections", []),
+            "requestedAt": t,
+        }
+        payload: dict[str, Any] = {
+            "orderId": doc["id"],
+            "orderType": doc["type"],
+            "customer": doc["customer"],
+            "quoteVersion": qv,
+            "expiresAt": iso(expires),
+            "currency": cur,
+            "total": d.money_str(total),
+            "lines": _lines_payload(lines),
+            "shippingEstimates": [{**s, "amount": d.money_str(s["amount"])} for s in shipping],
+            "cimhLineIds": cimh_ids,
+        }
+        fields = {
+            "quoteVersion": qv,
+            "quoteExpiresAt": expires,
+            "cimhQuote": cimh_quote,
+            "adminFee": d.to_db(fee),
+            "quotes": [*doc.get("quotes", []), *quotes],
+            "lines": lines,
+            "agreement": agreement,
+            "acceptance": None,
+        }
+        return fields, payload
+
+    # ---------------------------------------------------------------- paid: view and sign (O6, O6a)
 
     def _quote_live(self, doc: dict[str, Any], quote_version: int) -> None:
         if quote_version != int(doc.get("quoteVersion") or 0):
-            raise conflict("QUOTE_OUTDATED", "The quote was revised; review the latest version")
+            raise conflict("QUOTE_OUTDATED", "The quote was revised; download and sign the latest agreement")
         exp = aware(doc.get("quoteExpiresAt"))
         if exp is not None and exp < now():
             raise conflict("QUOTE_EXPIRED", "This quote has expired")
 
-    @staticmethod
-    def _offers(doc: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-        qv = int(doc.get("quoteVersion") or 0)
-        supplier = {x["lineId"]: x for q in doc.get("quotes") or [] if q["version"] == qv for x in q["lines"]}
-        cq = doc.get("cimhQuote") or {}
-        cimh = {x["lineId"]: x for x in cq.get("lines") or []} if cq.get("version") == qv else {}
-        return supplier, cimh
-
-    async def agreement(self, p: Principal, rid: str, version: int, body: dict[str, Any], cid: str) -> dict[str, Any]:
-        async def build(doc: dict[str, Any], dst: str) -> Change:
-            self._quote_live(doc, body["quoteVersion"])
-            supplier, cimh = self._offers(doc)
-            given = {c["lineId"]: c["choice"] for c in body["choices"]}
-            known = {ln["lineId"] for ln in doc["lines"]}
-            for lid in given:
-                if lid not in known:
-                    raise invalid("choices", f"Unknown line {lid}")
-            choices, total = [], d.money(doc.get("adminFee") or 0)
-            for ln in doc["lines"]:
-                opts = d.line_options(ln["lineId"], supplier, cimh)
-                choice = given.get(ln["lineId"])
-                if choice is None:
-                    if len(opts) != 1:
-                        raise invalid(
-                            ln["lineId"],
-                            f"Choose CIMH stock or supplier for {ln['product']['name']}",
-                            "CHOICE_REQUIRED",
-                        )
-                    choice = opts[0]
-                elif choice not in opts:
-                    raise invalid(ln["lineId"], f"{choice} is not offered for {ln['product']['name']}")
-                total += d.money((cimh if choice == d.CIMH else supplier)[ln["lineId"]]["total"])
-                choices.append({"lineId": ln["lineId"], "choice": choice})
-            old = doc.get("agreement") or {}
-            agreement = {
-                "quoteVersion": body["quoteVersion"],
-                "choices": choices,
-                "total": d.to_db(total),
-                "fileId": None,
-                "signedFileId": None,
-                "verified": None,
-                "rejections": old.get("rejections", []),
-                "requestedAt": now(),
-            }
-            chosen = {c["lineId"]: c["choice"] for c in choices}
-            lines = [{**ln, "choice": chosen[ln["lineId"]]} for ln in doc["lines"]]
-            payload = {
-                "orderId": doc["id"],
-                "customer": doc["customer"],
-                "quoteVersion": body["quoteVersion"],
-                "lines": _lines_payload(lines),
-                "total": d.money_str(total),
-                "currency": doc["currency"],
-            }
-            return Change(
-                set={"agreement": agreement}, events=[_event("order.agreement_requested", doc, payload, p, cid)]
-            )
-
-        return await self._act(p, rid, version, "agreement", build)
-
     async def accept(
         self, p: Principal, rid: str, version: int, body: dict[str, Any], ip: str | None, cid: str
     ) -> dict[str, Any]:
+        """The customer uploaded the signed agreement of the current quote version: the commitment to pay."""
+
         async def build(doc: dict[str, Any], dst: str) -> Change:
+            qv = int(doc.get("quoteVersion") or 0)
             ag = doc.get("agreement") or {}
-            if body["quoteVersion"] != ag.get("quoteVersion"):
-                raise conflict("QUOTE_OUTDATED", "Accept the agreement for the latest quote")
-            self._quote_live(doc, body["quoteVersion"])
+            if body["quoteVersion"] != qv or ag.get("quoteVersion") != qv:
+                raise conflict("QUOTE_OUTDATED", "The quote was revised; download and sign the latest agreement")
+            self._quote_live(doc, qv)
             fid = body["signedAgreementFileId"]
-            ok = any(
-                f["id"] == fid and f["kind"] == "signed_agreement" and not f.get("deleted")
-                for f in doc.get("files") or []
+            signed = next(
+                (
+                    f
+                    for f in doc.get("files") or []
+                    if f["id"] == fid and f["kind"] == "signed_agreement" and not f.get("deleted")
+                ),
+                None,
             )
-            if not ok:
+            if signed is None:
                 raise invalid("signedAgreementFileId", "Upload the signed agreement first", "AGREEMENT_REQUIRED")
-            t = now()
-            chosen = {c["lineId"]: c["choice"] for c in ag["choices"]}
-            lines = []
-            for ln in doc["lines"]:
-                ch = chosen.get(ln["lineId"])
-                res = {"status": "NONE", "units": []} if ch == d.CIMH else None
-                lines.append({**ln, "choice": ch, "reservation": res})
-            acceptance = {
-                "quoteVersion": body["quoteVersion"],
-                "agreementFileId": fid,
-                "choices": ag["choices"],
-                "by": actor(p),
-                "at": t,
-                "ip": ip,
-            }
-            payload = {
-                "orderId": doc["id"],
-                "customer": doc["customer"],
-                "quoteVersion": body["quoteVersion"],
-                "lines": _lines_payload(lines),
-            }
+            if fid in {r.get("fileId") for r in ag.get("rejections") or []}:
+                raise invalid(
+                    "signedAgreementFileId", "CIMH could not accept this signed copy; upload a new one",
+                    "AGREEMENT_REQUIRED",
+                )  # fmt: skip
+            # document-svc stamps the quote version on the upload; older files fall back to the upload time.
+            made_for = signed.get("quoteVersion")
+            sent, uploaded = aware(ag.get("requestedAt")), aware(signed.get("uploadedAt"))
+            stale = made_for != qv if made_for is not None else bool(sent and uploaded and uploaded < sent)
+            if stale:
+                raise conflict(
+                    "QUOTE_OUTDATED",
+                    "This signed copy is for an earlier version of the quote; sign the latest agreement",
+                )
+            lines = [
+                {**ln, "reservation": {"status": "NONE", "units": []}}
+                if d.line_source(ln) == d.CIMH and not isinstance(ln.get("reservation"), dict)
+                else ln
+                for ln in doc["lines"]
+            ]
+            acceptance = {"quoteVersion": qv, "agreementFileId": fid, "by": actor(p), "at": now(), "ip": ip}
+            payload = {"orderId": doc["id"], "customer": doc["customer"], "quoteVersion": qv,
+                       "lines": _lines_payload(lines)}  # fmt: skip
             return Change(
                 set={"lines": lines, "acceptance": acceptance, "agreement.signedFileId": fid},
                 events=[_event("order.accepted", doc, payload, p, cid)],
@@ -1077,13 +1153,18 @@ class OrderService:
         return await self._act(p, rid, version, "accept", build)
 
     async def reject_agreement(self, p: Principal, rid: str, version: int, reason: str, cid: str) -> dict[str, Any]:
+        """Back to QUOTED: the quote (and the stock held for it) stays; the customer uploads a correct copy."""
+
         async def build(doc: dict[str, Any], dst: str) -> Change:
+            t = now()
             ag = dict(doc.get("agreement") or {})
-            ag["rejections"] = [*ag.get("rejections", []), {"by": actor(p), "at": now(), "reason": reason}]
+            rejection = {"by": actor(p), "at": t, "reason": reason, "fileId": ag.get("signedFileId")}
+            ag["rejections"] = [*ag.get("rejections", []), rejection]
             ag |= {"signedFileId": None, "verified": None}
-            lines = [{**ln, "reservation": None} for ln in doc["lines"]]
+            floor = t + timedelta(days=d.RESIGN_DAYS)
+            exp = aware(doc.get("quoteExpiresAt"))
             return Change(
-                set={"agreement": ag, "acceptance": None, "lines": lines},
+                set={"agreement": ag, "acceptance": None, "quoteExpiresAt": max(exp, floor) if exp else floor},
                 events=[_move("order.agreement_rejected", doc, doc["status"], dst, p, cid, reason)],
                 reason=reason,
             )
@@ -1119,7 +1200,7 @@ class OrderService:
         async def build(doc: dict[str, Any], dst: str) -> Change:
             if body.get("agreementVerified") is not True:
                 raise invalid("agreementVerified", "Verify the signed agreement first", "AGREEMENT_NOT_VERIFIED")
-            supplier_lines = {ln["lineId"] for ln in doc["lines"] if ln.get("choice") == d.SUPPLIER}
+            supplier_lines = {ln["lineId"] for ln in doc["lines"] if d.line_source(ln) == d.SUPPLIER}
             covered: set[str] = set()
             t = now()
             pos = []
@@ -1176,7 +1257,7 @@ class OrderService:
         if idx is None:
             raise invalid("lineId", f"Unknown line {line_id}")
         line = doc["lines"][idx]
-        if doc["type"] == d.PAID and line.get("choice") != d.CIMH:
+        if doc["type"] == d.PAID and d.line_source(line) != d.CIMH:
             raise conflict("LINE_NOT_PICKABLE", "Supplier items ship direct to the customer; nothing to pick")
         picked = line.get("picked") or []
         if any(x.get("barcode") == unit for x in picked):
@@ -1246,11 +1327,13 @@ class OrderService:
     async def access(self, rid: str, user: str) -> dict[str, Any]:
         """document-svc: may `user` see this request's files (allowed), act on it (canAct), and in what state?"""
         doc = await self.store.orders.find_one(
-            {"id": rid, "status": {"$ne": d.CART}}, {"customer": 1, "organisationId": 1, "status": 1, "type": 1}
+            {"id": rid, "status": {"$ne": d.CART}},
+            {"customer": 1, "organisationId": 1, "status": 1, "type": 1, "quoteVersion": 1},
         )
         if doc is None:
             raise not_found("No request with this id")
-        out: dict[str, Any] = {"allowed": False, "canAct": False, "status": doc["status"], "type": doc.get("type")}
+        out: dict[str, Any] = {"allowed": False, "canAct": False, "status": doc["status"], "type": doc.get("type"),
+                               "quoteVersion": doc.get("quoteVersion")}  # fmt: skip
         acc = await self.deps.account(user)
         if not acc or acc.get("status") not in (None, "ACTIVE"):
             return out
@@ -1276,18 +1359,23 @@ class OrderService:
 
     async def attach_file(self, rid: str, f: dict[str, Any]) -> bool:
         """Idempotent: a file id is attached once. No version bump (a PDF arriving must not break If-Match)."""
-        entry = {k: f.get(k) for k in ("id", "kind", "name", "mime", "size", "sha256")}
+        entry = {k: f.get(k) for k in ("id", "kind", "name", "mime", "size", "sha256", "quoteVersion")}
         entry["uploadedAt"] = aware(f.get("uploadedAt")) or now()
+        qv = f.get("quoteVersion")
         extra: dict[str, Any] = {}
+        filt: dict[str, Any] = {"id": rid, "status": {"$ne": d.CART}, "files.id": {"$ne": f["id"]}}
+        # A generated agreement / CIMH quote becomes the current one only for its own quote version: a PDF that
+        # arrives late for a revised quote is kept as a file but never offered for signing.
         if f["kind"] == "agreement":
             extra["agreement.fileId"] = f["id"]
+            filt["agreement"] = {"$ne": None}
+            if qv is not None:
+                filt["agreement.quoteVersion"] = qv
         elif f["kind"] == "cimh_quote":
             extra["cimhQuote.fileId"] = f["id"]
-        filt: dict[str, Any] = {"id": rid, "status": {"$ne": d.CART}, "files.id": {"$ne": f["id"]}}
-        if f["kind"] == "agreement":
-            filt["agreement"] = {"$ne": None}
-        if f["kind"] == "cimh_quote":
             filt["cimhQuote"] = {"$ne": None}
+            if qv is not None:
+                filt["cimhQuote.version"] = qv
         res = await self.store.orders.update_one(filt, {"$push": {"files": entry}, "$set": extra})
         if res.matched_count == 0 and extra:  # no agreement/quote to point at: still keep the file
             res = await self.store.orders.update_one(
@@ -1337,7 +1425,8 @@ class OrderService:
     # ================================================================== jobs
 
     async def expire_quotes(self, batch: int = 200) -> int:
-        """QUOTED / AWAITING_AGREEMENT past the quote expiry -> CANCELLED (auto), order.expired published."""
+        """QUOTED past the quote expiry -> CANCELLED (auto), order.expired published (inventory releases the stock
+        held for the quote)."""
         t = now()
         docs = (
             await self.store.orders.find({"status": {"$in": list(d.QUOTE_LIVE)}, "quoteExpiresAt": {"$lt": t}})

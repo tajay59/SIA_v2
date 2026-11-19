@@ -73,6 +73,25 @@
                   "qty": {
                     "type": "integer"
                   },
+                  "source": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "enum": [
+                      "CIMH",
+                      "SUPPLIER",
+                      null
+                    ],
+                    "description": "Where a paid line comes from, fixed by staff when the quote is sent (null before, and on Pro Bono lines)"
+                  },
+                  "supplier": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Supplier name for SUPPLIER lines"
+                  },
                   "choice": {
                     "type": [
                       "string",
@@ -82,7 +101,9 @@
                       "CIMH",
                       "SUPPLIER",
                       null
-                    ]
+                    ],
+                    "deprecated": true,
+                    "description": "Old name of `source` (events written before 2026-11-17); consumers read source, else choice"
                   }
                 }
               }

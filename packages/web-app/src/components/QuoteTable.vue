@@ -1,207 +1,115 @@
 <script setup lang="ts">
 /**
- * Quote comparison (DESIGN_BRIEF "quote comparison"): one row per line, the supplier option and the CIMH-stock
- * option side by side, the admin fee and the expiry. With `v-model` (S-12 step 1) each line that has both
- * options gets a choice and the total follows the choices; lines with one option use it.
- * Narrow containers (< 600 px, e.g. phones) get one card per line with full-width option tiles instead of
- * the table, whose price columns wrapped one character per line at 360 px.
+ * The quote as the customer signs it ("view and sign", owner 2026-11-17; DESIGN_BRIEF "quote"): one row per line
+ * with where it comes from (CIMH stock, or the supplier that ships it directly), its unit price and total; then
+ * the items, the estimated shipping per source, the admin fee (once per request) and the total: "Total to sign" while
+ * the quote waits, "Agreed total" once signed, "Quoted total" on a request that ended (one name per state, as S-12
+ * and the agreement PDF say it).
+ * Nothing to choose: staff fixed the source of every line when they sent the quote.
+ * Narrow containers (< 600 px, e.g. phones) get one card per line instead of the table.
  */
 import { formatDate, formatMoney } from '@cimh/web-ui'
-import { mdiCheck } from '@mdi/js'
 import { computed } from 'vue'
-import { addCents, type LineChoice, type OrderRequest, quoteRows } from '../orders'
+import { type OrderRequest, type PricedLine, pricedQuote } from '../orders'
 
-// `picked` (read-only, S-11 after the customer chose): marks the chosen option per line and shows the agreement total.
-const props = defineProps<{ request: OrderRequest; choosable?: boolean; staff?: boolean; picked?: Record<string, LineChoice> }>()
-const choices = defineModel<Record<string, LineChoice>>({ default: () => ({}) })
+const props = defineProps<{ request: OrderRequest; staff?: boolean }>()
 
 const cur = computed(() => props.request.currency ?? 'BBD')
-const table = computed(() => quoteRows(props.request))
+const q = computed(() => pricedQuote(props.request))
 const money = (v: string | null | undefined) => (v ? formatMoney(v, cur.value) : '—')
+const from = (x: PricedLine) =>
+  x.source === 'CIMH' ? 'CIMH stock' : x.source === 'SUPPLIER' ? `${x.supplier ?? 'Supplier'}, ships to you directly` : '—'
 /** "120.00 USD at 2.0 BBD per USD" for a supplier price staff converted from the supplier's USD quote. */
-const sourceNote = (s: { source: { unitPrice: string; currency: string; rate: string } | null } | null) =>
-  s?.source ? `Supplier quote: ${formatMoney(s.source.unitPrice, s.source.currency as 'BBD' | 'USD')} each at ${s.source.rate} BBD per USD` : ''
-
-function chosen(lineId: string, hasCimh: boolean, hasSupplier: boolean): LineChoice | null {
-  if (hasCimh && hasSupplier) return choices.value[lineId] ?? null
-  return hasCimh ? 'CIMH' : hasSupplier ? 'SUPPLIER' : null
-}
-const total = computed(() => {
-  const parts = table.value.rows.map(({ line, cimh, supplier }) => {
-    const c = chosen(line.lineId, !!cimh, !!supplier)
-    return c === 'CIMH' ? cimh?.total : c === 'SUPPLIER' ? supplier?.total : null
-  })
-  return addCents(...parts, props.request.adminFee)
-})
-const complete = computed(() =>
-  table.value.rows.every(({ line, cimh, supplier }) => chosen(line.lineId, !!cimh, !!supplier) !== null),
-)
+const sourceNote = (x: PricedLine) =>
+  x.converted ? `Supplier quote: ${formatMoney(x.converted.unitPrice, x.converted.currency)} each at ${x.converted.rate} BBD per USD` : ''
 const expires = computed(() => props.request.quoteExpiresAt)
-defineExpose({ total, complete })
-
-/** Read-only: the option the customer chose for each line (a line offered one way uses that way). */
-const marks = computed<Record<string, LineChoice | null>>(() => {
-  const out: Record<string, LineChoice | null> = {}
-  if (props.choosable || !props.picked) return out
-  for (const { line, cimh, supplier } of table.value.rows)
-    out[line.lineId] = cimh && supplier ? (props.picked[line.lineId] ?? null) : cimh ? 'CIMH' : supplier ? 'SUPPLIER' : null
-  return out
-})
-const cell = (lineId: string, c: LineChoice) => {
-  const m = marks.value[lineId]
-  return m ? (m === c ? 'on' : 'off') : undefined
-}
-const agreed = computed(() => (!props.choosable && props.picked ? (props.request.agreement?.total ?? null) : null))
-
-function pick(lineId: string, c: LineChoice) {
-  choices.value = { ...choices.value, [lineId]: c }
-}
+const SIGNED = new Set(['ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED'])
+const totalLabel = computed(() =>
+  SIGNED.has(props.request.status) ? 'Agreed total' : props.request.status === 'QUOTED' || props.request.status === 'QUOTING' ? 'Total to sign' : 'Quoted total',
+)
 </script>
 
 <template>
   <div class="quote">
     <!-- Narrow: one card per line -->
-    <ol class="cards" :aria-label="choosable ? 'Choose an option for each item' : 'Quoted items'">
-      <li v-for="{ line, supplier, cimh } in table.rows" :key="line.lineId" class="card">
+    <ol class="cards" aria-label="Quoted items">
+      <li v-for="x in q.rows" :key="x.line.lineId" class="card">
         <div class="card-head">
-          <span class="t-label">{{ line.product.name }}</span>
-          <span class="t-caption muted tnum">Qty {{ line.qty }}</span>
+          <span class="t-label">{{ x.line.product.name }}</span>
+          <strong class="tnum">{{ money(x.total) }}</strong>
         </div>
-        <span v-if="staff && supplier?.supplier" class="t-caption muted">{{ supplier.supplier }}</span>
-        <v-radio-group
-          v-if="choosable && supplier && cimh"
-          :model-value="choices[line.lineId]"
-          hide-details
-          class="tiles"
-          :aria-label="`Option for ${line.product.name}`"
-          @update:model-value="(v: unknown) => pick(line.lineId, v as LineChoice)"
-        >
-          <v-radio value="SUPPLIER" class="tile" :class="{ on: choices[line.lineId] === 'SUPPLIER' }">
-            <template #label>
-              <span class="opt"><span>{{ staff ? 'Supplier' : 'Supplier (ordered for you)' }}</span>
-                <strong class="tnum">{{ money(supplier.total) }}</strong>
-                <span class="t-caption muted tnum">{{ money(supplier.unitPrice) }} each</span></span>
-                <span v-if="sourceNote(supplier)" class="t-caption muted d-block tnum src">{{ sourceNote(supplier) }}</span>
-            </template>
-          </v-radio>
-          <v-radio value="CIMH" class="tile" :class="{ on: choices[line.lineId] === 'CIMH' }">
-            <template #label>
-              <span class="opt"><span>From CIMH stock</span>
-                <strong class="tnum">{{ money(cimh.total) }}</strong>
-                <span class="t-caption muted tnum">{{ money(cimh.unitPrice) }} each</span></span>
-            </template>
-          </v-radio>
-        </v-radio-group>
-        <dl v-else class="opts">
-          <div :class="cell(line.lineId, 'SUPPLIER')">
-            <dt>
-              {{ staff ? 'Supplier' : 'Supplier (ordered for you)' }}
-              <span v-if="marks[line.lineId] === 'SUPPLIER'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
-            </dt>
-            <dd v-if="supplier" class="tnum"><span class="price">{{ money(supplier.total) }}</span> <span class="t-caption muted">({{ money(supplier.unitPrice) }} each)</span><span v-if="sourceNote(supplier)" class="t-caption muted d-block src">{{ sourceNote(supplier) }}</span></dd>
-            <dd v-else class="muted">Not offered</dd>
-          </div>
-          <div :class="cell(line.lineId, 'CIMH')">
-            <dt>
-              From CIMH stock
-              <span v-if="marks[line.lineId] === 'CIMH'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
-            </dt>
-            <dd v-if="cimh" class="tnum"><span class="price">{{ money(cimh.total) }}</span> <span class="t-caption muted">({{ money(cimh.unitPrice) }} each)</span></dd>
-            <dd v-else class="muted">Not in stock</dd>
-          </div>
-        </dl>
+        <div class="card-sub t-caption muted tnum">
+          <span>{{ from(x) }}</span>
+          <span>{{ x.line.qty }} × {{ money(x.unitPrice) }}</span>
+        </div>
+        <span v-if="sourceNote(x)" class="t-caption muted tnum">{{ sourceNote(x) }}</span>
       </li>
     </ol>
     <dl class="card-foot">
-      <div v-if="request.adminFee && request.adminFee !== '0.00'">
+      <div>
+        <dt>Items</dt>
+        <dd class="tnum">{{ money(q.items) }}</dd>
+      </div>
+      <div v-for="s in q.shipping" :key="s.source + s.label">
+        <dt>Estimated shipping, {{ s.label }}</dt>
+        <dd class="tnum">{{ money(s.amount) }}</dd>
+      </div>
+      <div v-if="q.fee">
         <dt>Admin fee</dt>
-        <dd class="tnum">{{ money(request.adminFee) }}</dd>
+        <dd class="tnum">{{ money(q.fee) }}</dd>
       </div>
-      <div v-if="choosable" class="total">
-        <dt>Total for your choices</dt>
-        <dd class="tnum">{{ complete ? money(total) : 'Choose every item' }}</dd>
-      </div>
-      <div v-else-if="agreed" class="total">
-        <dt>Agreement total</dt>
-        <dd class="tnum">{{ money(agreed) }}</dd>
+      <div class="total">
+        <dt>{{ totalLabel }}</dt>
+        <dd class="tnum">{{ money(q.total) }}</dd>
       </div>
     </dl>
 
-    <!-- Wide: comparison table -->
+    <!-- Wide: one table -->
     <v-table density="comfortable" class="wide">
       <thead>
         <tr>
           <th>Item</th>
+          <th>From</th>
           <th class="num">Qty</th>
-          <th class="num">Supplier{{ staff ? '' : ' (ordered for you)' }}</th>
-          <th class="num">From CIMH stock</th>
+          <th class="num">Each</th>
+          <th class="num">Total</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="{ line, supplier, cimh } in table.rows" :key="line.lineId">
+        <tr v-for="x in q.rows" :key="x.line.lineId">
+          <td><span class="t-label">{{ x.line.product.name }}</span></td>
           <td>
-            <span class="t-label">{{ line.product.name }}</span>
-            <span v-if="staff && supplier?.supplier" class="t-caption muted d-block">{{ supplier.supplier }}</span>
+            <span :class="['from', x.source === 'CIMH' ? 'cimh' : 'supplier']">{{ from(x) }}</span>
+            <span v-if="sourceNote(x)" class="t-caption muted d-block tnum">{{ sourceNote(x) }}</span>
           </td>
-          <td class="num tnum">{{ line.qty }}</td>
-          <td class="num" :class="cell(line.lineId, 'SUPPLIER')">
-            <template v-if="supplier">
-              <v-radio-group
-                v-if="choosable && cimh"
-                :model-value="choices[line.lineId]"
-                hide-details
-                density="compact"
-                class="choice"
-                :aria-label="`Option for ${line.product.name}`"
-                @update:model-value="pick(line.lineId, 'SUPPLIER')"
-              >
-                <v-radio value="SUPPLIER" :label="money(supplier.total)" />
-              </v-radio-group>
-              <span v-else class="tnum price">{{ money(supplier.total) }}</span>
-              <span class="t-caption muted d-block tnum">{{ money(supplier.unitPrice) }} each</span>
-              <span v-if="sourceNote(supplier)" class="t-caption muted d-block tnum src">{{ sourceNote(supplier) }}</span>
-              <span v-if="marks[line.lineId] === 'SUPPLIER'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
-            </template>
-            <span v-else class="muted">Not offered</span>
-          </td>
-          <td class="num" :class="cell(line.lineId, 'CIMH')">
-            <template v-if="cimh">
-              <v-radio-group
-                v-if="choosable && supplier"
-                :model-value="choices[line.lineId]"
-                hide-details
-                density="compact"
-                class="choice"
-                @update:model-value="pick(line.lineId, 'CIMH')"
-              >
-                <v-radio value="CIMH" :label="money(cimh.total)" />
-              </v-radio-group>
-              <span v-else class="tnum price">{{ money(cimh.total) }}</span>
-              <span class="t-caption muted d-block tnum">{{ money(cimh.unitPrice) }} each</span>
-              <span v-if="marks[line.lineId] === 'CIMH'" class="chosen"><v-icon :icon="mdiCheck" size="14" />Chosen</span>
-            </template>
-            <span v-else class="muted">Not in stock</span>
-          </td>
+          <td class="num tnum">{{ x.line.qty }}</td>
+          <td class="num tnum">{{ money(x.unitPrice) }}</td>
+          <td class="num tnum price">{{ money(x.total) }}</td>
         </tr>
       </tbody>
       <tfoot>
-        <tr v-if="request.adminFee && request.adminFee !== '0.00'">
-          <td colspan="3">Admin fee</td>
-          <td class="num tnum">{{ money(request.adminFee) }}</td>
+        <tr>
+          <td colspan="4">Items</td>
+          <td class="num tnum">{{ money(q.items) }}</td>
         </tr>
-        <tr v-if="choosable" class="total">
-          <td colspan="3">Total for your choices</td>
-          <td class="num tnum">{{ complete ? money(total) : 'Choose every item' }}</td>
+        <tr v-for="s in q.shipping" :key="s.source + s.label">
+          <td colspan="4">Estimated shipping, {{ s.label }}</td>
+          <td class="num tnum">{{ money(s.amount) }}</td>
         </tr>
-        <tr v-else-if="agreed" class="total">
-          <td colspan="3">Agreement total</td>
-          <td class="num tnum">{{ money(agreed) }}</td>
+        <tr v-if="q.fee">
+          <td colspan="4">Admin fee (once per request)</td>
+          <td class="num tnum">{{ money(q.fee) }}</td>
+        </tr>
+        <tr class="total">
+          <td colspan="4">{{ totalLabel }}</td>
+          <td class="num tnum">{{ money(q.total) }}</td>
         </tr>
       </tfoot>
     </v-table>
     <p class="t-caption muted meta">
-      Quote version {{ table.version }}<template v-if="expires"> · valid until {{ formatDate(expires) }}</template>
+      Quote version {{ q.version }}<template v-if="expires"> · valid until {{ formatDate(expires) }}</template>
       <template v-if="request.cimhQuote?.exchangeRate"> · exchange rate {{ request.cimhQuote.exchangeRate }} BBD per USD</template>
+      <template v-if="!staff"> · shipping amounts are estimates; the total is what CIMH invoices</template>
     </p>
   </div>
 </template>
@@ -221,7 +129,7 @@ function pick(lineId: string, c: LineChoice) {
   .cards {
     display: flex;
     flex-direction: column;
-    gap: var(--sp-3);
+    gap: var(--sp-2);
     list-style: none;
     padding: 0;
     margin: 0;
@@ -234,53 +142,31 @@ function pick(lineId: string, c: LineChoice) {
 .card {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 2px;
   padding: var(--sp-3);
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 8px;
 }
-.card-head {
+.card-head,
+.card-sub {
   display: flex;
   justify-content: space-between;
   gap: var(--sp-2);
   overflow-wrap: anywhere;
 }
-.tiles :deep(.v-selection-control-group) {
-  gap: var(--sp-2);
-}
-.tile {
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 8px;
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) 0;
-}
-.tile.on {
-  border-color: rgb(var(--v-theme-primary));
-  box-shadow: inset 0 0 0 1px rgb(var(--v-theme-primary));
-}
-.tile :deep(.v-label) {
-  opacity: 1;
-  width: 100%;
-}
-.opt {
-  display: flex;
-  flex-direction: column;
-  padding: var(--sp-1) 0;
-}
-.opts,
 .card-foot {
   margin: 0;
 }
-.opts > div,
 .card-foot > div {
   display: flex;
   justify-content: space-between;
   gap: var(--sp-3);
   padding: 2px 0;
 }
-.opts dd,
 .card-foot dd {
   margin: 0;
   text-align: right;
+  white-space: nowrap; /* "BBD 20.00" never breaks after the currency */
 }
 .card-foot .total {
   font-weight: 600;
@@ -291,36 +177,16 @@ function pick(lineId: string, c: LineChoice) {
 .num {
   text-align: right;
 }
-.choice {
-  display: inline-flex;
-  justify-content: flex-end;
-}
 .total td {
   font-weight: 600;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
 }
-/* Read-only after choosing: the chosen option carries the weight and a "Chosen" mark; the other steps back. */
-.on .price {
+.price {
   font-weight: 600;
 }
-.off,
-.off .price {
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
-}
-.off .price {
-  text-decoration: line-through;
-}
-.chosen {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  font-size: 12px;
-  font-weight: 600;
-  color: rgb(var(--v-theme-primary));
-  white-space: nowrap;
-}
-td .chosen {
-  display: flex;
-  justify-content: flex-end;
+.from {
+  display: inline-block;
+  font-size: 13px;
 }
 .meta {
   margin-top: var(--sp-2);

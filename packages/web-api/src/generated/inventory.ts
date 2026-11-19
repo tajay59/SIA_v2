@@ -841,6 +841,8 @@ export interface paths {
                             productId: string;
                             qty: number;
                         }[];
+                        /** @description Units already reserved for this request count as available (a revised quote re-checks the stock it holds) */
+                        orderId?: string | null;
                     };
                 };
             };

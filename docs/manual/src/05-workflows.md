@@ -19,7 +19,7 @@ Account statuses: see [Chapter 2.2](02-users-roles-apps.md#22-account-life-cycle
 ## 5.2 Submitting a request
 
 1. A customer (an active member-organisation `user`) adds items to the cart. Pro Bono items are capped at their per-request maximum.
-2. At submission the customer chooses **BBD or USD** and a shipping address.
+2. At submission the customer gives an invoice address and a delivery address; every quote is in **BBD**.
 3. order-svc checks the cart with catalog-svc and saves a copy of each product's details on the request.
 4. A cart with **both** paid and Pro Bono items is **split into two requests**.
 5. `order.submitted` is published, and staff and the customer are emailed.
@@ -31,20 +31,18 @@ Account statuses: see [Chapter 2.2](02-users-roles-apps.md#22-account-life-cycle
 | Step | Who | What happens | Status |
 |---|---|---|---|
 | 1 | Staff | Start quoting. order-svc asks inventory-svc whether the **full** quantity of each line is in stock | `QUOTING` |
-| 2 | System | Lines fully in stock get a **CIMH option** priced at catalogue cost + admin fee (staff enter the exchange rate if the request is in USD) | |
-| 3 | Staff | Upload supplier quote PDFs and enter supplier amounts; send the quote (expires in 30 days) | `QUOTED` |
-| 4 | System | Generates the CIMH quote PDF; emails the customer; sends a reminder 3 days before expiry | |
-| 5 | Customer | Chooses **CIMH or SUPPLIER for each line** that has both (or declines with a reason) | `AWAITING_AGREEMENT` / `DECLINED` → `CANCELLED` |
-| 6 | System | Generates the **payment agreement PDF** with the total of the chosen quotes | |
-| 7 | Customer | **Downloads the agreement, signs it, uploads the signed copy** → accepted (commitment to pay). They can still change choices before uploading | `ACCEPTED` |
-| 8 | System | Reserves the CIMH-chosen units. If stock has run out, staff must requote that line | |
-| 9 | Staff | Checks the signature. If it's not acceptable, rejects it with a reason and the customer uploads again | `AWAITING_AGREEMENT` |
-| 10 | Staff | Confirms the agreement is verified and records purchase-order numbers for each supplier | `PURCHASING` |
-| 11 | Staff | Picks the **CIMH-stock lines only**. Supplier items are shipped **direct** to the customer and never enter stock | |
-| 12 | Staff | Records carrier (FedEx, DHL, Hand delivered) and tracking number; the customer may be emailed | `SHIPPED` |
-| 13 | Staff | Marks delivered; the invoice is generated | `DELIVERED` |
+| 2 | Staff | Decide where **each line** comes from: lines fully in stock start in **CIMH stock** (priced at catalogue cost); the rest from a supplier whose quote staff upload (customers see it). Enter the **estimated shipping** per supplier and for CIMH stock | |
+| 3 | Staff | Send the quote (expires in 30 days). Stock is re-checked; a line no longer fully in stock must go to a supplier | `QUOTED` |
+| 4 | System | Generates the **quote agreement** PDF (every item, source, price, estimated shipping, admin fee, total, signature line) and the CIMH stock quote; **reserves the CIMH stock units**; emails the customer; reminder 3 days before expiry | |
+| 5 | Customer | **Views the quote, downloads the agreement, signs it, uploads the signed copy** → accepted (commitment to pay). Or **cancels the request** with a reason (stock released) | `ACCEPTED` / `DECLINED` → `CANCELLED` |
+| 6 | Staff | A revised quote replaces the agreement; the customer signs the new one | `QUOTED` |
+| 7 | Staff | Checks the signature. If it's not acceptable, rejects it with a reason and the customer uploads again (stock stays held, ≥ 7 days) | `QUOTED` |
+| 8 | Staff | Confirms the agreement is verified and records purchase-order numbers for each supplier | `PURCHASING` |
+| 9 | Staff | Picks the **CIMH-stock lines only**. Supplier items are shipped **direct** to the customer and never enter stock | |
+| 10 | Staff | Records carrier (FedEx, DHL, Hand delivered) and tracking number; the customer may be emailed | `SHIPPED` |
+| 11 | Staff | Marks delivered; the invoice is generated | `DELIVERED` |
 
-Acceptance records **who, when, from which IP, the choice for each line and the signed agreement file**. Only the latest quote version can be accepted; earlier versions are kept.
+Acceptance records **who, when, from which IP and the signed agreement file**. Only a copy signed for the latest quote version is accepted; earlier versions are kept. The signed total is what CIMH invoices.
 
 ### Paid request status flow
 

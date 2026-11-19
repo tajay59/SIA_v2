@@ -200,7 +200,7 @@ watch(issueMode, () => {
 const order = ref<OrderRequest | null>(null)
 const orderError = ref('')
 const pickable = computed(() =>
-  (order.value?.lines ?? []).filter((l) => order.value!.type === 'PROBONO' || l.choice === 'CIMH'),
+  (order.value?.lines ?? []).filter((l) => order.value!.type === 'PROBONO' || l.source === 'CIMH'),
 )
 async function openOrder(code: string) {
   orderError.value = ''

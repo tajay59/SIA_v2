@@ -36,7 +36,6 @@ ENUMS = {
         "SUBMITTED",
         "QUOTING",
         "QUOTED",
-        "AWAITING_AGREEMENT",
         "ACCEPTED",
         "DECLINED",
         "PURCHASING",

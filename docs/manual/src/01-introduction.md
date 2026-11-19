@@ -16,7 +16,7 @@ The CIMH Stores Platform lets **member-state meteorological and hydrological org
 
 There is **no checkout or payment**. Customers submit **order requests**:
 
-- **Paid items:** staff collect quotes from suppliers and send them to the customer. If CIMH already holds the **full requested quantity** of an item, the customer also gets a **CIMH stock quote** (catalogue cost plus admin fee) and chooses, item by item, CIMH stock or supplier. The customer accepts (committing to pay) or declines. After acceptance, staff purchase, ship and deliver.
+- **Paid items** ("view and sign"): items CIMH holds in full come from **CIMH stock** (a generated CIMH stock quote, catalogue cost); for the rest staff collect quotes from suppliers and upload them to the request. Staff send one quote with every price, the estimated shipping and the total, and an **agreement PDF** to sign. The customer signs and uploads it (committing to pay), or cancels. Then staff order from the suppliers, who ship straight to the customer, and ship the stock items; each shipment's tracking shows on the request.
 - **Pro Bono items:** free items supplied from CIMH stock. There is no quote step: staff approve, pick, ship and deliver. Staff can limit the quantity of each Pro Bono item per request.
 - Quotes are in **BBD or USD** (one currency per request, never both) and are valid for **30 days**.
 - Carriers are **FedEx, DHL or hand delivery**. Staff enter the tracking number by hand; there is no carrier integration.

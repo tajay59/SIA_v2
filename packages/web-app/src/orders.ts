@@ -18,7 +18,7 @@ export type RequestSummary = S['RequestSummary']
 export type OrderRequest = S['Request']
 export type RequestLine = S['Line']
 export type RequestStatus = S['RequestStatus']
-export type LineChoice = S['LineChoice']
+export type LineSource = S['LineSource']
 export type Carrier = S['Carrier']
 export type FileRef = S['FileRef']
 
@@ -47,8 +47,7 @@ export const FILE_KIND_LABELS: Record<FileRef['kind'], string> = {
 
 /** What the customer has to do now, if anything (list badge on S-10). */
 export function customerActionNeeded(r: Pick<RequestSummary, 'status'>): string | null {
-  if (r.status === 'QUOTED') return 'Quote ready'
-  if (r.status === 'AWAITING_AGREEMENT') return 'Agreement to sign'
+  if (r.status === 'QUOTED') return 'Quote to sign'
   return null
 }
 
@@ -83,7 +82,7 @@ export function expiryNote(iso: string | null | undefined): { days: number; text
 export function statusSteps(type: OrderRequest['type']): RequestStatus[] {
   return type === 'PROBONO'
     ? ['SUBMITTED', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED']
-    : ['SUBMITTED', 'QUOTING', 'QUOTED', 'AWAITING_AGREEMENT', 'ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED']
+    : ['SUBMITTED', 'QUOTING', 'QUOTED', 'ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED']
 }
 
 export const isClosed = (s: RequestStatus) => s === 'CANCELLED' || s === 'REJECTED' || s === 'DECLINED'
@@ -93,7 +92,6 @@ export async function getRequest(id: string): Promise<OrderRequest> {
 }
 
 type ActionPath =
-  | '/requests/{requestId}/agreement'
   | '/requests/{requestId}/accept'
   | '/requests/{requestId}/decline'
   | '/requests/{requestId}/cancel'
@@ -138,27 +136,81 @@ export async function uploadRequestFile(requestId: string, kind: 'signed_agreeme
 }
 
 export const fileUrl = (id: string) => `${BASE.documents}/files/${encodeURIComponent(id)}`
+/** The agreement a Send quote would email, drawn from the saved draft and marked as a preview (staff; never stored). */
+export const agreementPreviewUrl = (requestId: string) => `${BASE.documents}/requests/${encodeURIComponent(requestId)}/agreement-preview`
 
-/** Lines priced from CIMH stock vs supplier, side by side (latest quote version only). */
-export function quoteRows(r: OrderRequest) {
-  const qv = Math.max(0, ...(r.quotes ?? []).map((q) => q.version))
-  // source: the supplier's own USD unit price and the rate, when staff converted a USD supplier quote to BBD.
-  type SupplierCell = { unitPrice: string; total: string; supplier?: string; source: { unitPrice: string; currency: 'USD' | 'BBD'; rate: string } | null }
-  const supplier = new Map<string, SupplierCell>()
+/** The supplier's own USD unit price and the rate, when staff converted a USD supplier quote to BBD. */
+export interface PriceSource { unitPrice: string; currency: 'USD' | 'BBD'; rate: string }
+export interface PricedLine {
+  line: RequestLine
+  source: LineSource | null
+  /** Supplier name for SUPPLIER lines (customers see it: they hold the supplier's own quote). */
+  supplier: string | null
+  unitPrice: string | null
+  total: string | null
+  converted: PriceSource | null
+}
+export interface PricedQuote {
+  version: number
+  rows: PricedLine[]
+  /** Estimated shipping per source: CIMH stock first, then each supplier. */
+  shipping: { source: LineSource; label: string; amount: string }[]
+  items: string
+  fee: string | null
+  /** What the customer signs for (agreement total); the sum of the parts when no agreement is there yet. */
+  total: string
+}
+
+/**
+ * "View and sign" (2026-11-17): the latest quote as the customer signs it. Staff fixed the source of every line,
+ * so each line has one price; estimated shipping per source; the admin fee once; the total.
+ */
+export function pricedQuote(r: OrderRequest): PricedQuote {
+  // The latest version staff sent (supplier quotes and the CIMH stock quote carry it).
+  const qv = Math.max(0, ...(r.quotes ?? []).map((q) => q.version), r.cimhQuote?.version ?? 0)
+  const supplier = new Map<string, { unitPrice: string; total: string; supplier: string | null; converted: PriceSource | null }>()
+  const shipping: PricedQuote['shipping'] = []
   for (const q of r.quotes ?? []) {
-    if (q.version !== qv) continue
+    if (q.version !== qv || !q.lines.length) continue
     for (const l of q.lines) {
-      const source = q.sourceCurrency && l.sourceUnitPrice && q.exchangeRate
+      const converted = q.sourceCurrency && l.sourceUnitPrice && q.exchangeRate
         ? { unitPrice: l.sourceUnitPrice, currency: q.sourceCurrency, rate: q.exchangeRate } : null // prettier-ignore
-      supplier.set(l.lineId, { unitPrice: l.unitPrice, total: l.total, supplier: q.supplier, source })
+      supplier.set(l.lineId, { unitPrice: l.unitPrice, total: l.total, supplier: q.supplier ?? null, converted })
     }
+    if (q.shippingEstimate != null) shipping.push({ source: 'SUPPLIER', label: q.supplier ?? 'Supplier', amount: q.shippingEstimate })
   }
   const cimh = new Map<string, { unitPrice: string; total: string }>()
-  if (r.cimhQuote && r.cimhQuote.version === qv) for (const l of r.cimhQuote.lines) cimh.set(l.lineId, l)
-  return {
-    version: qv,
-    rows: r.lines.map((line) => ({ line, supplier: supplier.get(line.lineId) ?? null, cimh: cimh.get(line.lineId) ?? null })),
+  if (r.cimhQuote && r.cimhQuote.version === qv) {
+    for (const l of r.cimhQuote.lines) cimh.set(l.lineId, l)
+    if (r.cimhQuote.lines.length && r.cimhQuote.shippingEstimate != null)
+      shipping.unshift({ source: 'CIMH', label: 'CIMH stock', amount: r.cimhQuote.shippingEstimate })
   }
+  const rows: PricedLine[] = r.lines.map((line) => {
+    const source: LineSource | null = line.source ?? (cimh.has(line.lineId) ? 'CIMH' : supplier.has(line.lineId) ? 'SUPPLIER' : null)
+    if (source === 'CIMH') {
+      const p = cimh.get(line.lineId)
+      return { line, source, supplier: null, unitPrice: p?.unitPrice ?? null, total: p?.total ?? null, converted: null }
+    }
+    const p = supplier.get(line.lineId)
+    return {
+      line,
+      source,
+      supplier: line.supplier ?? p?.supplier ?? null,
+      unitPrice: p?.unitPrice ?? null,
+      total: p?.total ?? null,
+      converted: p?.converted ?? null,
+    }
+  })
+  const items = addCents(...rows.map((x) => x.total))
+  const fee = r.adminFee && Number(r.adminFee) > 0 ? r.adminFee : null
+  const signed = r.agreement && r.agreement.quoteVersion === qv ? r.agreement.total : undefined
+  return { version: qv, rows, shipping, items, fee, total: signed ?? addCents(items, ...shipping.map((s) => s.amount), fee) }
+}
+
+/** The agreement of the current quote version, if staff have sent one (an older version's is void). */
+export function currentAgreement(r: OrderRequest) {
+  const ag = r.agreement
+  return ag && ag.quoteVersion === pricedQuote(r).version ? ag : null
 }
 
 export function addCents(...amounts: (string | null | undefined)[]): string {

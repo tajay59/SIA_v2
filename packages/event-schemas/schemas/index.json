@@ -7,7 +7,6 @@
   "image.processed": "image.processed.v1.json",
   "order.accepted": "order.accepted.v1.json",
   "order.agreement_rejected": "order.agreement_rejected.v1.json",
-  "order.agreement_requested": "order.agreement_requested.v1.json",
   "order.cancelled": "order.cancelled.v1.json",
   "order.declined": "order.declined.v1.json",
   "order.delivered": "order.delivered.v1.json",

@@ -101,6 +101,18 @@ async def delete(fileId: str, body: ReasonIn, request: Request, me: Principal = 
     return Response(status_code=204)
 
 
+@router.get("/requests/{requestId}/agreement-preview", tags=["files"])
+async def agreement_preview(requestId: str, request: Request, me: Principal = Depends(require_staff)) -> Response:
+    data = await svc(request).agreement_preview(me, requestId)
+    name = f"agreement-preview-{requestId}.pdf".encode("ascii", "replace").decode().replace('"', "_")
+    headers = {
+        "Content-Disposition": f'inline; filename="{name}"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=data, media_type="application/pdf", headers=headers)
+
+
 @router.post("/internal/labels", status_code=201, tags=["internal"])
 async def labels(body: LabelsIn, request: Request, me: Principal = Depends(require_inventory_svc)) -> dict[str, Any]:
     return await svc(request).labels(me, body.productId, body.productName, body.barcodes, cid(request))

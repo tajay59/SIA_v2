@@ -20,7 +20,7 @@ paths:
   /files:
     post:
       tags: [files]
-      summary: Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while AWAITING_AGREEMENT)
+      summary: Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED; stamped with the current quote version)
       description: PDF, JPEG, PNG, WebP; type checked from content (magic bytes); ≤ 20 MB; images re-encoded.
       parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
       requestBody:
@@ -84,6 +84,31 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
+  /requests/{requestId}/agreement-preview:
+    parameters: [ { name: requestId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } } ]
+    get:
+      tags: [files]
+      summary: Preview the agreement a Send quote would email (staff, admin)
+      description: |
+        Renders the quote agreement from the request's saved quote draft, priced as `send-quote` would price it
+        (order-svc `GET /internal/requests/{id}/quote-preview`), marked "Preview · not sent" on every page. Nothing is
+        stored, attached or published; each call renders afresh. order-svc's 409/422 are passed on unchanged (they say
+        why the draft can't be sent yet).
+      responses:
+        '200':
+          description: The agreement preview
+          headers:
+            Content-Disposition: { schema: { type: string } }
+            Cache-Control: { schema: { type: string, const: 'private, no-store' } }
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+
   /internal/labels:
     post:
       tags: [internal]
@@ -131,3 +156,4 @@ components:
         sha256: { type: string }
         uploadedBy: { $ref: './common.yaml#/components/schemas/Actor' }
         uploadedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
+        quoteVersion: { type: [integer, 'null'], description: 'Quote version of a generated agreement / CIMH quote, or the one a signed agreement was uploaded for' }

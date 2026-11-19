@@ -25,6 +25,14 @@ def test_cart_is_created_empty_and_holds_snapshots(ctx: Ctx) -> None:
     assert len(ctx.client.get(ctx.url("/cart"), headers=USER).json()["lines"]) == 1
 
 
+def test_changing_one_line_leaves_the_others_unmarked(ctx: Ctx) -> None:
+    """Only the changed product is looked up on a change; the other lines must not read as no longer available."""
+    ctx.cart_add("MET1")
+    lines = {ln["productId"]: ln for ln in ctx.cart_add("MET2").json()["lines"]}
+    assert lines["MET2"]["available"] is True
+    assert "available" not in lines["MET1"]
+
+
 def test_one_cart_per_user(ctx: Ctx) -> None:
     ctx.cart_add("MET1")
     ctx.client.get(ctx.url("/cart"), headers=USER)

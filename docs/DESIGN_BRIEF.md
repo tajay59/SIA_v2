@@ -87,7 +87,7 @@ All text and component pairs below were **contrast-checked** (WCAG ratio in brac
 |---|---|---|---|
 | **Neutral** (grey) | `CART`, `SUBMITTED` | `PENDING_VERIFICATION` | stowed (available) |
 | **Info** (blue) | `QUOTING`, `QUOTED`, `APPROVED`, `PURCHASING`, `PICKING`, `SHIPPED` | — | reserved |
-| **Warning** (amber), *needs action* | `AWAITING_AGREEMENT` | `PENDING_APPROVAL` | assigned |
+| **Warning** (amber), *needs action* | (none since 2026-11-17: `AWAITING_AGREEMENT` removed; `QUOTED` stays info) | `PENDING_APPROVAL` | assigned |
 | **Success** (green) | `ACCEPTED`, `DELIVERED` | `ACTIVE` | picked |
 | **Error** (red) | `DECLINED`, `REJECTED`, `CANCELLED` | `REJECTED`, `SUSPENDED`, `EXPIRED` | — |
 
@@ -182,7 +182,7 @@ All components live in `packages/web-ui` (Vue, built on Vuetify 4) with matching
 | Variant | Style | Use |
 |---|---|---|
 | **Primary** | Filled `primary`, `on-primary` text, `r-md`, height 40 (SIA) / 44 (SHOP), label 14/600 | **One per view**: Submit request, Accept, Send quote, Ship |
-| **Secondary** | Outlined, `hairline-strong` border, `ink` text | Alternatives: Cancel, Download, Change choices |
+| **Secondary** | Outlined, `hairline-strong` border, `ink` text | Alternatives: Cancel, Download, Back |
 | **Tertiary** | Text-only `primary` | Inline links, "View all" |
 | **Danger** | Outlined `error` (filled only inside the confirm dialog) | Decline, Reject, Cancel request, Suspend |
 
@@ -218,7 +218,7 @@ States: hover → `primary-hover`; press → `primary-press`; disabled → 38% o
 |---|---|---|
 | **Status timeline** | S-11, A-03 | Vertical list. Each step has a dot (status tone), the status word, date/time, the actor, and the reason if any. Current step bold; future steps hollow and muted |
 | **Quote comparison** | S-11, S-12 | Table: line · qty · **CIMH stock** column · **Supplier** column. Per line, a radio in each available option (CIMH shows a "from CIMH stock" tag). Totals row sticky at the bottom with the currency code; exchange rate shown in a caption when USD |
-| **Agreement stepper** | S-12 | 3-step horizontal stepper (Choose → Download and sign → Upload). The current step is expanded; completed steps show a ✓ and the chosen summary |
+| **Task checklist** | S-12 | Ruled list of three tasks (Check the quote · Get it signed · Send the signed copy), one open at a time on a primary wash, any reachable. Each task has a node (to do = outline ring with its number, open = primary ring + halo, done = primary fill + ✓) on one wire down the node column that fills as tasks are done. Ticks are kept in the browser, so a return opens the first task not done. Wide screens: the open task's document beside the list (sticky), one head per document, on a desk ground |
 | **Request header** | S-11, A-03 | Id (mono, `h2`) + type badge + status chip + key dates; the primary action on the right (from `allowedActions`) |
 | **Dashboard counter** | A-01 | Card with label, big number (`h1`, `tnum`) and tone border-left 4 px when attention is needed. The whole card is clickable |
 | **Approval card** | A-16 | Name, email (domain highlighted), organisation text, suggested organisation match, waiting time; Approve (primary) and Deny (danger) buttons |
@@ -242,11 +242,11 @@ States: hover → `primary-hover`; press → `primary-press`; disabled → 38% o
 | **S-03 Product** | **Legacy InventoryItem structure**: left (3/4) a vertical thumbnail strip beside a large photo with previous/next arrows; right (1/4) one sticky card: name (`h1`), make/model, availability + Pro Bono badge with its limit, "Product description", "Details" (text + specs), "N in each pack", quantity stepper and a full-width **Add to request**. Phones: name above the photos. No price or serials |
 | **S-07 / S-08 Cart → Submit** | Single column, max 720 px. Paid and Pro Bono sections separated with headings, and a note that they become two requests. Submit page: address cards (selectable), currency segmented control (BBD/USD), notes, review summary, primary "Submit request" |
 | **S-11 Request (customer)** | Request header; two columns: left = quote comparison (when quoted) / lines, documents; right = status timeline + shipping/tracking card. An "action needed" banner at the top when a quote or agreement waits |
-| **S-12 Choose and sign** | Agreement stepper; step 1 = quote comparison with radios + live total; step 2 = agreement card with Download (secondary) and the instruction "Sign every page"; step 3 = upload drop zone + primary **Accept and commit to pay** |
+| **S-12 View and sign** | Navy band (title, **Total to sign**, valid until) over the task checklist; task 1 = the read-only quote grouped by source (items + estimated shipping per source, admin fee, total) with the supplier and CIMH quote files beside it; task 2 = what the agreement commits to, who signs, **Download agreement**, the agreement beside it; task 3 = a drop slot that is also the file picker, the chosen copy shown beside it, primary **Send signed agreement**; **Cancel request…** (text, error colour) at the list foot. Nothing to choose |
 | **A-01 Dashboard** | **Legacy SIA Home structure**: statement band on the gear line-art (greeting + "The CIMH Instrumentation and Equipment Spares"), Radar / Hydro-Met spares cards into Products, "What are you looking for today?" with a product search; then counters (accounts now; requests and quotes with P5) |
 | **A-05 / A-07 Products** | **Legacy SIA ProductsView / ProductPage**: list with a grid/list view toggle (remembered per device); product page = photos and a description card (serials, make/model, text) left, an "Info" card right (stock, low-stock level, cost, units per pack, department, shown to customers, id, Deactivate), then tabs Details (edit), Images, History (admins) |
 | **A-02 Queue** | Filter bar (chips for status, multi-select) + table §8.3; saved filter presets: "New", "To quote", "Agreements to verify", "To ship" |
-| **A-03 Request (staff)** | Request header; main column: lines table (with CIMH availability, choice and reservation columns), documents; side column: **action panel** (only allowed actions, primary first), timeline, customer and organisation card |
+| **A-03 Request (staff)** | Request header; main column: lines table (with CIMH availability, From (CIMH stock or the supplier) and reservation columns), documents; side column: **action panel** (only allowed actions, primary first), timeline, customer and organisation card |
 | **A-04 Quote builder** | Full-width table: line · qty · CIMH option (auto-priced, a toggle to offer it) · one price column per supplier (+ add supplier) with PDF upload in the column header. Sticky footer: totals per option, exchange-rate field (USD), autosave state, primary "Send quote" |
 | **A-09 / A-10 / M-04 / M-07 Scanning** | One big scan input at the top, the current context (shelf/request) as a card, and a running list of results (newest on top). Success/error is shown by colour **and** icon **and** sound |
 | **A-16 Approvals** | Approval cards in a single column (oldest first), a bulk-select bar sticky at the top when items are selected |

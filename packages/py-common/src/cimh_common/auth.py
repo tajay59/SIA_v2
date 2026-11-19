@@ -181,21 +181,53 @@ class TokenVerifier:
         )
 
 
-def extract_token(request: Request) -> tuple[str | None, bool]:
-    """Return (token, from_cookie). Bearer wins over cookie."""
+MAX_COOKIE_CANDIDATES = 4
+
+
+def cookie_values(request: Request, name: str) -> list[str]:
+    """Every non-empty value of cookie `name`, in the order the browser sent them.
+
+    `request.cookies` keeps only the LAST value of a repeated name. A browser holds one cookie per (name, domain,
+    path) and sends the longest path first, so a stray `access_token` / `csrf_token` / `refresh_token` set by another
+    app on the same host (every localhost port shares one cookie jar) or on a parent domain, on a shorter path than
+    ours ("/" vs "/api"), came last and replaced ours: sign-in and refresh succeeded, then every call was 401
+    "Malformed token" (dev, 2026-11-18). Ours is the most specific, so it comes first here.
+    """
+    out: list[str] = []
+    for chunk in request.headers.get("cookie", "").split(";"):
+        key, sep, value = chunk.partition("=")
+        value = value.strip()
+        if sep and key.strip() == name and value:
+            out.append(value)
+    return out
+
+
+def extract_tokens(request: Request) -> tuple[list[str], bool]:
+    """Return (candidate tokens, from_cookie). Bearer wins over cookies; cookies: every access_token, ours first."""
     auth = request.headers.get("authorization", "")
     if auth.lower().startswith("bearer "):
-        return auth[7:].strip() or None, False
-    cookie = request.cookies.get(ACCESS_COOKIE)
-    return (cookie or None), True
+        token = auth[7:].strip()
+        return ([token] if token else []), False
+    return cookie_values(request, ACCESS_COOKIE)[:MAX_COOKIE_CANDIDATES], True
+
+
+def extract_token(request: Request) -> tuple[str | None, bool]:
+    """Return (token, from_cookie): the first candidate of `extract_tokens`."""
+    tokens, from_cookie = extract_tokens(request)
+    return (tokens[0] if tokens else None), from_cookie
 
 
 def check_csrf(request: Request) -> None:
-    """Double-submit check for cookie-authenticated writes."""
+    """Double-submit check for cookie-authenticated writes.
+
+    The header must equal one of the csrf_token cookies: the web client echoes the first it reads, which is not
+    always the one `request.cookies` keeps when a stray cookie of the same name exists (see `cookie_values`). A
+    cookie the attacker could plant could already be made to match, so this is no weaker than one value.
+    """
     if request.method not in UNSAFE_METHODS:
         return
-    cookie = request.cookies.get(CSRF_COOKIE, "")
-    header = request.headers.get(CSRF_HEADER, "")
+    header = request.headers.get(CSRF_HEADER, "").encode()
+    cookies = cookie_values(request, CSRF_COOKIE)[:MAX_COOKIE_CANDIDATES]
     # Bytes: compare_digest raises TypeError on non-ASCII str, which would be a 500 instead of a 403.
-    if not cookie or not header or not hmac.compare_digest(cookie.encode(), header.encode()):
+    if not header or not any(hmac.compare_digest(c.encode(), header) for c in cookies):
         raise ProblemError(403, "CSRF_FAILED", "Missing or invalid CSRF token")

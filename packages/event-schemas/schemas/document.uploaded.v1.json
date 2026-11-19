@@ -80,6 +80,13 @@
                 "labels"
               ]
             },
+            "quoteVersion": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "description": "Quote version of a generated agreement / CIMH quote, or of the quote a signed agreement was uploaded for"
+            },
             "name": {
               "type": "string"
             },

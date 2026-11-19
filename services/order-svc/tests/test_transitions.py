@@ -25,12 +25,11 @@ from transition_cases import check, load, statuses
 
 TABLES = {d.PAID: load("request_paid"), d.PROBONO: load("request_probono")}
 REASON = {"reason": "Generated test"}
-# action -> (method, path, body). `agreement`/`accept` bodies are schema-valid; legality is checked first.
+# action -> (method, path, body). The `accept` body is schema-valid; legality is checked first.
 ACTIONS: dict[str, tuple[str, str, Any]] = {
     "start-quoting": ("POST", "start-quoting", None),
     "quote-draft": ("PUT", "quote-draft", {"supplierQuotes": []}),
     "send-quote": ("POST", "send-quote", None),
-    "agreement": ("POST", "agreement", {"quoteVersion": 1, "choices": []}),
     "accept": ("POST", "accept", {"quoteVersion": 1, "signedAgreementFileId": "FILx"}),
     "decline": ("POST", "decline", REASON),
     "cancel": ("POST", "cancel", REASON),
@@ -42,11 +41,10 @@ ACTIONS: dict[str, tuple[str, str, Any]] = {
     "ship": ("POST", "ship", {"carrier": "HAND", "date": "2026-11-09"}),
     "deliver": ("POST", "deliver", None),
 }
-# Where each action is legal (beyond the table): quote drafts while quoting or revising; new choices
-# while awaiting the agreement; picks while purchasing (PAID) or approved/picking (Pro Bono).
+# Where each action is legal (beyond the table): quote drafts while quoting or revising; picks while
+# purchasing (PAID) or approved/picking (Pro Bono).
 EXTRA = {
     (d.PAID, "quote-draft"): {"QUOTING", "QUOTED"},
-    (d.PAID, "agreement"): {"AWAITING_AGREEMENT"},
     (d.PAID, "pick"): {"PURCHASING"},
     (d.PROBONO, "pick"): {"APPROVED", "PICKING"},
 }
@@ -54,7 +52,6 @@ PAID_ONLY = {
     "start-quoting",
     "quote-draft",
     "send-quote",
-    "agreement",
     "accept",
     "decline",
     "reject-agreement",

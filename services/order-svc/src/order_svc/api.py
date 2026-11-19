@@ -75,16 +75,6 @@ class ReasonIn(Strict):
     reason: str = Field(min_length=3, max_length=500)
 
 
-class Choice(Strict):
-    lineId: Id
-    choice: Literal["CIMH", "SUPPLIER"]
-
-
-class AgreementIn(Strict):
-    quoteVersion: int = Field(ge=1, le=10_000)
-    choices: list[Choice] = Field(max_length=200)
-
-
 class AcceptIn(Strict):
     quoteVersion: int = Field(ge=1, le=10_000)
     signedAgreementFileId: Id
@@ -101,11 +91,13 @@ class SupplierQuoteIn(Strict):
     exchangeRate: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,6})?$")  # BBD per 1 USD
     lines: list[PriceLine] = Field(max_length=200)
     fileIds: list[Id] = Field(max_length=20)
+    shippingEstimate: MoneyStr | None = None  # supplier's currency; required at send when the quote has lines
 
 
 class CimhIn(Strict):
     lineIds: list[Id] = Field(default_factory=list, max_length=200)
     exchangeRate: str | None = Field(default=None, pattern=r"^\d+(\.\d{1,6})?$")
+    shippingEstimate: MoneyStr | None = None  # BBD; required at send when lineIds is not empty
 
 
 class DraftIn(Strict):
@@ -162,6 +154,7 @@ class FileIn(Strict):
     name: str = Field(min_length=1, max_length=255)
     mime: str = Field(min_length=1, max_length=100)
     size: int = Field(ge=0, le=50 * 1024 * 1024)
+    quoteVersion: int | None = Field(default=None, ge=1, le=10_000)
     uploadedAt: str | None = None
     url: str | None = None
     sha256: str | None = None
@@ -288,18 +281,6 @@ async def get_request(requestId: str, request: Request, me: Principal = Depends(
 
 
 # ---------------------------------------------------------------- customer actions
-
-
-@router.post("/requests/{requestId}/agreement", tags=["customer-actions"])
-async def agreement(
-    requestId: str,
-    body: AgreementIn,
-    request: Request,
-    v: IfMatch = None,
-    me: Principal = Depends(require_customer_or_admin),
-) -> JSONResponse:
-    out = await svc(request).agreement(me, requestId, if_match(v), body.model_dump(), cid(request))
-    return with_etag(out)
 
 
 @router.post("/requests/{requestId}/accept", tags=["customer-actions"])
@@ -442,6 +423,13 @@ async def internal_get(
     requestId: str, request: Request, me: Principal = Depends(require_document_svc)
 ) -> dict[str, Any]:
     return await svc(request).internal_get(requestId)
+
+
+@router.get("/internal/requests/{requestId}/quote-preview", tags=["internal"])
+async def internal_quote_preview(
+    requestId: str, request: Request, me: Principal = Depends(require_document_svc)
+) -> dict[str, Any]:
+    return await svc(request).quote_preview(requestId)
 
 
 @router.post("/internal/requests/{requestId}/files", status_code=204, tags=["internal"])

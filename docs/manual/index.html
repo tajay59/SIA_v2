@@ -409,7 +409,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 <h2 id="12-how-ordering-works-no-online-payment">1.2 How ordering works (no online payment)</h2>
 <p>There is <strong>no checkout or payment</strong>. Customers submit <strong>order requests</strong>:</p>
 <ul>
-<li><strong>Paid items:</strong> staff collect quotes from suppliers and send them to the customer. If CIMH already holds the <strong>full requested quantity</strong> of an item, the customer also gets a <strong>CIMH stock quote</strong> (catalogue cost plus admin fee) and chooses, item by item, CIMH stock or supplier. The customer accepts (committing to pay) or declines. After acceptance, staff purchase, ship and deliver.</li>
+<li><strong>Paid items</strong> ("view and sign"): items CIMH holds in full come from <strong>CIMH stock</strong> (a generated CIMH stock quote, catalogue cost); for the rest staff collect quotes from suppliers and upload them to the request. Staff send one quote with every price, the estimated shipping and the total, and an <strong>agreement PDF</strong> to sign. The customer signs and uploads it (committing to pay), or cancels. Then staff order from the suppliers, who ship straight to the customer, and ship the stock items; each shipment's tracking shows on the request.</li>
 <li><strong>Pro Bono items:</strong> free items supplied from CIMH stock. There is no quote step: staff approve, pick, ship and deliver. Staff can limit the quantity of each Pro Bono item per request.</li>
 <li>Quotes are in <strong>BBD or USD</strong> (one currency per request, never both) and are valid for <strong>30 days</strong>.</li>
 <li>Carriers are <strong>FedEx, DHL or hand delivery</strong>. Staff enter the tracking number by hand; there is no carrier integration.</li>
@@ -655,11 +655,11 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td>Cart</td>
-<td>Saved across devices; choose <strong>BBD or USD</strong>; submit. A cart with both paid and Pro Bono items becomes <strong>two requests</strong></td>
+<td>Saved across devices; every quote is in <strong>BBD</strong>; submit. A cart with both paid and Pro Bono items becomes <strong>two requests</strong></td>
 </tr>
 <tr>
 <td>My requests</td>
-<td>Own and organisation requests; filter by status, year and requester; timeline; quotes (supplier + CIMH option); choose per item; accept/decline; documents; carrier + tracking link</td>
+<td>Own and organisation requests; filter by status, year and requester; timeline; the quote (every item with its source and price, estimated shipping, total; the supplier and CIMH quote files); <strong>view and sign, or cancel</strong>; documents; carrier + tracking link</td>
 </tr>
 <tr>
 <td>Account</td>
@@ -782,7 +782,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td><strong>document-svc</strong></td>
-<td>PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events, virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes <code>document.*</code> itself</td>
+<td>PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events, the agreement preview staff see before sending a quote (never stored), virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes <code>document.*</code> itself</td>
 </tr>
 <tr>
 <td><strong>notification-svc</strong></td>
@@ -1392,23 +1392,27 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 <tr>
 <td>Line</td>
-<td><code>lineId</code>, <code>productId</code>, <code>product</code> (details copied at submission), <code>qty</code>, <code>choice</code> (CIMH/SUPPLIER), <code>cimhAvailable</code>, <code>reservation{status, units[]}</code>, <code>picked[]</code></td>
+<td><code>lineId</code>, <code>productId</code>, <code>product</code> (details copied at submission), <code>qty</code>, <code>source</code> (CIMH/SUPPLIER, fixed by staff when the quote is sent; was <code>choice</code>), <code>supplier</code>, <code>cimhAvailable</code>, <code>reservation{status, units[]}</code>, <code>picked[]</code></td>
 </tr>
 <tr>
 <td>Supplier quotes</td>
-<td><code>quotes[]</code>: <code>id</code>, <code>version</code>, <code>supplier</code>, <code>lines{unitPrice, total}</code>, <code>total</code>, <code>fileIds</code>, <code>expiresAt</code> (+30 d), <code>sentAt/By</code>. <strong>Every version is kept</strong></td>
+<td><code>quotes[]</code>: <code>id</code>, <code>version</code>, <code>supplier</code> (customers see it), <code>lines{unitPrice, total}</code>, <code>total</code>, <code>shippingEstimate</code>, <code>fileIds</code>, <code>expiresAt</code> (+30 d), <code>sentAt/By</code>. <strong>Every version is kept</strong></td>
 </tr>
 <tr>
 <td>CIMH quote</td>
-<td><code>cimhQuote</code>: <code>lines{unitCostBBD, unitPrice, total}</code>, <strong><code>exchangeRate</code></strong> (required for USD), <code>total</code>, <code>fileId</code></td>
+<td><code>cimhQuote</code>: <code>lines{unitCostBBD, unitPrice, total}</code>, <strong><code>exchangeRate</code></strong> (required for USD), <code>total</code>, <code>shippingEstimate</code>, <code>fileId</code></td>
 </tr>
 <tr>
 <td>Quote state</td>
 <td><code>quoteVersion</code>, <code>quoteExpiresAt</code>, <strong><code>adminFee</code></strong> (once per request, in the request currency), <code>quoteDraft</code> (staff)</td>
 </tr>
 <tr>
+<td>Agreement</td>
+<td><code>agreement{quoteVersion, total (lines + shipping + fee), fileId, signedFileId, verified, rejections[]}</code>, made when the quote is sent</td>
+</tr>
+<tr>
 <td>Decision</td>
-<td><code>acceptance{quoteVersion, choices[], by, at, ip}</code> or <code>decline{by, at, reason}</code></td>
+<td><code>acceptance{quoteVersion, agreementFileId, by, at, ip}</code> or <code>decline{by, at, reason}</code></td>
 </tr>
 <tr>
 <td>Fulfilment</td>
@@ -1650,7 +1654,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <h2 id="52-submitting-a-request">5.2 Submitting a request</h2>
 <ol>
 <li>A customer (an active member-organisation <code>user</code>) adds items to the cart. Pro Bono items are capped at their per-request maximum.</li>
-<li>At submission the customer chooses <strong>BBD or USD</strong> and a shipping address.</li>
+<li>At submission the customer gives an invoice address and a delivery address; every quote is in <strong>BBD</strong>.</li>
 <li>order-svc checks the cart with catalog-svc and saves a copy of each product's details on the request.</li>
 <li>A cart with <strong>both</strong> paid and Pro Bono items is <strong>split into two requests</strong>.</li>
 <li><code>order.submitted</code> is published, and staff and the customer are emailed.</li>
@@ -1675,79 +1679,67 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 <tr>
 <td>2</td>
-<td>System</td>
-<td>Lines fully in stock get a <strong>CIMH option</strong> priced at catalogue cost + admin fee (staff enter the exchange rate if the request is in USD)</td>
+<td>Staff</td>
+<td>Decide where <strong>each line</strong> comes from: lines fully in stock start in <strong>CIMH stock</strong> (priced at catalogue cost); the rest from a supplier whose quote staff upload (customers see it). Enter the <strong>estimated shipping</strong> per supplier and for CIMH stock</td>
 <td></td>
 </tr>
 <tr>
 <td>3</td>
 <td>Staff</td>
-<td>Upload supplier quote PDFs and enter supplier amounts; send the quote (expires in 30 days)</td>
+<td>Send the quote (expires in 30 days). Stock is re-checked; a line no longer fully in stock must go to a supplier</td>
 <td><code>QUOTED</code></td>
 </tr>
 <tr>
 <td>4</td>
 <td>System</td>
-<td>Generates the CIMH quote PDF; emails the customer; sends a reminder 3 days before expiry</td>
+<td>Generates the <strong>quote agreement</strong> PDF (every item, source, price, estimated shipping, admin fee, total, signature line) and the CIMH stock quote; <strong>reserves the CIMH stock units</strong>; emails the customer; reminder 3 days before expiry</td>
 <td></td>
 </tr>
 <tr>
 <td>5</td>
 <td>Customer</td>
-<td>Chooses <strong>CIMH or SUPPLIER for each line</strong> that has both (or declines with a reason)</td>
-<td><code>AWAITING_AGREEMENT</code> / <code>DECLINED</code> → <code>CANCELLED</code></td>
+<td><strong>Views the quote, downloads the agreement, signs it, uploads the signed copy</strong> → accepted (commitment to pay). Or <strong>cancels the request</strong> with a reason (stock released)</td>
+<td><code>ACCEPTED</code> / <code>DECLINED</code> → <code>CANCELLED</code></td>
 </tr>
 <tr>
 <td>6</td>
-<td>System</td>
-<td>Generates the <strong>payment agreement PDF</strong> with the total of the chosen quotes</td>
-<td></td>
+<td>Staff</td>
+<td>A revised quote replaces the agreement; the customer signs the new one</td>
+<td><code>QUOTED</code></td>
 </tr>
 <tr>
 <td>7</td>
-<td>Customer</td>
-<td><strong>Downloads the agreement, signs it, uploads the signed copy</strong> → accepted (commitment to pay). They can still change choices before uploading</td>
-<td><code>ACCEPTED</code></td>
+<td>Staff</td>
+<td>Checks the signature. If it's not acceptable, rejects it with a reason and the customer uploads again (stock stays held, ≥ 7 days)</td>
+<td><code>QUOTED</code></td>
 </tr>
 <tr>
 <td>8</td>
-<td>System</td>
-<td>Reserves the CIMH-chosen units. If stock has run out, staff must requote that line</td>
-<td></td>
-</tr>
-<tr>
-<td>9</td>
-<td>Staff</td>
-<td>Checks the signature. If it's not acceptable, rejects it with a reason and the customer uploads again</td>
-<td><code>AWAITING_AGREEMENT</code></td>
-</tr>
-<tr>
-<td>10</td>
 <td>Staff</td>
 <td>Confirms the agreement is verified and records purchase-order numbers for each supplier</td>
 <td><code>PURCHASING</code></td>
 </tr>
 <tr>
-<td>11</td>
+<td>9</td>
 <td>Staff</td>
 <td>Picks the <strong>CIMH-stock lines only</strong>. Supplier items are shipped <strong>direct</strong> to the customer and never enter stock</td>
 <td></td>
 </tr>
 <tr>
-<td>12</td>
+<td>10</td>
 <td>Staff</td>
 <td>Records carrier (FedEx, DHL, Hand delivered) and tracking number; the customer may be emailed</td>
 <td><code>SHIPPED</code></td>
 </tr>
 <tr>
-<td>13</td>
+<td>11</td>
 <td>Staff</td>
 <td>Marks delivered; the invoice is generated</td>
 <td><code>DELIVERED</code></td>
 </tr>
 </tbody>
 </table>
-<p>Acceptance records <strong>who, when, from which IP, the choice for each line and the signed agreement file</strong>. Only the latest quote version can be accepted; earlier versions are kept.</p>
+<p>Acceptance records <strong>who, when, from which IP and the signed agreement file</strong>. Only a copy signed for the latest quote version is accepted; earlier versions are kept. The signed total is what CIMH invoices.</p>
 <h3 id="paid-request-status-flow">Paid request status flow</h3>
 <figure><a href="images/11-paid-request-status.svg" target="_blank" title="Open full size"><img alt="Paid request status flow" src="images/11-paid-request-status.svg" loading="lazy"></a><figcaption>Paid request status flow</figcaption></figure>
 <p>A request can be cancelled up to and including <code>ACCEPTED</code> (which releases any reserved stock). Once purchasing starts, it can't be cancelled.</p>
@@ -2234,7 +2226,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>R</td>
 <td>User denies having accepted a quote</td>
 <td>M</td>
-<td>Acceptance records user, time, IP, choices <strong>and the signed agreement file</strong> (SHA-256); <code>auditlog</code> (insert-only)</td>
+<td>Acceptance records user, time, IP <strong>and the signed agreement file</strong> (SHA-256), stamped with the quote version it was signed for; <code>auditlog</code> (insert-only)</td>
 <td>✅</td>
 </tr>
 <tr>
@@ -2258,7 +2250,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>T</td>
 <td>CSRF on cookie-authenticated changes</td>
 <td>H</td>
-<td><code>SameSite=Lax</code> + double-submit <code>X-CSRF-Token</code> on POST/PUT/PATCH/DELETE</td>
+<td><code>SameSite=Lax</code> + double-submit <code>X-CSRF-Token</code> on POST/PUT/PATCH/DELETE (header equal to any <code>csrf_token</code> cookie, so a stray same-name cookie from another app on the host breaks nothing; a planted one could already match, so no weaker)</td>
 <td>✅</td>
 </tr>
 </tbody>
@@ -3879,7 +3871,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <tbody>
 <tr>
 <td>SHOP / SIA</td>
-<td>HttpOnly cookies + <code>X-CSRF-Token</code> header (double-submit)</td>
+<td>HttpOnly cookies + <code>X-CSRF-Token</code> header (double-submit); a repeated cookie name (another app on the host) never replaces ours: the first <code>access_token</code> that verifies is used</td>
 </tr>
 <tr>
 <td>SIA Mobile</td>
@@ -3923,37 +3915,31 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td><code>PUT quote-draft</code></td>
 <td>staff</td>
-<td>supplier prices + CIMH option (+ exchange rate if USD)</td>
+<td>one source per line (supplier price or CIMH stock), estimated shipping per source (+ exchange rates)</td>
 <td>—</td>
 </tr>
 <tr>
 <td><code>send-quote</code></td>
 <td>staff</td>
-<td><code>QUOTING → QUOTED</code> (30 days; re-send = new version)</td>
-<td>—</td>
-</tr>
-<tr>
-<td><code>agreement</code></td>
-<td>requester/admin</td>
-<td><code>QUOTED → AWAITING_AGREEMENT</code> (choice per line; agreement PDF generated)</td>
+<td><code>QUOTING → QUOTED</code> (30 days; agreement PDF made, CIMH stock held; re-send = new version)</td>
 <td>—</td>
 </tr>
 <tr>
 <td><code>accept</code></td>
 <td>requester/admin</td>
-<td><code>AWAITING_AGREEMENT → ACCEPTED</code> (signed agreement file id)</td>
+<td><code>QUOTED → ACCEPTED</code> (signed copy of this version's agreement)</td>
 <td>—</td>
 </tr>
 <tr>
 <td><code>reject-agreement</code></td>
 <td>staff</td>
-<td><code>ACCEPTED → AWAITING_AGREEMENT</code> (bad signature, reason)</td>
+<td><code>ACCEPTED → QUOTED</code> (bad signature, reason; ≥ 7 days left)</td>
 <td>—</td>
 </tr>
 <tr>
 <td><code>decline</code></td>
 <td>requester/admin</td>
-<td><code>QUOTED → DECLINED → CANCELLED</code></td>
+<td><code>QUOTED → DECLINED → CANCELLED</code> (the customer's Cancel request)</td>
 <td>—</td>
 </tr>
 <tr>
@@ -3989,7 +3975,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td><code>cancel</code></td>
 <td>requester/staff/admin</td>
-<td>up to <code>AWAITING_AGREEMENT</code> (customer); <code>ACCEPTED</code> staff/admin only</td>
+<td><code>SUBMITTED</code>/<code>QUOTING</code> (customer); <code>ACCEPTED</code> staff/admin only</td>
 <td><code>SUBMITTED</code> (customer); <code>APPROVED</code> staff/admin only</td>
 </tr>
 </tbody>
@@ -4023,7 +4009,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>documents</td>
-<td><code>POST /files</code>, <code>GET /files/{id}</code> (X-Accel-Redirect), <code>DELETE /files/{id}</code></td>
+<td><code>POST /files</code>, <code>GET /files/{id}</code> (X-Accel-Redirect), <code>DELETE /files/{id}</code>, <code>GET /requests/{id}/agreement-preview</code> (staff: the agreement before it is sent, marked as a preview, never stored)</td>
 </tr>
 </tbody>
 </table>
@@ -4277,16 +4263,16 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]</code></td>
 <td>Request detail</td>
 <td>customer (owner or same org)</td>
-<td>Shared <code>RequestSheet</code> (also beside the S-10 list). Full id + sent date, title = what was requested, status chip; <strong>request path</strong> (Sent · Quote · Agreement · Ordered · Shipped · Delivered; Pro Bono: Sent · Approved · Picking · Shipped · Delivered) filled to where it stands (hidden once closed); <strong>whose-move well</strong> (customer's turn = primary tone + action and quote expiry; waiting on CIMH = neutral; amber when the quote expires within 7 days; green accepted/delivered; red closed). <strong>Quote first while QUOTED / AWAITING_AGREEMENT</strong> (labelled <strong>Agreement total</strong>, chosen option marked); then Status timeline, Items (Pro Bono marked Free), Delivery (address, currency, carrier, tracking link), Files (CIMH documents by kind) as ruled sections; decline / cancel at the foot. Own page: navy band with "← Orders". Slim footer</td>
-<td><strong>Choose options</strong> (QUOTED) → S-12 · <strong>Decline</strong> ⧉ reason → ↺ · <strong>Cancel</strong> ⧉ reason → ↺ · Tracking link → carrier site (new tab) · Document → download</td>
+<td>Shared <code>RequestSheet</code> (also beside the S-10 list). Short ref (full id in its tooltip) + sent date, title = what was requested, status chip; <strong>request path</strong> (Sent · Quote · Signed · Ordered · Shipped · Delivered; Pro Bono: Sent · Approved · Picking · Shipped · Delivered) filled to where it stands (hidden once closed); <strong>whose-move well</strong> (customer's turn = primary tone + action and quote expiry; waiting on CIMH = neutral; amber when the quote expires within 7 days; green accepted/delivered; red closed). "View and sign" (2026-11-17): while QUOTED the well says "Your quote is ready: BBD total" and what the agreement is (every item, where it comes from, its price; someone who can commit the organisation signs it; the signed copy comes back here), with <strong>View and sign</strong> (after a rejected signature: <strong>Send it again</strong> → S-12 <code>?task=send</code>) and, under the expiry, <strong>Already signed? Send the signed copy →</strong> (S-12 <code>?task=send</code>, for whoever comes back only with the signed copy) (View and sign has a soft primary halo and a ring every 2 s until the customer first presses it for this quote version, remembered in the browser; hover or focus pauses the ring; reduced motion = the halo only) and <strong>Cancel request</strong> (the server's <code>decline</code>) 16 px under it; after a rejected signature it says why and asks for a new copy; a quote sent before the change (no agreement) reads "CIMH is updating the quote". <strong>One of each</strong> (critique fix, 2026-11-18): <strong>while the requester's quote waits the page is a hand-off with no prices</strong> (the total once, in the well; the priced quote is read on S-12); a same-org viewer or a quote still waiting for its agreement sees the shared <code>QuoteTable</code> first (one row per item with where it comes from — CIMH stock or the supplier that ships it directly — unit price and total; estimated shipping per source; admin fee; the total named by state: <strong>Total to sign</strong> while QUOTED, <strong>Agreed total</strong> once signed, <strong>Quoted total</strong> on a closed request; the agreement PDF also says "Total to sign"); later the quote is a record after the items. Then Items (source per line once quoted; Pro Bono items marked Free, also on an all-Pro-Bono request), Delivery (address with the country by name, carrier, tracking link; currency only on a legacy USD request) as ruled sections with h2 heads (h3 beside the S-10 list), and <strong>History</strong> folded at the end (dated changes in the path's words, reasons included; the status timeline is gone, so there is one progress model); a closed or rejected request gives its reason in the well; <strong>no Files section and no document preview</strong> (owner, 2026-11-18: before signing the quote files and the agreement are read on S-12; a split view and an inline preview were tried and removed); <strong>Papers once signed</strong> (critique fix 4, owner locked "page tiles" on the decision page): from ACCEPTED on a paid request (and on a Pro Bono request once CIMH has made a paper) a ruled <strong>Papers</strong> section under the well shows each paper as a small A4 sheet (page 1 at thumbnail size, <code>DocumentThumb</code>, drawn when it nears the screen) with its name and kind under it: Signed agreement, Invoice (a dashed "Not yet" sheet until delivery), Agreement as sent, CIMH quote, supplier quotes of the agreed version; a tile opens the full-size reader (<code>DocumentReader</code>: a dialog, full screen below 760 px at 200 % under 600 px, Close + name + zoom + Download in one head; closing returns to the tile). Cancel request at the foot before a quote. Own page: navy band with "← Orders". Slim footer</td>
+<td><strong>View and sign</strong> (QUOTED) → S-12 · a Papers tile → reader dialog · <strong>Send the signed copy</strong> → S-12 <code>?task=send</code> · <strong>Cancel request</strong> ⧉ reason → ↺ · Tracking link → carrier site (new tab)</td>
 </tr>
 <tr>
 <td>S-12</td>
 <td><code>/requests/[id]/agreement</code></td>
-<td>Choose and sign</td>
+<td>View and sign</td>
 <td>requester</td>
-<td>Step 1: radio CIMH/SUPPLIER per line with both options, live total (phones: one card per line with full-width option tiles). <strong>Summary</strong> on every step (chosen source and amount per line, admin fee, total, valid until, ship-to): beside the stepper on wide screens, first on phones in steps 2–3. Step 2: <strong>Download agreement</strong> (PDF, appears when generated; ↺ polling). Step 3: what happens next (staff check the signature, CIMH stock reserved, supplier items ordered and shipped direct) + <strong>Upload signed agreement</strong> (scan or phone photo; PDF/JPG/PNG, ≤ 20 MB) Confirm choices is never disabled: with lines still open it says so and focuses the first one.</td>
-<td>Confirm choices → step 2 (status AWAITING_AGREEMENT) · Change choices → step 1 (new agreement) · Upload → <strong>Accept</strong> → S-11 (ACCEPTED, toast) · Cancel → S-11</td>
+<td>Nothing to choose (owner, 2026-11-17). <strong>Three tasks, open in place</strong> (impeccable, 2026-11-18; the usual scene: read and downloaded at a desk, signed by someone else, uploaded later, often another day): navy band with a back arrow beside the title, request title · short ref · quote version, and <strong>Total to sign</strong> with valid until (days left; amber within 7 days). Below it a ruled list of three tasks, one open at a time, any of them reachable: <strong>1 Check the quote</strong> (grouped by where the items come from — "From CIMH stock, shipped by CIMH", "From <supplier>, shipped to you directly" — each group its items, qty × price and total, the supplier's USD price and rate when converted, and its estimated shipping; admin fee, <strong>Total to sign</strong>; ships to (organisation, town, country) and the exchange rate on legacy USD requests; at 1440 × 900 the open task 1 and the two closed tasks fit the first view), <strong>2 Get it signed</strong> (what the agreement commits to, who signs, where, then; <strong>Download agreement</strong> saves the PDF, no new tab; ↺ polling until it is made), <strong>3 Send the signed copy</strong> (drop or choose a scan or photo, PDF/JPG/PNG ≤ 20 MB, shown on the page before it is sent; what happens next per source; Send is never disabled: without a file it says what is missing). Each task has a node on one wire that fills as tasks are done; ticks are kept in this browser per request + quote version, a return visit opens the first task not done, <code>?task=check|sign|send</code> opens one and <strong>the address follows the open task</strong> (replace, so a reload or a link passed to whoever sends the signed copy opens the same task), a rejected signature opens task 3 under CIMH's reason; only what this browser saw is ticked (quote checked, agreement downloaded): <strong>Already signed? Send the copy</strong> opens task 3 without ticking anything. <strong>Wide screens (≥ 1280 px)</strong>: a 400–480 px task list, the open task's document beside it (sticky, pages drawn up to 860 px wide so the agreement's text reads at 11–14 px): the quote files (CIMH stock quote first, a tab per file) for task 1, the agreement for task 2, the chosen signed copy or an empty drop sheet for task 3; 760–1279 px, the document sits inside the open task; <strong>phones (&lt; 760 px)</strong>: each document is a row (name, what it is, Read) that opens a full-screen reader at 200 % (pan inside it, Download in its head; closing returns to the row), since a page drawn at phone width reads at about 4 px. Every document has one head (its name, or a tab per file; page in view; zoom 100–300 %, phones pan sideways; Download) and lies on a darker desk ground. <strong>Cancel request…</strong> ends the list</td>
+<td>Continue to the agreement → task 2 · Already signed? Send the copy → task 3 (no tick) · a task heading opens that task · <strong>Send signed agreement</strong> ⧉ confirm ("This accepts quote version n for BBD total; CIMH staff are emailed") → S-11 (ACCEPTED banner) · <strong>Cancel request</strong> ⧉ reason → S-11 · ← Request → S-11</td>
 </tr>
 <tr>
 <td>S-13</td>
@@ -4374,7 +4360,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/</code></td>
 <td>Dashboard</td>
 <td>staff</td>
-<td>Counters: new requests, quoting, agreements to verify, to purchase, to pick, to ship, quotes expiring ≤ 3 days, low stock, pending approvals (admin) "Products low on stock" and "accounts waiting for approval" become an amber cell (with "Restock board →") when the count is above 0.</td>
+<td>Counters: new requests, quoting, waiting for signature, signatures to check, to purchase, to pick, to ship, quotes expiring ≤ 3 days, low stock, pending approvals (admin) "Products low on stock" and "accounts waiting for approval" become an amber cell (with "Restock board →") when the count is above 0.</td>
 <td>Each counter → A-02 filtered / A-13 / A-16</td>
 </tr>
 <tr>
@@ -4382,7 +4368,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests</code></td>
 <td>Request desk (queue)</td>
 <td>staff</td>
-<td>Stage tabs with counts (Open, New, Quoting, Quoted, Awaiting signature, To verify, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>newest first</strong> by date sent, owner 2026-11-16; also waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
+<td>Stage tabs with counts (Open, New, Quoting, Waiting for signature, Signature to check, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>newest first</strong> by date sent, owner 2026-11-16; also waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
 <td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03</td>
 </tr>
 <tr>
@@ -4390,7 +4376,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]</code></td>
 <td>Request (staff)</td>
 <td>staff</td>
-<td>Customer + org, lines (with <code>cimhAvailable</code>, choice, reservation), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code> While QUOTED the customer acts next, so Revise quote is an outlined (secondary) button; Pro Bono requests have no Invoiced step. Title = what was requested; under it customer · organisation · <code>shortRef</code> (full id on hover and copied by the button). Files panel without its own card (<code>RequestFiles bare</code>); timeline "By" shows the part before @ for actors without a name.</td>
+<td>Customer + org, lines (with <code>cimhAvailable</code>, From = CIMH stock or the supplier, reservation, held from the moment the quote is sent), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code> While QUOTED the customer acts next, so Revise quote is an outlined (secondary) button; Pro Bono requests have no Invoiced step. Title = what was requested; under it customer · organisation · <code>shortRef</code> (full id on hover and copied by the button). Files panel without its own card (<code>RequestFiles bare</code>); timeline "By" shows the part before @ for actors without a name.</td>
 <td><code>start-quoting</code> ↺ → A-04 · <code>send-quote</code> (from A-04) · <strong>Verify agreement</strong> (view signed PDF ⧉) → <code>purchase-orders</code> ⧉ (supplier, PO no., lines, ☑ agreement verified) ↺ · <code>reject-agreement</code> ⧉ reason ↺ · <code>approve</code> / <code>reject</code> (Pro Bono) ↺ · <strong>Pick</strong> → A-10 (prefilled) · <code>ship</code> ⧉ carrier, tracking (not for HAND), note, cost, date, notify ↺ · <code>deliver</code> ⧉ ↺ · <code>cancel</code> ⧉ ↺</td>
 </tr>
 <tr>
@@ -4398,8 +4384,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]/quote</code></td>
 <td>Quote builder</td>
 <td>staff</td>
-<td><strong>Supplier tabs with viewer</strong> (2026-11-17): one tab per supplier (name, currency, lines priced n/N; a dot when it needs attention) plus <strong>CIMH stock</strong> and <strong>+ Add supplier</strong>; arrow keys move between tabs. A supplier tab = name, <strong>BBD or USD</strong> (USD: staff type the supplier's USD prices + a BBD-per-USD rate; the customer sees BBD with "Supplier quote: USD x each at r BBD per USD" and the supplier's file), Remove supplier; left half: the supplier's quote files as <strong>large square tiles</strong> (PDF/image icon, name; × removes it from the quote; Add quote file tile, drop onto the pane) and the selected file <strong>open beside the lines</strong> (PDFs drawn with pdf.js, images as is; Open in a new tab); right half: every request line with this supplier's unit price (typing a price gives the line to this supplier, clearing it frees the line; a line priced by another supplier says so and offers <strong>Price it here instead</strong>), line total in BBD. CIMH stock tab: <strong>Offer</strong> per line fully in stock (catalogue-cost estimate; the server prices it), <strong>exchange rate</strong> only on legacy USD requests. Footer (sticky; at the page end on phones): supplier prices, CIMH estimate, admin fee once ("None set" at 0), agreement total or its range, what is missing (lines jump to their tab and field), Send. Header: what was requested, <code>shortRef</code>, draft state; draft autosave (<code>quote-draft</code>)</td>
-<td><strong>Send quote…</strong> ⧉ confirm (recipient, quote version, lines priced, suppliers, totals, "can't be recalled") → <strong>Email the customer</strong> → A-03 (QUOTED; customer emailed) · Incomplete → Send goes to the first gap and the footer names the rest</td>
+<td><strong>Supplier tabs with viewer</strong> (2026-11-17): one tab per supplier (name, currency, lines priced n/N; a dot when it needs attention) plus <strong>CIMH stock</strong> and <strong>+ Add supplier</strong>; arrow keys move between tabs. A supplier tab opens with its <strong>terms row</strong> (2026-11-18): a caption over each <code>solo-inverted</code> field and one message line under it (a hint; an error with an icon: a wrong value at once, a missing one only after Preview or Send was pressed): <strong>Supplier</strong> ("The customer sees this name"), <strong>Their currency</strong> BBD or USD as a segmented button (USD: staff type the supplier's USD prices; the customer sees BBD with "Supplier quote: USD x each at r BBD per USD" and the supplier's file), <strong>Exchange rate</strong> "1 USD = … BBD" (USD only), <strong>Estimated shipping</strong> (supplier to customer, in the supplier's currency; 0.00 if none), <strong>Remove supplier</strong> (icon only when the row is short of room); left half: the supplier's quote files as <strong>large square tiles</strong> (PDF/image icon, name; × removes it from the quote; Add quote file tile, drop onto the pane) and the selected file <strong>open beside the lines</strong> (PDFs drawn with pdf.js, images as is; Open in a new tab); right half: every request line with this supplier's unit price ("view and sign", 2026-11-17: a line comes from <strong>one</strong> place; typing a price gives the line to this supplier and takes it out of CIMH stock, clearing it frees the line; a line priced by another supplier or from CIMH stock says so and offers <strong>Price it here instead</strong>), line total in BBD. CIMH stock tab: <strong>From stock</strong> per line fully in stock (lines fully in stock start there; catalogue-cost estimate; the server prices it and holds the units when the quote is sent; ticking it takes the line from its supplier). CIMH stock tab terms: estimated shipping (BBD) and, on legacy USD requests, the exchange rate. Footer (sticky; at the page end on phones): what is still to do on its own row (neutral ink until Preview or Send is pressed, then marked; lines jump to their tab and field; a missing name, rate or shipping goes to that supplier's field), then supplier prices, CIMH stock, shipping, admin fee once ("None set" at 0), <strong>Total to sign (Estimate)</strong>, <strong>Preview agreement</strong> and <strong>Send quote…</strong>. Empty rate and shipping fields read "rate" / "amount", never a number. A save that fails keeps the review closed; a preview the server refuses shows its reason and no Email button. Header: what was requested, <code>shortRef</code>, draft state; draft autosave (<code>quote-draft</code>)</td>
+<td><strong>Preview agreement</strong> / <strong>Send quote…</strong> ⧉ review (2026-11-18): the agreement PDF exactly as the customer will get it, drawn by document-svc from the saved draft and marked "Preview · not sent" (pdf.js; a draft that can't be priced shows the server's reason), beside recipient, quote version, lines priced, suppliers, totals incl. shipping and admin fee, "can't be recalled" → <strong>Email the customer</strong> → A-03 (QUOTED; customer emailed; 409 <code>CIMH_STOCK_SHORT</code> if stock went meanwhile) · Incomplete → Send goes to the first gap and the footer names the rest</td>
 </tr>
 <tr>
 <td>A-05</td>
@@ -4736,7 +4722,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 </tbody>
 </table>
-<h3 id="j-03-quote-choose-sign-accepted-customer">J-03 Quote → choose → sign → accepted (customer)</h3>
+<h3 id="j-03-quote-view-and-sign-accepted-customer">J-03 Quote → view and sign → accepted (customer)</h3>
 <p>Same diagram (lower half).</p>
 <table>
 <thead>
@@ -4750,39 +4736,33 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tbody>
 <tr>
 <td>1</td>
-<td>Email "Quote ready" → S-11</td>
-<td>Reads supplier and CIMH options, expiry</td>
+<td>Email "Your quote is ready to sign" → S-12 (or S-11)</td>
+<td>Reads every item with its source and price, estimated shipping, total, expiry in S-12 task 1, with the supplier quotes and the CIMH stock quote beside it</td>
 <td>—</td>
 </tr>
 <tr>
 <td>2</td>
-<td>S-11 → S-12 step 1</td>
-<td>Chooses CIMH/SUPPLIER per line → Confirm</td>
-<td><code>AWAITING_AGREEMENT</code>; agreement PDF generated</td>
-</tr>
-<tr>
-<td>3</td>
-<td>S-12 step 2</td>
-<td>Downloads agreement, signs</td>
+<td>S-12 task 2</td>
+<td>Reads the agreement on the page, downloads it (made with the quote), has it signed</td>
 <td>—</td>
 </tr>
 <tr>
-<td>4</td>
-<td>S-12 step 3</td>
-<td>Uploads signed copy → Accept</td>
+<td>3</td>
+<td>S-12 task 3 (a return visit opens it)</td>
+<td>Drops or chooses the signed copy, checks it on the page → Send signed agreement</td>
 <td><code>ACCEPTED</code> → S-11</td>
 </tr>
 <tr>
 <td>Alt</td>
-<td>S-12</td>
-<td>Change choices</td>
-<td>Back to step 1 (new agreement)</td>
+<td>S-11 / S-12</td>
+<td>Cancel request with reason</td>
+<td><code>DECLINED → CANCELLED</code>; held stock released</td>
 </tr>
 <tr>
 <td>Alt</td>
-<td>S-11</td>
-<td>Decline with reason</td>
-<td><code>DECLINED → CANCELLED</code></td>
+<td>Email "Quote updated" → S-12</td>
+<td>Staff revised the quote: the earlier agreement no longer applies</td>
+<td>Sign the new one</td>
 </tr>
 <tr>
 <td>Alt</td>
@@ -4792,14 +4772,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>Alt</td>
-<td>Email "Signature rejected" → S-12 step 3</td>
-<td>Uploads again</td>
+<td>Email "Signature rejected" → S-12</td>
+<td>Uploads a new signed copy (the rejected one can't be sent again)</td>
 <td><code>ACCEPTED</code></td>
 </tr>
 </tbody>
 </table>
 <h3 id="j-04-track-to-delivery-customer">J-04 Track to delivery (customer)</h3>
-<p>S-10 (badge) → S-11: timeline updates (PURCHASING → SHIPPED with carrier and tracking link → DELIVERED). Invoice appears under Documents. Organisation colleagues can follow from the <strong>My organisation</strong> tab.</p>
+<p>S-10 (badge) → S-11: timeline updates (PURCHASING → SHIPPED with carrier and tracking link → DELIVERED). Organisation colleagues can follow from the <strong>My organisation</strong> tab.</p>
 <h3 id="j-05-staff-quoting">J-05 Staff: quoting</h3>
 <figure><a href="images/26-journey-staff-desk.svg" target="_blank" title="Open full size"><img alt="Staff request desk journey" src="images/26-journey-staff-desk.svg" loading="lazy"></a><figcaption>Staff request desk journey</figcaption></figure>
 <table>
@@ -4821,14 +4801,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tr>
 <td>2</td>
 <td>A-04</td>
-<td>Upload supplier PDFs, enter prices (supplier currency; rate for USD)</td>
+<td>Lines fully in stock start in CIMH stock; upload supplier quotes, enter prices for the rest (supplier currency; rate for USD); estimated shipping per supplier and for CIMH stock</td>
 <td>Draft autosaved</td>
 </tr>
 <tr>
 <td>3</td>
 <td>A-04</td>
-<td>Send quote</td>
-<td><code>QUOTED</code> (30 d); customer emailed → A-03</td>
+<td>Preview agreement (optional), then Send quote: the review shows the agreement as the customer will get it</td>
+<td><code>QUOTED</code> (30 d); agreement PDF made; CIMH stock held; customer emailed → A-03</td>
 </tr>
 <tr>
 <td>Alt</td>
@@ -4851,7 +4831,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tbody>
 <tr>
 <td>1</td>
-<td>A-01 "Agreements to verify" → A-03</td>
+<td>A-01 "Signatures to check" → A-03</td>
 <td>Open signed agreement ⧉</td>
 <td>—</td>
 </tr>
@@ -4859,7 +4839,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>2a</td>
 <td>A-03</td>
 <td>Not acceptable → Reject signature (reason)</td>
-<td><code>AWAITING_AGREEMENT</code>; customer emailed</td>
+<td><code>QUOTED</code> (stock stays held, ≥ 7 days to re-sign); customer emailed</td>
 </tr>
 <tr>
 <td>2b</td>
@@ -4949,16 +4929,20 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>A-03</td>
 </tr>
 <tr>
-<td>Quote ready / reminder / expired</td>
+<td>Quote ready to sign / updated</td>
+<td>S-12 (View and sign; opens on the first task not done)</td>
+</tr>
+<tr>
+<td>Quote expires soon (reminder)</td>
+<td>S-12 <code>?task=send</code> ("Send the signed copy": the reminder usually reaches whoever comes back with the signed copy)</td>
+</tr>
+<tr>
+<td>Quote expired</td>
 <td>S-11</td>
 </tr>
 <tr>
-<td>Agreement ready</td>
-<td>S-12 (step 2)</td>
-</tr>
-<tr>
 <td>Signature rejected</td>
-<td>S-12 (step 3)</td>
+<td>S-12 <code>?task=send</code> ("Send it again")</td>
 </tr>
 <tr>
 <td>(Staff) Signed agreement received</td>
@@ -5337,7 +5321,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td><strong>Warning</strong> (amber), <em>needs action</em></td>
-<td><code>AWAITING_AGREEMENT</code></td>
+<td>(none since 2026-11-17: <code>AWAITING_AGREEMENT</code> removed; <code>QUOTED</code> stays info)</td>
 <td><code>PENDING_APPROVAL</code></td>
 <td>assigned</td>
 </tr>
@@ -5616,7 +5600,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | Variant | Style | Use |
 |---|---|---|
 | <strong>Primary</strong> | Filled <code>primary</code>, <code>on-primary</code> text, <code>r-md</code>, height 40 (SIA) / 44 (SHOP), label 14/600 | <strong>One per view</strong>: Submit request, Accept, Send quote, Ship |
-| <strong>Secondary</strong> | Outlined, <code>hairline-strong</code> border, <code>ink</code> text | Alternatives: Cancel, Download, Change choices |
+| <strong>Secondary</strong> | Outlined, <code>hairline-strong</code> border, <code>ink</code> text | Alternatives: Cancel, Download, Back |
 | <strong>Tertiary</strong> | Text-only <code>primary</code> | Inline links, "View all" |
 | <strong>Danger</strong> | Outlined <code>error</code> (filled only inside the confirm dialog) | Decline, Reject, Cancel request, Suspend |</p>
 <p>States: hover → <code>primary-hover</code>; press → <code>primary-press</code>; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.</p>
@@ -5699,9 +5683,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Table: line · qty · <strong>CIMH stock</strong> column · <strong>Supplier</strong> column. Per line, a radio in each available option (CIMH shows a "from CIMH stock" tag). Totals row sticky at the bottom with the currency code; exchange rate shown in a caption when USD</td>
 </tr>
 <tr>
-<td><strong>Agreement stepper</strong></td>
+<td><strong>Task checklist</strong></td>
 <td>S-12</td>
-<td>3-step horizontal stepper (Choose → Download and sign → Upload). The current step is expanded; completed steps show a ✓ and the chosen summary</td>
+<td>Ruled list of three tasks (Check the quote · Get it signed · Send the signed copy), one open at a time on a primary wash, any reachable. Each task has a node (to do = outline ring with its number, open = primary ring + halo, done = primary fill + ✓) on one wire down the node column that fills as tasks are done. Ticks are kept in the browser, so a return opens the first task not done. Wide screens: the open task's document beside the list (sticky), one head per document, on a desk ground</td>
 </tr>
 <tr>
 <td><strong>Request header</strong></td>
@@ -5776,8 +5760,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Request header; two columns: left = quote comparison (when quoted) / lines, documents; right = status timeline + shipping/tracking card. An "action needed" banner at the top when a quote or agreement waits</td>
 </tr>
 <tr>
-<td><strong>S-12 Choose and sign</strong></td>
-<td>Agreement stepper; step 1 = quote comparison with radios + live total; step 2 = agreement card with Download (secondary) and the instruction "Sign every page"; step 3 = upload drop zone + primary <strong>Accept and commit to pay</strong></td>
+<td><strong>S-12 View and sign</strong></td>
+<td>Navy band (title, <strong>Total to sign</strong>, valid until) over the task checklist; task 1 = the read-only quote grouped by source (items + estimated shipping per source, admin fee, total) with the supplier and CIMH quote files beside it; task 2 = what the agreement commits to, who signs, <strong>Download agreement</strong>, the agreement beside it; task 3 = a drop slot that is also the file picker, the chosen copy shown beside it, primary <strong>Send signed agreement</strong>; <strong>Cancel request…</strong> (text, error colour) at the list foot. Nothing to choose</td>
 </tr>
 <tr>
 <td><strong>A-01 Dashboard</strong></td>
@@ -5793,7 +5777,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td><strong>A-03 Request (staff)</strong></td>
-<td>Request header; main column: lines table (with CIMH availability, choice and reservation columns), documents; side column: <strong>action panel</strong> (only allowed actions, primary first), timeline, customer and organisation card</td>
+<td>Request header; main column: lines table (with CIMH availability, From (CIMH stock or the supplier) and reservation columns), documents; side column: <strong>action panel</strong> (only allowed actions, primary first), timeline, customer and organisation card</td>
 </tr>
 <tr>
 <td><strong>A-04 Quote builder</strong></td>
@@ -7678,8 +7662,8 @@ rs.initiate({
 <td>Pro Bono limit; mixed cart → <strong>two requests</strong>; currency required with paid lines; inactive product rejected; idempotent submit (double click → one request)</td>
 </tr>
 <tr>
-<td><strong>Quote → agreement → acceptance</strong></td>
-<td>CIMH option only when <strong>full</strong> quantity available; USD requires exchange rate; quote versioning; accept only latest version; <code>AWAITING_AGREEMENT</code> change-choices regenerates agreement; accept requires <code>signed_agreement</code> of this request; staff reject signature → back to AWAITING; expiry job cancels at 30 days and reminder at 27 days</td>
+<td><strong>Quote → view and sign → acceptance</strong></td>
+<td>CIMH stock only when the <strong>full</strong> quantity is available (re-checked at send); one source per line (<code>LINE_SOURCE_CONFLICT</code>); estimated shipping per source required; USD requires exchange rate; total = lines + shipping + fee; quote versioning (a revision voids the agreement); accept only a <code>signed_agreement</code> stamped with the latest version; staff reject signature → back to QUOTED (≥ 7 days, stock kept, rejected file refused); stock reserved on <code>order.quoted</code>, swapped on <code>order.quote_revised</code>, released on decline/cancel/expiry; expiry job cancels at 30 days and reminder at 27 days</td>
 </tr>
 <tr>
 <td><strong>Reservation and stock</strong></td>
@@ -8316,7 +8300,7 @@ rs.initiate({
 <td>O5, O5a, O7, O15</td>
 </tr>
 <tr>
-<td>Agreement: choose options → agreement PDF request → signed upload → accept; staff verify/reject signature; purchase orders</td>
+<td>Agreement: view and sign (agreement PDF with the quote) → signed upload → accept; staff verify/reject signature; purchase orders ("view and sign" rework 2026-11-17)</td>
 <td>O6, O6a, O8</td>
 </tr>
 <tr>

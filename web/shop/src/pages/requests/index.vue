@@ -39,7 +39,7 @@ const scope = ref<'mine' | 'organisation'>('mine')
 const thisYear = new Date().getFullYear()
 const years = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
 const year = ref<number | null>(null)
-const WAITING: RequestStatus[] = ['QUOTED', 'AWAITING_AGREEMENT']
+const WAITING: RequestStatus[] = ['QUOTED'] // view and sign, or cancel
 const STATUS_GROUPS: { title: string; value: RequestStatus[] | null }[] = [
   { title: 'All statuses', value: null },
   { title: 'Waiting for me', value: WAITING },
@@ -103,9 +103,8 @@ const title = (r: RequestSummary) => requestTitle(r.firstItemName, r.lineCount, 
 const STATE: Partial<Record<RequestStatus, string>> = {
   SUBMITTED: 'Sent',
   QUOTING: 'Quote being prepared',
-  QUOTED: 'Quote ready',
-  AWAITING_AGREEMENT: 'Agreement to sign',
-  ACCEPTED: 'Accepted',
+  QUOTED: 'Quote to sign',
+  ACCEPTED: 'Signed',
   PURCHASING: 'Being ordered',
   APPROVED: 'Approved',
   PICKING: 'Being picked',

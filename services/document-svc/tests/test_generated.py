@@ -1,4 +1,5 @@
-"""PDFs rendered from order events (consumer.py): one file per event, same file on redelivery."""
+"""PDFs rendered from order events (consumer.py): one file per event and kind, same file on redelivery.
+"View and sign" (2026-11-17): the agreement comes with the quote (order.quoted / order.quote_revised)."""
 
 from __future__ import annotations
 
@@ -6,15 +7,30 @@ import asyncio
 from typing import Any
 
 import pytest
+from reportlab.platypus import Paragraph, Table
 
 from cimh_common.outbox import EventEnvelope
+from document_svc import pdfs
 from document_svc.consumer import make_handler
 
-from .conftest import STAFF, USER, Ctx, check_event, request_doc
+from .conftest import ADMIN, INVENTORY, STAFF, USER, Ctx, check_event, request_doc
 
 
 def _event(etype: str, **payload: Any) -> EventEnvelope:
     return EventEnvelope(type=etype, correlationId="c1", actorId="USRSTAFF", payload={"orderId": "ORD1", **payload})
+
+
+def _quoted(etype: str = "order.quoted", version: int = 1, cimh: list[str] | None = None, **kw: Any) -> EventEnvelope:
+    payload = {
+        "customer": "USRUSER",
+        "quoteVersion": version,
+        "expiresAt": "2026-12-08T00:00:00Z",
+        "currency": "BBD",
+        "total": "560.00",
+        "lines": [],
+        "cimhLineIds": ["L1"] if cimh is None else cimh,
+    }
+    return _event(etype, **(payload | kw))  # fmt: skip
 
 
 def _run(ctx: Ctx, event: EventEnvelope) -> None:
@@ -25,51 +41,134 @@ def _generated(ctx: Ctx) -> list[EventEnvelope]:
     return [e for t, _, e in ctx.publisher.sent if e.type == "document.generated"]
 
 
+def _text(req: dict[str, Any], render: Any) -> list[str]:
+    """Every text drawn on the page (paragraphs, also inside tables), from the flowables handed to the layout."""
+    seen: list[Any] = []
+    real = pdfs._build
+
+    def capture(title: str, r: dict[str, Any], body: list[Any], **kw: Any) -> bytes:
+        seen.extend([title, kw.get("subtitle") or "", *body])
+        return real(title, r, body, **kw)
+
+    pdfs._build = capture  # type: ignore[assignment]
+    try:
+        render(req)
+    finally:
+        pdfs._build = real  # type: ignore[assignment]
+    out: list[str] = []
+
+    def walk(x: Any) -> None:
+        if isinstance(x, str):
+            out.append(x)
+        elif isinstance(x, Paragraph):
+            out.append(x.getPlainText())
+        elif isinstance(x, Table):
+            for row in x._cellvalues:
+                for cell in row:
+                    # layout turns cells into tuples (reportlab's _ExpandedCellTuple)
+                    for item in cell if isinstance(cell, list | tuple) else [cell]:
+                        walk(item)
+
+    for x in seen:
+        walk(x)
+    return out
+
+
 @pytest.mark.parametrize(
-    ("event", "kind"),
+    ("event", "kinds"),
     [
-        (_event("order.quoted", customer="USRUSER", quoteVersion=1, expiresAt="2026-12-08T00:00:00Z",
-                currency="BBD", cimhLineIds=["L1"]), "cimh_quote"),
-        (_event("order.agreement_requested", customer="USRUSER", quoteVersion=1, lines=[], total="505.00",
-                currency="BBD"), "agreement"),
+        (_quoted(), ["agreement", "cimh_quote"]),
+        (_quoted(cimh=[]), ["agreement"]),  # supplier-only quote: no CIMH stock quote
         (_event("order.delivered", orderType="PAID", customer="USRUSER", **{"from": "SHIPPED", "to": "DELIVERED"}),
-         "invoice"),
+         ["invoice"]),
         (_event("order.delivered", orderType="PROBONO", customer="USRUSER", **{"from": "SHIPPED", "to": "DELIVERED"}),
-         "probono_invoice"),
+         ["probono_invoice"]),
     ],
 )  # fmt: skip
-def test_each_event_renders_one_pdf(ctx: Ctx, event: EventEnvelope, kind: str) -> None:
+def test_each_event_renders_its_pdfs(ctx: Ctx, event: EventEnvelope, kinds: list[str]) -> None:
     _run(ctx, event)
-    [gen] = _generated(ctx)
-    check_event(gen)
-    assert gen.payload["kind"] == kind
-    assert gen.payload["customer"] == "USRUSER"  # notification-svc mails the customer
-    assert gen.payload["orderId"] == "ORD1"
-    assert gen.correlationId == "c1"
-    fid = gen.payload["fileId"]
-    pdf = (ctx.root / "protected" / "orders" / "ORD1" / f"{fid}.pdf").read_bytes()
-    assert pdf.startswith(b"%PDF")
-    assert len(pdf) == gen.payload["size"]
-    # customers download it like any other file; generated documents can't be deleted
-    assert ctx.client.get(ctx.url(f"/files/{fid}"), headers=USER).status_code == 200
-    r = ctx.client.request("DELETE", ctx.url(f"/files/{fid}"), headers=STAFF, json={"reason": "remove"})
-    assert r.status_code == 409
+    gens = _generated(ctx)
+    assert [g.payload["kind"] for g in gens] == kinds
+    for gen in gens:
+        check_event(gen)
+        assert gen.payload["customer"] == "USRUSER"  # notification-svc mails the customer
+        assert gen.payload["orderId"] == "ORD1"
+        assert gen.correlationId == "c1"
+        fid = gen.payload["fileId"]
+        pdf = (ctx.root / "protected" / "orders" / "ORD1" / f"{fid}.pdf").read_bytes()
+        assert pdf.startswith(b"%PDF")
+        assert len(pdf) == gen.payload["size"]
+        # customers download it like any other file; generated documents can't be deleted
+        assert ctx.client.get(ctx.url(f"/files/{fid}"), headers=USER).status_code == 200
+        r = ctx.client.request("DELETE", ctx.url(f"/files/{fid}"), headers=STAFF, json={"reason": "remove"})
+        assert r.status_code == 409
+    if "agreement" in kinds:
+        assert gens[0].payload["quoteVersion"] == 1  # order-svc offers it for signing only for this version
+        assert gens[0].payload["name"] == "Agreement-ORD1-v1.pdf"
 
 
-def test_redelivery_rewrites_the_same_file(ctx: Ctx) -> None:
-    event = _event("order.agreement_requested", customer="USRUSER", quoteVersion=1, lines=[], total="505.00",
-                   currency="BBD")  # fmt: skip
-    _run(ctx, event)
-    _run(ctx, event)
-    a, b = _generated(ctx)
-    assert a.payload["fileId"] == b.payload["fileId"]
-    assert len(list((ctx.root / "protected" / "orders" / "ORD1").glob("*.pdf"))) == 1
+def test_the_agreement_lists_every_item_shipping_the_total_and_a_signature_line() -> None:
+    text = _text(request_doc("ORD1"), pdfs.agreement)
+    page = " | ".join(text)
+    assert text[0] == "Quote agreement"
+    assert "quote version 1" in text[1]
+    for want in (
+        "Rain gauge — Acme",
+        "CIMH stock",
+        "Anemometer",
+        "Vaisala (ships direct)",
+        "150.00",
+        "180.00",
+        "Estimated shipping, CIMH stock",
+        "BBD 20.00",
+        "Estimated shipping, Vaisala",
+        "BBD 35.00",
+        "Administrative fee (once per request)",
+        "Total to sign",
+        "BBD 560.00",
+        "Signature",
+        "Name",
+        "Date",
+    ):
+        assert want in page, want  # fmt: skip
+    assert "Items | BBD 480.00" in page
+    assert "choose" not in page.lower()  # nothing to choose: view and sign
 
 
-def test_supplier_only_quote_renders_nothing(ctx: Ctx) -> None:
-    _run(ctx, _event("order.quoted", customer="USRUSER", quoteVersion=1, expiresAt="2026-12-08T00:00:00Z",
-                     currency="BBD", cimhLineIds=[]))  # fmt: skip
+def test_usd_supplier_rates_are_named_on_the_agreement() -> None:
+    req = request_doc("ORD1")
+    req["quotes"][0] |= {"sourceCurrency": "USD", "exchangeRate": "2.0225"}
+    assert "Vaisala quoted in USD, converted at 1 USD = 2.0225 BBD." in _text(req, pdfs.agreement)
+
+
+def test_invoice_charges_the_signed_total() -> None:
+    page = " | ".join(_text(request_doc("ORD1", "DELIVERED"), pdfs.invoice))
+    assert "Amount due | BBD 560.00" in page
+    assert "Estimated shipping, Vaisala" in page
+
+
+def test_a_quote_revised_meanwhile_is_not_rendered(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] |= {"quoteVersion": 2}
+    ctx.orders.requests["ORD1"]["agreement"]["quoteVersion"] = 2
+    ctx.orders.requests["ORD1"]["cimhQuote"]["version"] = 2
+    _run(ctx, _quoted(version=1))  # late event for version 1
     assert _generated(ctx) == []
+    _run(ctx, _quoted("order.quote_revised", version=2, **{"from": "QUOTED", "to": "QUOTED"}))
+    assert [e.payload["quoteVersion"] for e in _generated(ctx)] == [2, 2]
+
+
+def test_redelivery_rewrites_the_same_files(ctx: Ctx) -> None:
+    event = _quoted()
+    _run(ctx, event)
+    _run(ctx, event)
+    first, second = _generated(ctx)[:2], _generated(ctx)[2:]
+    assert [e.payload["fileId"] for e in first] == [e.payload["fileId"] for e in second]
+    assert len(list((ctx.root / "protected" / "orders" / "ORD1").glob("*.pdf"))) == 2
+
+
+def test_an_old_revision_event_reads_the_cimh_lines_from_the_request(ctx: Ctx) -> None:
+    _run(ctx, _event("order.quote_revised", customer="USRUSER", **{"from": "QUOTED", "to": "QUOTED"}))
+    assert [e.payload["kind"] for e in _generated(ctx)] == ["agreement", "cimh_quote"]
 
 
 @pytest.mark.parametrize(("country", "expected"), [("BB", 0), ("TT", 1)])
@@ -78,6 +177,12 @@ def test_commercial_invoice_only_for_international_shipments(ctx: Ctx, country: 
     ctx.orders.requests["ORD1"]["shipTo"]["country"] = country
     _run(ctx, _event("order.shipped", customer="USRUSER", carrier="DHL", tracking="123", notifyCustomer=True))
     assert [e.payload["kind"] for e in _generated(ctx)] == ["commercial_invoice"] * expected
+
+
+def test_commercial_invoice_lists_only_cimh_stock() -> None:
+    page = " | ".join(_text(request_doc("ORD1", "SHIPPED", shipping={"carrier": "DHL"}), pdfs.commercial_invoice))
+    assert "Rain gauge — Acme" in page
+    assert "Anemometer" not in page  # the supplier ships it and invoices it
 
 
 def test_probono_commercial_invoice(ctx: Ctx) -> None:
@@ -89,6 +194,7 @@ def test_probono_commercial_invoice(ctx: Ctx) -> None:
 
 def test_other_events_are_ignored_and_missing_ids_go_to_dlq(ctx: Ctx) -> None:
     _run(ctx, _event("order.submitted", type="PAID", customer="USRUSER", lines=[]))
+    _run(ctx, _event("order.agreement_requested", customer="USRUSER", quoteVersion=1))  # old flow: no longer made
     assert ctx.publisher.sent == []
     with pytest.raises(ValueError, match="lacks orderId"):
         asyncio.run(make_handler(ctx.client.app.state.documents)(
@@ -104,11 +210,44 @@ def test_request_gone_renders_nothing(ctx: Ctx) -> None:
 def test_text_is_not_interpreted_as_markup(ctx: Ctx) -> None:
     ctx.orders.requests["ORD1"]["customerName"] = "<b>Bobby</b> & <font size=90>Tables</font>"
     ctx.orders.requests["ORD1"]["lines"][0]["product"]["name"] = "<para>x</para>"
-    _run(ctx, _event("order.agreement_requested", customer="USRUSER", quoteVersion=1, lines=[], total="505.00",
-                     currency="BBD"))  # fmt: skip
-    assert len(_generated(ctx)) == 1
+    _run(ctx, _quoted())
+    assert len(_generated(ctx)) == 2
 
 
-def test_revised_quote_renders_a_new_cimh_quote(ctx: Ctx) -> None:
-    _run(ctx, _event("order.quote_revised", customer="USRUSER", **{"from": "QUOTED", "to": "QUOTED"}))
-    assert [e.payload["kind"] for e in _generated(ctx)] == ["cimh_quote"]
+@pytest.mark.req("O5a")
+def test_staff_preview_the_agreement_before_sending_the_quote(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "QUOTING")
+    for who in (STAFF, ADMIN):
+        r = ctx.client.get(ctx.url("/requests/ORD1/agreement-preview"), headers=who)
+        assert r.status_code == 200, r.text
+        assert r.headers["content-type"] == "application/pdf"
+        assert r.headers["cache-control"] == "private, no-store"
+        assert r.headers["content-disposition"] == 'inline; filename="agreement-preview-ORD1.pdf"'
+        assert r.content.startswith(b"%PDF")
+    assert ctx.publisher.sent == []  # nothing announced
+    assert ctx.orders.attached == []  # nothing attached to the request
+    assert not [f for f in ctx.root.rglob("*") if f.is_file()]  # nothing stored
+
+
+def test_the_preview_is_marked_and_says_so() -> None:
+    text = _text(request_doc("ORD1"), lambda r: pdfs.agreement(r, preview=True))
+    assert text[1].startswith("Preview, not sent · Request ORD1 · quote version 1")
+    assert "BBD 560.00" in " | ".join(text)  # the same figures as the agreement that will be sent
+    assert not _text(request_doc("ORD1"), pdfs.agreement)[1].startswith("Preview")
+
+
+def test_only_staff_preview_and_order_svc_refusals_pass_through(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "QUOTING")
+    url = ctx.url("/requests/ORD1/agreement-preview")
+    assert ctx.client.get(url).status_code == 401
+    assert ctx.client.get(url, headers=USER).status_code == 403  # the requester sees the real one once sent
+    assert ctx.client.get(url, headers=INVENTORY).status_code == 403
+    assert ctx.client.get(ctx.url("/requests/ORDnope/agreement-preview"), headers=STAFF).status_code == 404
+    ctx.orders.requests["ORD1"]["draftProblem"] = "Enter the estimated shipping from Vaisala (0.00 if there is none)"
+    r = ctx.client.get(url, headers=STAFF)
+    assert (r.status_code, r.json()["code"]) == (422, "SHIPPING_ESTIMATE_REQUIRED")
+    assert "Vaisala" in r.json()["detail"]
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "ACCEPTED")
+    assert ctx.client.get(url, headers=STAFF).status_code == 409
+    ctx.orders.down = True
+    assert ctx.client.get(url, headers=STAFF).status_code == 503

@@ -1,8 +1,9 @@
 /**
  * Order journeys (APD §6; P5 exit criterion) through SHOP and SIA on the dev stack:
  *   J-02 browse → cart → submit (mixed cart → paid + Pro Bono requests)       S-03, S-07…S-09
- *   J-05 staff quoting (stock check, supplier price + CIMH option, send)     A-02, A-03, A-04
- *   J-03 customer chooses, downloads the agreement, uploads it signed, accepts  S-10…S-12
+ *   J-05 staff quoting (stock check, one source per line, shipping, send)    A-02, A-03, A-04
+ *   J-03 customer views and signs: checks the quote, downloads the agreement,
+ *        uploads it signed ("view and sign", 2026-11-17)                       S-10…S-12
  *   J-06 staff verify the signature, pick the reserved units, ship, deliver   A-03, A-10
  *   J-04 customer follows it to delivery                                        S-11
  *   J-07 Pro Bono: approve, pick, ship, deliver
@@ -12,7 +13,7 @@
  */
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
-import { auditDialog, customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, stowUnits } from './support'
+import { auditDialog, auditPart, customerAccount, isRealPageError, mongo, orderableProduct, PASSWORD, run, shot, siaGo, staffAccount, stowUnits } from './support'
 
 const problems: string[] = []
 test.beforeEach(({ page }) => {
@@ -23,6 +24,20 @@ test.beforeEach(({ page }) => {
   })
 })
 test.afterEach(() => expect(problems).toEqual([]))
+
+/** In the browser: page 1 shows logo blue (#0084C8) in its top 3% and none in its bottom 5% (not mirrored). */
+function blueBandAtTop(c: HTMLCanvasElement): boolean {
+  const ctx = c.getContext('2d')
+  if (!ctx || !c.width || !c.height) return false
+  const blue = (from: number, to: number) => {
+    const y = Math.floor(c.height * from)
+    const d = ctx.getImageData(0, y, c.width, Math.max(1, Math.floor(c.height * to) - y)).data
+    let n = 0
+    for (let i = 0; i < d.length; i += 4) if (d[i] < 60 && d[i + 1] > 100 && d[i + 1] < 170 && d[i + 2] > 160) n++
+    return n
+  }
+  return blue(0, 0.03) > c.width && blue(0.95, 1) === 0
+}
 
 const paidName = `E2E barometer ${run}`
 const proName = `E2E rain gauge ${run}`
@@ -104,10 +119,13 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByRole('link', { name: /Cart, 0 items/ })).toBeVisible()
   })
 
-  test('J-05 staff start quoting and send a quote with a CIMH-stock option', async ({ page }) => {
+  test('J-05 staff start quoting and send a quote: the stock line from CIMH stock, with estimated shipping', async ({ page }) => {
     await siaLogin(page, staff)
     await siaGo(page, 'Orders')
     await page.getByRole('textbox', { name: 'Request id, customer or organisation' }).fill(paidRequest)
+    // Wait for the (debounced) search: the new request is already the top row before it applies, and the list
+    // re-rendering under a focused row swallowed the Enter.
+    await expect(page.getByRole('listbox').getByRole('option')).toHaveCount(1)
     const row = page.getByRole('option', { name: new RegExp(paidRequest.slice(-6)) }) // the queue shows ORD…last6
     await row.focus()
     await row.press('Enter') // opens beside the list (desk) or full screen (phone)
@@ -116,69 +134,188 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByRole('cell', { name: 'Full quantity' })).toBeVisible() // 2 units on the shelf
 
     await page.getByRole('link', { name: 'Build quote' }).click()
+    // The line is fully in stock, so it starts in CIMH stock.
+    const fromStock = page.getByRole('checkbox', { name: 'From stock' })
+    await expect(fromStock).toBeChecked()
+    // One place per line: a supplier price takes the line out of stock; ticking From stock takes it back.
     await page.getByRole('button', { name: 'Add supplier' }).click()
-    await page.getByLabel('Supplier name').fill('Campbell Scientific')
-    await page.getByLabel(`Unit price for ${paidName}`).fill('180.00') // typing a price gives the line to this supplier
+    await page.getByLabel('Supplier', { exact: true }).fill('Campbell Scientific')
+    await page.getByRole('button', { name: `Price ${paidName} from Campbell Scientific instead` }).click()
+    await page.getByLabel(`Unit price for ${paidName}`).fill('180.00')
     await page.getByRole('tab', { name: /CIMH stock/ }).click()
-    await page.getByRole('checkbox', { name: 'Offer' }).check()
+    await expect(fromStock).not.toBeChecked()
+    await fromStock.check()
+    await page.getByRole('tab', { name: /Campbell Scientific/ }).click()
+    await expect(page.getByText('From CIMH stock')).toBeVisible()
+    await page.getByRole('tab', { name: /CIMH stock/ }).click()
+    await page.getByLabel('Estimated shipping').fill('20.00')
     await expect(page.getByText('Draft saved')).toBeVisible()
+    // Staff see the agreement before it goes out: the real PDF, drawn from the draft and marked as a preview.
+    await page.getByRole('button', { name: 'Preview agreement' }).click()
+    const preview = page.getByRole('dialog')
+    await expect(preview).toContainText('Agreement preview')
+    await expect(preview.getByRole('img', { name: /page 1 of/ })).toBeVisible({ timeout: 20_000 })
+    // Upright: the logo-blue header band is at the top of page 1. Two paints on one canvas once mirrored the page
+    // (band at the bottom, text upside down) when the pane narrowed for its scrollbar mid-paint.
+    await expect
+      .poll(() => preview.locator('canvas[data-page="1"]').evaluate(blueBandAtTop), { timeout: 15_000 })
+      .toBe(true)
+    await shot(page, 'sia-agreement-preview')
+    await preview.getByRole('button', { name: 'Keep editing' }).click()
+    await expect(preview).toBeHidden()
     await page.getByRole('button', { name: 'Send quote' }).click()
-    // Nothing is emailed before the confirm, which restates the recipient and the total.
+    // Nothing is emailed before the confirm, which shows the agreement and restates the recipient and the total.
     const confirm = page.getByRole('dialog')
     await expect(confirm).toContainText('Quote version')
+    await expect(confirm).toContainText('Total to sign (Estimate)')
+    await expect(confirm.getByRole('img', { name: /page 1 of/ })).toBeVisible({ timeout: 20_000 })
     await auditDialog(page, 'send-quote')
     await confirm.getByRole('button', { name: 'Email the customer' }).click()
     await expect(page.getByText('Quote version 1 sent to the customer')).toBeVisible()
     await expect(page.getByText('Quoted', { exact: true }).first()).toBeVisible()
   })
 
-  test('J-03 customer chooses CIMH stock, signs the agreement and accepts', async ({ page }) => {
+  test('J-03 customer views the quote, signs the agreement and sends it', async ({ page }) => {
     await shopLogin(page, customer)
     await page.getByRole('link', { name: 'Orders', exact: true }).first().click()
     // The quote leads the list under "Waiting for you", named by the item, with its expiry.
     const waiting = page.getByRole('region', { name: 'Waiting for you' })
-    await expect(waiting.getByText('Quote ready')).toBeVisible()
+    await expect(waiting.getByText('Quote to sign')).toBeVisible()
     await expect(waiting.getByText(paidName)).toBeVisible()
     await expect(waiting.getByText(/valid until .* days left/)).toBeVisible()
     await shot(page, 'shop-requests-docket')
     await page.getByRole('link', { name: new RegExp(paidRequest.slice(-6)) }).click() // the list shows ORD…last6
     await expect(page.getByRole('heading', { name: paidName })).toBeVisible()
-    // Table cells on wide screens, line cards on phones.
-    await expect(page.getByText(/360\.00/).locator('visible=true').first()).toBeVisible() // supplier 2 × 180.00
-    await expect(page.getByText(/300\.00/).locator('visible=true').first()).toBeVisible() // CIMH 2 × 150.00
-    await page.getByRole('link', { name: 'Choose options' }).click()
+    // A hand-off while the quote waits: the total once (in the well), what the agreement is, no priced lines (they
+    // are read on View and sign), one progress model (the path; dated changes folded into History).
+    const well = page.getByRole('region', { name: 'Where it stands' })
+    await expect(well.getByText('Your quote is ready: BBD 320.00')).toBeVisible()
+    await expect(well.getByText(/Someone who can commit your organisation signs it/)).toBeVisible()
+    await expect(page.getByText('BBD 320.00')).toHaveCount(1)
+    await expect(page.getByText(/Estimated shipping/)).toHaveCount(0)
+    await expect(page.getByRole('list', { name: 'Request status' })).toHaveCount(0)
+    await expect(page.getByText('History', { exact: true })).toBeVisible()
+    // Nothing to choose: view and sign, or cancel.
+    await expect(well.getByRole('button', { name: 'Cancel request' })).toBeVisible()
+    // The reason dialog puts the cursor in Reason and gives focus back to Cancel request when closed.
+    await well.getByRole('button', { name: 'Cancel request' }).click()
+    await expect(page.getByRole('dialog').getByLabel('Reason')).toBeFocused()
+    await page.keyboard.press('Escape')
+    await expect(well.getByRole('button', { name: 'Cancel request' })).toBeFocused()
+    await expect(page.getByRole('radio')).toHaveCount(0)
+    // Whoever comes back only with the signed copy goes straight to sending it.
+    await expect(well.getByRole('link', { name: 'Send the signed copy' })).toHaveAttribute('href', new RegExp(`/requests/${paidRequest}/agreement\\?task=send$`))
+    await well.getByRole('link', { name: 'View and sign' }).click()
 
-    await page.getByRole('radio', { name: /300\.00/ }).check()
-    await expect(page.getByText(/Total for your choices/).locator('visible=true').first()).toBeVisible()
-    await shot(page, 'shop-agreement-choose')
-    await page.getByRole('button', { name: 'Confirm choices' }).click()
-    await expect(page.getByText('Preparing the agreement…')).toBeVisible()
-    // order.agreement_requested → document-consumer renders the PDF → document.generated → order-consumer.
-    // The page polls every 3 s until the file is attached.
+    await expect(page.getByRole('heading', { name: 'View and sign' })).toBeVisible()
+    await expect(page.getByText('CIMH stock').locator('visible=true').first()).toBeVisible()
+    // Step 1 shows the quote files (the CIMH stock quote first; the page polls until document-svc has made it); the
+    // agreement waits for the next step. Below 760 px a page can't be read inline (~4 px text): each document is a
+    // row that opens a full-screen reader, zoomed in, and closing it returns to the row.
+    const phone = (page.viewportSize()?.width ?? 1280) < 760
+    const quotePreview = page.getByRole('region', { name: 'Preview of CIMH quote', exact: true })
+    if (phone) {
+      const row = page.getByRole('button', { name: 'Read CIMH quote full size' })
+      await row.click({ timeout: 45_000 })
+      const reading = page.getByRole('dialog').getByRole('region', { name: 'Reading CIMH quote' })
+      await expect(reading.getByRole('img', { name: /page 1 of/ })).toBeVisible({ timeout: 20_000 })
+      await expect(page.getByRole('dialog').getByRole('button', { name: /200%/ })).toBeVisible()
+      await auditDialog(page, 'shop-agreement-quote-reader')
+      await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+      await expect(row).toBeFocused()
+    } else await expect(quotePreview.getByRole('img', { name: /page 1 of/ })).toBeVisible({ timeout: 45_000 })
+    await expect(page.getByRole('region', { name: 'Preview of Agreement to sign' })).toHaveCount(0)
+    await auditPart(page, '.sign-page', 'shop-agreement-check')
+    await shot(page, 'shop-agreement-check', { fullPage: false })
+    await page.getByRole('button', { name: 'Continue to the agreement' }).click()
+    // order.quoted → document-consumer renders the agreement → document.generated → order-consumer. Usually
+    // there by now; the page polls every 3 s until the file is attached.
     const download = page.getByRole('link', { name: 'Download agreement' })
     await expect(download).toBeVisible({ timeout: 45_000 })
-    // The customer may download it (document-svc asks order-svc), and it is a real PDF.
+    // The agreement is read on the page, upright: beside the steps on wide screens, inside the task narrower, in the
+    // full-screen reader on phones.
+    if (phone) await page.getByRole('button', { name: 'Read Agreement to sign full size' }).click()
+    const agreementDoc = page.getByRole('region', { name: phone ? 'Reading Agreement to sign' : 'Preview of Agreement to sign' })
+    await expect(agreementDoc.getByRole('img', { name: /page 1 of/ })).toBeVisible({ timeout: 20_000 })
+    await expect
+      .poll(() => agreementDoc.locator('canvas[data-page="1"]').evaluate(blueBandAtTop), { timeout: 15_000 })
+      .toBe(true)
+    if (phone) {
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('button', { name: 'Read Agreement to sign full size' })).toBeFocused()
+    }
+    await expect(quotePreview).toBeHidden() // the quote preview was step 1's
+    await auditPart(page, '.sign-page', 'shop-agreement-read')
+    await shot(page, 'shop-agreement-read', { fullPage: false })
+    // The customer may download it (document-svc asks order-svc): a real PDF, saved as a file (no new tab).
     const pdf = await page.request.get(new URL((await download.getAttribute('href')) as string, page.url()).toString())
     expect(pdf.status()).toBe(200)
+    expect(pdf.headers()['content-disposition']).toMatch(/^attachment;/)
     expect((await pdf.body()).subarray(0, 5).toString()).toBe('%PDF-')
+    await expect(download).not.toHaveAttribute('target', '_blank')
 
-    // The real upload: type sniffed, scanned, stored, attached at once so the quote can be accepted.
-    await page.getByRole('button', { name: 'I have signed it' }).click()
+    // The three tasks are a list, one open at a time; the signer usually comes back later with the signed copy.
+    // The address follows the open task, so a reload or a copied link opens the same one.
+    await expect(page).toHaveURL(/[?&]task=sign/)
+    // "Already signed?" only opens task 3: nothing on this page can know the agreement is signed, so it ticks nothing.
+    await page.getByRole('button', { name: 'Already signed? Send the copy' }).click()
+    await expect(page).toHaveURL(/[?&]task=send/)
+    await expect(page.getByRole('button', { name: /^Get it signed\W+done/ })).toHaveCount(0)
+    const sendTask = page.getByRole('button', { name: /^Send the signed copy/ })
+    await expect(sendTask).toHaveAttribute('aria-expanded', 'true')
+    // A reload (an interruption, or the link passed to whoever sends the signed copy) opens the same task.
+    await page.reload()
+    await expect(sendTask).toHaveAttribute('aria-expanded', 'true')
+    await expect(page.getByRole('button', { name: /^Check the quote\W+done/ })).toHaveAttribute('aria-expanded', 'false')
+    // Without a task in the address, a return visit opens the first task not done (ticks kept in this browser): the
+    // quote was checked, the agreement not downloaded here, so "Get it signed".
+    await page.goto(`${SHOP}/requests/${paidRequest}/agreement`)
+    await expect(page.getByRole('button', { name: /^Get it signed/ })).toHaveAttribute('aria-expanded', 'true')
+    await page.getByRole('button', { name: 'Already signed? Send the copy' }).click()
+    await expect(sendTask).toHaveAttribute('aria-expanded', 'true')
+    // Send is never disabled: without a file it says what is missing.
+    await page.getByRole('button', { name: 'Send signed agreement' }).click()
+    await expect(page.getByText('Choose the signed copy first')).toBeVisible()
+    // The real upload: type sniffed, scanned, stored, attached at once so the quote can be accepted. The chosen file
+    // is shown on the page first (read in the browser), so the customer sends the page they meant to.
     await page.locator('input[type=file]').setInputFiles({ name: 'signed.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 signed\n%%EOF\n') })
-    await page.getByRole('button', { name: 'Accept quote' }).click()
-    // Ends on the request page: a lasting banner says what CIMH does next, and the chosen option is marked.
-    await expect(page.getByText('Quote accepted', { exact: true })).toBeVisible()
-    await expect(page.getByText(/CIMH staff now check the signature/)).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Preview of Your signed copy' })).toBeVisible()
+    await auditPart(page, '.sign-page', 'shop-agreement-send')
+    await page.getByRole('button', { name: 'Send signed agreement' }).click()
+    // Sending accepts the quote, so it asks first: what it confirms (version, total) and that CIMH is emailed.
+    const confirmSend = page.getByRole('dialog')
+    await expect(confirmSend).toContainText('This accepts quote version 1 for BBD 320.00')
+    await auditDialog(page, 'shop-agreement-confirm-send')
+    await confirmSend.getByRole('button', { name: 'Send signed agreement' }).click()
+    // Ends on the request page: a lasting banner says what CIMH does next.
+    const after = page.getByRole('region', { name: 'Where it stands' }) // History repeats the words, folded
+    await expect(after.getByText('Signed agreement received', { exact: true })).toBeVisible()
+    await expect(after.getByText(/CIMH staff check the signature/)).toBeVisible()
     await expect(page.getByText('Accepted', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('Chosen').locator('visible=true')).toHaveCount(1)
-    await expect(page.getByText('Agreement total').locator('visible=true').first()).toBeVisible()
+    await expect(page.getByText('Agreed total').locator('visible=true').first()).toBeVisible() // the quote is a record once signed
     await shot(page, 'shop-request-accepted')
+    // Once signed, the papers lie on the request page as small sheets (page 1 each), never drawn at reading size; a
+    // tile opens the full-size reader, and closing it returns to the tile. The invoice is a dashed sheet until delivery.
+    await expect(page.getByRole('region', { name: 'Delivery', exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Files', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: /^Preview of/ })).toHaveCount(0)
+    const papers = page.getByRole('region', { name: 'Papers', exact: true })
+    for (const name of ['Signed agreement', 'Agreement', 'CIMH quote']) await expect(papers.getByRole('button', { name: new RegExp(`^Read ${name} full size`) })).toBeVisible()
+    await expect(papers.getByText('Comes when the items are delivered')).toBeVisible()
+    await expect(papers.locator('canvas').locator('visible=true').first()).toBeVisible({ timeout: 20_000 }) // page 1 drawn (the test's signed copy is not a real PDF: it shows the file glyph)
+    await auditPart(page, '.sheet', 'shop-request-papers')
+    const signedTile = papers.getByRole('button', { name: /^Read Signed agreement full size/ })
+    await signedTile.click()
+    await expect(page.getByRole('dialog').getByRole('region', { name: 'Reading Signed agreement' })).toBeVisible()
+    await auditDialog(page, 'shop-request-paper-reader')
+    await page.getByRole('dialog').getByRole('button', { name: 'Close' }).click()
+    await expect(signedTile).toBeFocused()
   })
 
   test('J-06 staff verify, pick the reserved units, ship and deliver', async ({ page }) => {
     await siaLogin(page, staff)
     await page.goto(`${SIA}/requests/${paidRequest}`)
-    // order.accepted → inventory reserves over Kafka → stock.reserved → the line shows the units.
+    // order.quoted → inventory reserved over Kafka when the quote was sent → stock.reserved → the line shows the units.
     await expect(async () => {
       await page.reload()
       await expect(page.getByText('Reserved', { exact: true })).toBeVisible({ timeout: 2000 })
@@ -214,7 +351,13 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByRole('region', { name: 'Where it stands' }).getByText('Delivered', { exact: true })).toBeVisible()
     await expect(page.getByText('Collected by Cass')).toBeVisible()
     await shot(page, 'shop-request-delivered')
-    await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // the line's choice
+    await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // where the line came from
+    // order.delivered → document-consumer makes the invoice → it joins the papers in place of the dashed sheet.
+    await expect(async () => {
+      await page.reload()
+      await expect(page.getByRole('region', { name: 'Papers', exact: true }).getByRole('button', { name: /^Read Invoice full size/ })).toBeVisible({ timeout: 2000 })
+    }).toPass({ timeout: 45_000 })
+    await expect(page.getByText('Comes when the items are delivered')).toHaveCount(0)
   })
 
   test('J-07 Pro Bono: approve, pick, ship with tracking, deliver', async ({ page }) => {

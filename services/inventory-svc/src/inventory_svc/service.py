@@ -684,10 +684,15 @@ class InventoryService:
 
     # ------------------------------------------------------------------ internal: availability, reservations (I9, I11)
 
-    async def availability(self, lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    async def availability(self, lines: list[dict[str, Any]], order_id: str | None = None) -> list[dict[str, Any]]:
+        """Free units per line; units already reserved for `order_id` count as free (a revised quote re-checks
+        the stock it holds itself)."""
+        free: dict[str, Any] = dict(AVAILABLE)
+        if order_id:
+            free["reservedFor"] = {"$in": [None, order_id]}
         out = []
         for line in lines:
-            n = await self.store.storage.count_documents({"product": line["productId"], **AVAILABLE})
+            n = await self.store.storage.count_documents({"product": line["productId"], **free})
             out.append({"lineId": line["lineId"], "available": n, "fullQuantity": n >= line["qty"]})
         return out
 
@@ -703,15 +708,45 @@ class InventoryService:
             pool[line["productId"]] = mine[line["qty"] :]
         return out
 
-    async def reserve(self, p: Principal, order_id: str, lines: list[dict[str, Any]], cid: str) -> list[dict[str, Any]]:
-        """All lines or nothing, in one transaction (TAD §7.3). Repeating a reservation returns the first one."""
-        held = await self.store.storage.find({"reservedFor": order_id}, {"barcode": 1, "product": 1}).to_list()
-        if held:
-            return self._by_line(lines, held)
-        products = list(dict.fromkeys(line["productId"] for line in lines))
+    async def reserve(
+        self, p: Principal, order_id: str, lines: list[dict[str, Any]], cid: str, *, replace: bool = False
+    ) -> list[dict[str, Any]]:
+        """All lines or nothing, in one transaction (TAD §7.3). Repeating a reservation returns the first one.
+
+        `replace` (a revised quote, 2026-11-17): what the request holds is swapped for `lines` in the same
+        transaction, so order-svc gets ONE answer (stock.reserved or stock.reservation_failed). An unchanged need
+        changes nothing; an empty one releases everything; a shortfall releases what was held."""
+        if replace:
+            held = await self.store.storage.find(
+                {"reservedFor": order_id, "picked": False}, {"barcode": 1, "product": 1}
+            ).to_list()
+            need: dict[str, int] = {}
+            for line in lines:
+                need[line["productId"]] = need.get(line["productId"], 0) + int(line["qty"])
+            have: dict[str, int] = {}
+            for u in held:
+                have[u["product"]] = have.get(u["product"], 0) + 1
+            if need == have:
+                return self._by_line(lines, held)
+            if not lines:
+                await self.release(p, order_id, cid)
+                return []
+        else:
+            held = await self.store.storage.find({"reservedFor": order_id}, {"barcode": 1, "product": 1}).to_list()
+            if held:
+                return self._by_line(lines, held)
+        products = list(dict.fromkeys([line["productId"] for line in lines] + [u["product"] for u in held]))
 
         async def tx(s: Any) -> list[dict[str, Any]]:
             t = now()
+            if held:  # replace: give back what the earlier quote held, then reserve the new lines
+                await self.store.storage.update_many(
+                    {"_id": {"$in": [u["_id"] for u in held]}},
+                    {"$unset": {"reservedFor": "", "reservedAt": ""}, "$set": {"updatedAt": t}},
+                    session=s,
+                )
+                for u in held:
+                    await self._log(s, u, "release", p.sub, orderId=order_id)
             short: list[dict[str, Any]] = []
             taken: list[dict[str, Any]] = []
             for line in lines:
@@ -748,10 +783,15 @@ class InventoryService:
         try:
             return await self.store.transaction(tx)
         except _Short as exc:
-            # Without a transaction (unit-test mock) undo what this attempt reserved; with one it was rolled back.
-            await self.store.storage.update_many(
-                {"reservedFor": order_id}, {"$unset": {"reservedFor": "", "reservedAt": ""}}
-            )
+            if replace:
+                # The revised quote can't be held in full: give back everything (logged, counts synced,
+                # stock.released); with a transaction the earlier units were rolled back to held first.
+                await self.release(p, order_id, cid)
+            else:
+                # Without a transaction (unit-test mock) undo what this attempt reserved; with one it was rolled back.
+                await self.store.storage.update_many(
+                    {"reservedFor": order_id}, {"$unset": {"reservedFor": "", "reservedAt": ""}}
+                )
             failed = new_event(
                 "stock.reservation_failed",
                 {"orderId": order_id, "lines": exc.lines},

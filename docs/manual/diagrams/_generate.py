@@ -361,27 +361,25 @@ states("10-account-status", "Account status flow", {
      ("SUSPENDED", "ACTIVE", "admin reactivates", "exitX=0.8;exitY=0;entryX=0.8;entryY=1;"),
      ("PENDING_VERIFICATION", "ACTIVE", "@cimh.edu.bb: skip approval", "exitX=0.5;exitY=0;entryX=0.5;entryY=0;")], w=200)
 
-states("11-paid-request-status", "Paid order request status flow", {
+states("11-paid-request-status", "Paid order request status flow: view and sign", {
     "START": (20, 112, ""), "SUBMITTED": (80, 100, "state"), "QUOTING": (290, 100, "state"), "QUOTED": (500, 100, "state"),
-    "AWAITING_AGREEMENT": (830, 100, "state"), "ACCEPTED": (1220, 100, "state"), "PURCHASING": (1460, 100, "state"),
-    "SHIPPED": (1460, 250, "state"), "DELIVERED": (1460, 400, "final"), "DECLINED": (560, 250, "bad"),
-    "CANCELLED": (80, 400, "bad"), "END": (1670, 408, "")},
-    [("START", "SUBMITTED", ""), ("SUBMITTED", "QUOTING", "staff start<br>quoting"), ("QUOTING", "QUOTED", "send<br>quote(s)"),
-     ("QUOTED", "AWAITING_AGREEMENT", "chooses options", "exitX=1;exitY=0.25;entryX=0;entryY=0.25;"),
-     ("AWAITING_AGREEMENT", "QUOTED", "changes choices", "exitX=0;exitY=0.75;entryX=1;entryY=0.75;"),
-     ("AWAITING_AGREEMENT", "ACCEPTED", "signed agreement", "exitX=1;exitY=0.25;entryX=0;entryY=0.25;"),
-     ("ACCEPTED", "AWAITING_AGREEMENT", "signature rejected", "exitX=0;exitY=0.75;entryX=1;entryY=0.75;"),
+    "ACCEPTED": (830, 100, "state"), "PURCHASING": (1100, 100, "state"),
+    "SHIPPED": (1100, 250, "state"), "DELIVERED": (1100, 400, "final"), "DECLINED": (560, 250, "bad"),
+    "CANCELLED": (80, 400, "bad"), "END": (1310, 408, "")},
+    [("START", "SUBMITTED", ""), ("SUBMITTED", "QUOTING", "staff start<br>quoting"),
+     ("QUOTING", "QUOTED", "send<br>quote"),
+     ("QUOTED", "ACCEPTED", "signed agreement<br>uploaded", "exitX=1;exitY=0.25;entryX=0;entryY=0.25;"),
+     ("ACCEPTED", "QUOTED", "signature rejected", "exitX=0;exitY=0.75;entryX=1;entryY=0.75;"),
      ("ACCEPTED", "PURCHASING", "verified +<br>POs placed"),
      ("PURCHASING", "SHIPPED", "carrier + tracking<br>(supplier items direct)"), ("SHIPPED", "DELIVERED", ""), ("DELIVERED", "END", ""),
-     ("QUOTED", "QUOTED", "quote revised", "exitX=0.75;exitY=0;entryX=0.25;entryY=0;"),
-     ("QUOTED", "DECLINED", "customer declines", DOWN.format(ex=0.75, en=0.48)),
-     ("SUBMITTED", "CANCELLED", "cancel", DOWN.format(ex=0.5, en=0.058)),
-     ("QUOTING", "CANCELLED", "cancel", DOWN.format(ex=0.5, en=0.219)),
-     ("QUOTED", "CANCELLED", "expired (30 d)", DOWN.format(ex=0.12, en=0.337)),
-     ("DECLINED", "CANCELLED", "", DOWN.format(ex=0.5, en=0.427)),
-     ("AWAITING_AGREEMENT", "CANCELLED", "expired /<br>cancel", DOWN.format(ex=0.5, en=0.658)),
-     ("ACCEPTED", "CANCELLED", "cancel<br>(release stock)", DOWN.format(ex=0.5, en=0.935))],
-    layout_w={"CANCELLED": 1300, "AWAITING_AGREEMENT": 210})
+     ("QUOTED", "QUOTED", "quote revised<br>(new agreement)", "exitX=0.75;exitY=0;entryX=0.25;entryY=0;"),
+     ("QUOTED", "DECLINED", "customer cancels", DOWN.format(ex=0.75, en=0.48)),
+     ("SUBMITTED", "CANCELLED", "cancel", DOWN.format(ex=0.5, en=0.075)),
+     ("QUOTING", "CANCELLED", "cancel", DOWN.format(ex=0.5, en=0.285)),
+     ("QUOTED", "CANCELLED", "expired (30 d)", DOWN.format(ex=0.12, en=0.438)),
+     ("DECLINED", "CANCELLED", "release stock", DOWN.format(ex=0.5, en=0.555)),
+     ("ACCEPTED", "CANCELLED", "staff cancel<br>(release stock)", DOWN.format(ex=0.5, en=0.825))],
+    layout_w={"CANCELLED": 1000})
 
 states("12-probono-request-status", "Pro Bono request status flow: no quote", {
     "START": (40, 112, ""), "SUBMITTED": (100, 100, "state"), "APPROVED": (330, 100, "state"), "PICKING": (560, 100, "state"),
@@ -416,40 +414,39 @@ sequence("13-registration-flow", "Registration, verification and admin approval"
 ], col=180)
 
 # =================================================================== 14 paid request
-sequence("14-paid-request-flow", "Paid request: quote, CIMH stock option, acceptance, fulfilment", [
+sequence("14-paid-request-flow", "Paid request: quote, view and sign, fulfilment", [
     ("c", "Customer", "actor"), ("o", "order-svc", "service"), ("cat", "catalog-svc", "service"),
     ("i", "inventory-svc", "service"), ("d", "document-svc", "service"), ("k", "Kafka", "platform"), ("s", "Staff", "actor")], [
-    ("c", "o", "submit cart (currency BBD | USD)"),
+    ("c", "o", "submit cart (every quote in BBD)"),
     ("o", "cat", "product snapshots, Pro Bono limits"),
     ("o", "o", "split → PAID (+ Pro Bono) request"),
     ("o", "k", "order.submitted"),
     ("s", "o", "start quoting"),
     ("o", "i", "availability (full qty per line?)"),
-    ("o", "o", "build CIMH option (cost + fee, rate if USD)"),
-    ("s", "d", "upload supplier quote PDFs"),
+    ("s", "d", "upload supplier quotes (customer sees them)"),
+    ("s", "o", "one source per line + estimated shipping (draft)"),
     ("s", "o", "send quote (expires in 30 d)"),
-    ("o", "k", "order.quoted"),
-    ("k", "d", "generate CIMH quote PDF"),
-    ("c", "o", "choose CIMH or SUPPLIER per line → AWAITING_AGREEMENT"),
-    ("o", "k", "order.agreement_requested"),
-    ("k", "d", "generate agreement PDF (total)"),
-    ("c", "d", "download, sign, upload signed agreement"),
-    ("c", "o", "accept (signed file id) → ACCEPTED"),
-    ("o", "k", "order.accepted"),
+    ("o", "i", "availability again (CIMH lines)"),
+    ("o", "o", "QUOTED: sources fixed, agreement total"),
+    ("o", "k", "order.quoted (lines, shipping, total)"),
+    ("k", "d", "agreement PDF + CIMH stock quote PDF"),
     ("k", "i", "reserve CIMH lines (transaction)"),
-    ("alt", "if stock no longer available → stock.reservation_failed → staff requote that line"),
+    ("alt", "if stock gone meanwhile → stock.reservation_failed → staff revise the quote"),
+    ("c", "d", "view, download, sign, upload signed agreement"),
+    ("c", "o", "accept (signed file of this version) → ACCEPTED"),
+    ("alt", "or cancel request → DECLINED → CANCELLED (stock released)"),
     ("s", "o", "verify signature + purchase orders → PURCHASING"),
     ("alt", "supplier items ship direct to the customer (no stock); staff pick CIMH-stock lines only"),
     ("s", "o", "ship: carrier + tracking → SHIPPED"),
     ("s", "o", "→ DELIVERED"),
-    ("k", "d", "generate invoice"),
+    ("k", "d", "generate invoice (the signed total)"),
 ], col=165)
 
 # =================================================================== 15 reservation
 d = Diagram("15-stock-reservation", "Stock reservation in inventory-svc (MongoDB transaction)")
 steps = [
-    ("Event order.accepted / order.probono_approved", "client"),
-    ("Start transaction<br>readConcern snapshot · writeConcern majority", "service"),
+    ("Event order.quoted (CIMH lines) · order.quote_revised (replace)<br>· order.probono_approved", "client"),
+    ("Start transaction<br>readConcern snapshot · writeConcern majority<br>(revised quote: release what the request holds first)", "service"),
     ("For each line: find N units<br>product = X · stowed · not picked · reservedFor = null", "service"),
     ("updateMany({_id ∈ ids, reservedFor: null},<br>{$set: {reservedFor: orderId}})", "service"),
 ]
@@ -465,7 +462,7 @@ ok = d.node("Push <b>stock.reserved</b> to outbox<br>COMMIT", 640, 580, 260, 60,
 bad = d.node("ABORT<br>publish <b>stock.reservation_failed</b>", 100, 580, 260, 60, box("bad"))
 d.edge(dec, ok, "yes")
 d.edge(dec, bad, "no")
-d.node("TransientTransactionError → retry up to 3 times.<br>Release on cancel: updateMany({reservedFor: orderId}, {$set: {reservedFor: null}}): safe to repeat.",
+d.node("TransientTransactionError → retry up to 3 times.<br>Release on decline / cancel / expiry: updateMany({reservedFor: orderId}, {$set: {reservedFor: null}}): safe to repeat.<br>A revised quote with the same products and quantities changes nothing.",
        640, 450, 340, 70, NOTE)
 d.save()
 
@@ -625,35 +622,33 @@ flow("24-journey-registration", "J-01 Registration and approval", {
     ("active1", "login", "", "exitX=0.5;exitY=1;entryX=0.5;entryY=0;"), ("login", "requests", ""),
 ])
 
-flow("25-journey-quote-acceptance", "J-02 / J-03 Customer: cart → request → quote → signed agreement", {
+flow("25-journey-quote-acceptance", "J-02 / J-03 Customer: cart → request → quote → view and sign", {
     "browse": ("<b>S-02 / S-04 / S-06</b><br>browse, Pro Bono, search", 40, 110, "screen", 190, 55),
-    "detail": ("<b>S-03 Product</b><br>Add to request", 290, 110, "screen", 170, 55),
+    "detail": ("<b>S-03 Product</b><br>Add to cart", 290, 110, "screen", 170, 55),
     "cart": ("<b>S-07 Cart</b>", 520, 110, "screen"),
-    "submit": ("<b>S-08 Submit</b><br>address, BBD/USD, notes", 760, 110, "screen", 190, 55),
+    "submit": ("<b>S-08 Submit</b><br>addresses, notes (BBD)", 760, 110, "screen", 190, 55),
     "mixed": ("Paid AND<br>Pro Bono?", 1010, 100, "dec"),
     "two": ("Two requests<br>PAID + PROBONO", 1200, 50, "sys"),
     "one": ("One request", 1200, 160, "sys"),
     "done": ("<b>S-09 Submitted</b>", 1200, 260, "screen"),
-    "quotemail": ("Email: quote ready", 960, 380, "email"),
-    "s11": ("<b>S-11 Request</b><br>supplier + CIMH options", 720, 370, "screen", 190, 60),
+    "quotemail": ("Email: quote ready to sign", 960, 380, "email", 190, 50),
+    "s11": ("<b>S-11 Request</b><br>prices, sources, shipping, total", 720, 370, "screen", 200, 60),
     "accept": ("Proceed?", 500, 360, "dec"),
-    "decline": ("DECLINED → CANCELLED", 260, 375, "bad", 190, 50),
-    "choose": ("<b>S-12 step 1</b><br>choose CIMH / SUPPLIER per line", 470, 490, "screen", 200, 60),
-    "awaiting": ("AWAITING_AGREEMENT<br>agreement PDF generated", 470, 600, "sys", 200, 55),
-    "sign": ("<b>S-12 step 2</b><br>download + sign", 470, 710, "screen", 200, 55),
-    "upload": ("<b>S-12 step 3</b><br>upload signed copy", 470, 820, "screen", 200, 55),
-    "accepted": ("ACCEPTED<br>(commitment to pay)", 760, 820, "ok", 190, 55),
-    "track": ("<b>S-11</b> track: PURCHASING →<br>SHIPPED (tracking) → DELIVERED", 1010, 820, "screen", 230, 55),
+    "decline": ("Cancel request<br>DECLINED → CANCELLED", 260, 375, "bad", 190, 50),
+    "check": ("<b>S-12 step 1</b><br>check the quote + quote files", 470, 490, "screen", 200, 60),
+    "sign": ("<b>S-12 step 2</b><br>download agreement + sign", 470, 600, "screen", 200, 55),
+    "upload": ("<b>S-12 step 3</b><br>upload signed copy", 470, 710, "screen", 200, 55),
+    "accepted": ("ACCEPTED<br>(commitment to pay)", 760, 710, "ok", 190, 55),
+    "track": ("<b>S-11</b> track: PURCHASING →<br>SHIPPED (tracking) → DELIVERED", 1010, 710, "screen", 230, 55),
     "expired": ("Quote expired (30 d)<br>→ CANCELLED", 160, 600, "bad", 190, 55),
-    "rejected": ("Email: signature rejected", 760, 930, "email", 190, 45),
+    "rejected": ("Email: signature rejected", 760, 820, "email", 190, 45),
 }, [
     ("browse", "detail", ""), ("detail", "cart", ""), ("cart", "submit", "continue"), ("submit", "mixed", "submit"),
     ("mixed", "two", "yes"), ("mixed", "one", "no"), ("two", "done", "", "exitX=1;exitY=0.5;entryX=1;entryY=0.3;"), ("one", "done", ""),
     ("done", "quotemail", "staff quote", EDGE_DASH[len(EDGE):]), ("quotemail", "s11", ""), ("s11", "accept", ""),
-    ("accept", "decline", "decline"), ("accept", "choose", "choose options"), ("choose", "awaiting", "confirm"),
-    ("awaiting", "sign", ""), ("sign", "upload", ""), ("upload", "accepted", "accept"),
-    ("awaiting", "choose", "change choices", "exitX=1;exitY=0.5;entryX=1;entryY=0.5;"),
-    ("awaiting", "expired", "no upload in time"), ("accepted", "track", ""),
+    ("accept", "decline", "cancel"), ("accept", "check", "view and sign"),
+    ("check", "sign", ""), ("sign", "upload", ""), ("upload", "accepted", "send"),
+    ("check", "expired", "no upload in time"), ("accepted", "track", ""),
     ("accepted", "rejected", "staff rejects<br>signature", "dashed=1;"),
     ("rejected", "upload", "upload again", "exitX=0;exitY=0.5;entryX=0.5;entryY=1;"),
 ])
@@ -664,11 +659,11 @@ flow("26-journey-staff-desk", "J-05 / J-06 / J-07 Staff request desk (SIA)", {
     "a03": ("<b>A-03 Request</b><br>allowedActions", 500, 110, "staff"),
     "type": ("Type?", 750, 100, "dec"),
     "start": ("Start quoting<br>(stock check) → QUOTING", 940, 40, "sys", 200, 55),
-    "a04": ("<b>A-04 Quote builder</b><br>supplier PDFs + prices,<br>CIMH option, exchange rate", 1190, 30, "staff", 210, 75),
+    "a04": ("<b>A-04 Quote builder</b><br>one source per line: CIMH stock<br>or supplier; shipping estimates", 1190, 30, "staff", 210, 75),
     "send": ("Send quote → QUOTED<br>(customer emailed)", 1190, 150, "sys", 210, 55),
-    "cust": ("Customer chooses, signs,<br>uploads → ACCEPTED", 1190, 260, "email", 210, 55),
+    "cust": ("Customer views, signs,<br>uploads → ACCEPTED", 1190, 260, "email", 210, 55),
     "verify": ("Signature<br>OK?", 1230, 370, "dec"),
-    "rej": ("Reject signature →<br>AWAITING_AGREEMENT", 1450, 385, "bad", 190, 55),
+    "rej": ("Reject signature →<br>QUOTED (stock kept)", 1450, 385, "bad", 190, 55),
     "po": ("☑ verified + POs →<br>PURCHASING", 1190, 490, "sys", 210, 55),
     "pick": ("<b>A-10 / M-07 Pick</b><br>CIMH-stock + Pro Bono lines only", 860, 490, "staff", 230, 55),
     "approve": ("Approve?", 770, 250, "dec"),

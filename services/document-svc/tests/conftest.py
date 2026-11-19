@@ -58,27 +58,29 @@ INVENTORY = token("service", "svc:inventory", "")
 CATALOG = token("service", "svc:catalog", "")
 
 
-def request_doc(rid: str, status: str = "AWAITING_AGREEMENT", **kw: Any) -> dict[str, Any]:
+def request_doc(rid: str, status: str = "QUOTED", **kw: Any) -> dict[str, Any]:
+    """order-svc's staff view of a quoted request ("view and sign"): L1 from CIMH stock, L2 from a supplier."""
     return {
         "id": rid, "type": kw.pop("type", "PAID"), "status": status, "customer": "USRUSER",
         "customerName": "Una User", "organisationId": "ORGMET", "organisationName": "Met Office", "currency": "BBD",
         "lines": [
             {"lineId": "L1", "productId": "MET1", "product": {"name": "Rain gauge", "make": "Acme"}, "qty": 2,
-             "choice": None},
-            {"lineId": "L2", "productId": "MET2", "product": {"name": "Anemometer"}, "qty": 1, "choice": None},
+             "source": "CIMH", "supplier": None},
+            {"lineId": "L2", "productId": "MET2", "product": {"name": "Anemometer"}, "qty": 1,
+             "source": "SUPPLIER", "supplier": "Vaisala"},
         ],
         "shipTo": {"line1": "Husbands", "city": "St James", "country": "BB", "firstname": "Una", "lastname": "User",
                    "email": "u@met.bb"},
         "billTo": None,
-        "quotes": [{"id": "Q1", "version": 1, "total": "540.00", "expiresAt": "2026-12-08T00:00:00Z",
-                    "lines": [{"lineId": "L1", "unitPrice": "180.00", "total": "360.00"},
-                              {"lineId": "L2", "unitPrice": "180.00", "total": "180.00"}]}],
-        "cimhQuote": {"version": 1, "exchangeRate": None, "total": "300.00", "fileId": None,
-                      "lines": [{"lineId": "L1", "unitPrice": "150.00", "total": "300.00"}]},
+        "quoteVersion": 1,
+        "quotes": [{"id": "Q1", "version": 1, "supplier": "Vaisala", "total": "180.00", "shippingEstimate": "35.00",
+                    "expiresAt": "2026-12-08T00:00:00Z",
+                    "lines": [{"lineId": "L2", "unitPrice": "180.00", "total": "180.00"}]}],
+        "cimhQuote": {"version": 1, "exchangeRate": None, "total": "300.00", "shippingEstimate": "20.00",
+                      "fileId": None, "lines": [{"lineId": "L1", "unitPrice": "150.00", "total": "300.00"}]},
         "adminFee": "25.00",
-        "agreement": {"quoteVersion": 1, "choices": [{"lineId": "L1", "choice": "CIMH"},
-                                                     {"lineId": "L2", "choice": "SUPPLIER"}],
-                      "total": "505.00", "fileId": None},
+        # 300 CIMH + 180 supplier + 20 + 35 estimated shipping + 25 admin fee
+        "agreement": {"quoteVersion": 1, "total": "560.00", "fileId": None},
         "shipping": None, "invoice": None, "quoteExpiresAt": "2026-12-08T00:00:00Z",
         **kw,
     }  # fmt: skip
@@ -107,7 +109,8 @@ class MemoryOrders:
         doc = self.requests.get(rid)
         if doc is None:
             return None
-        out = {"allowed": False, "canAct": False, "status": doc["status"], "type": doc["type"]}
+        out = {"allowed": False, "canAct": False, "status": doc["status"], "type": doc["type"],
+               "quoteVersion": doc.get("quoteVersion")}  # fmt: skip
         acc = ACCOUNTS.get(user)
         if acc is None:
             return out
@@ -124,6 +127,19 @@ class MemoryOrders:
         if self.down:
             raise unavailable("order-svc")
         self.attached.append((rid, file))
+
+    async def quote_preview(self, rid: str) -> dict[str, Any] | None:
+        """Like order-svc: the request as Send quote would leave it, or why it can't be sent (409 / 422)."""
+        if self.down:
+            raise unavailable("order-svc")
+        doc = self.requests.get(rid)
+        if doc is None:
+            return None
+        if doc["status"] not in ("QUOTING", "QUOTED"):
+            raise ProblemError(409, "ORDER_ILLEGAL_TRANSITION", f"send-quote is not allowed in {doc['status']}")
+        if doc.get("draftProblem"):
+            raise ProblemError(422, "SHIPPING_ESTIMATE_REQUIRED", doc["draftProblem"])
+        return doc
 
 
 @dataclass

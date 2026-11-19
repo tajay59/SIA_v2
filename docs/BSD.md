@@ -88,7 +88,8 @@ Other users:
 | Stock availability | "In stock" / "On request" flag only | Exact counts | Exact counts | |
 | Order requests | Own **and** same organisation (read); own (act) | All | All | Only the requester or an admin can accept, decline or cancel |
 | Quote amounts, exchange rate | On their requests | Read/write | Read/write | |
-| Supplier names, purchase orders | ✗ (shown only on documents staff choose to share) | Read/write | Read/write | |
+| Supplier names | On their requests (they hold the supplier's quote; owner, 2026-11-17) | Read/write | Read/write | |
+| Purchase orders, catalogue costs, the quote draft | ✗ | Read/write | Read/write | |
 | Files | On visible requests | All | All | Checked by document-svc |
 
 ## 4. Shared types
@@ -447,7 +448,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `_id` | ObjectId | R | ⟲ | |
 | `id` | Id | R | ⟲ | `ORD…` for requests, `CRT…` for carts. Unique |
 | `type` | `"PAID"\|"PROBONO"\|null` | | ✚ | `null` for carts |
-| `status` | enum | R | ✚ | `CART`; paid: `SUBMITTED, QUOTING, QUOTED, AWAITING_AGREEMENT, ACCEPTED, DECLINED, PURCHASING, SHIPPED, DELIVERED, CANCELLED`; PROBONO: `SUBMITTED, APPROVED, REJECTED, PICKING, SHIPPED, DELIVERED, CANCELLED` |
+| `status` | enum | R | ✚ | `CART`; paid: `SUBMITTED, QUOTING, QUOTED, ACCEPTED, DECLINED, PURCHASING, SHIPPED, DELIVERED, CANCELLED` (`AWAITING_AGREEMENT` removed 2026-11-17; order-svc moves old ones to `QUOTED` at start-up); PROBONO: `SUBMITTED, APPROVED, REJECTED, PICKING, SHIPPED, DELIVERED, CANCELLED` |
 | `customer` | Id | R | ⟲ | → `accounts.id` (the requester) |
 | `customerSnapshot` | `{ firstname, lastname, email }` | R | ⟲ (`firstname`, `lastname`) | PII; copied at submission |
 | `organisationId` | Id? | | ✚ | Copied from the account at submission (drives organisation visibility) |
@@ -476,7 +477,8 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `productId` | string | R | → `product.id` |
 | `product` | `{ name, make, modelname, modelnumber, type, probono }` | R | Product details copied at submission |
 | `qty` | int ≥ 1 | R | For PROBONO: ≤ `probonoMaxPerRequest` |
-| `choice` | `"CIMH"\|"SUPPLIER"\|null` | | Set at acceptance (paid) |
+| `source` | `"CIMH"\|"SUPPLIER"\|null` | | Paid lines: fixed by staff when the quote is sent (one place per line). Was `choice` (renamed at start-up) |
+| `supplier` | string? | | Supplier name for `SUPPLIER` lines |
 | `cimhAvailable` | bool | | Set when quoting starts: the full quantity is in stock |
 | `reservation` | `{ status: "NONE"\|"RESERVED"\|"FAILED"\|"RELEASED", units: string[] }` | | Updated from inventory events |
 | `picked` | `{ barcode, pickedby, pickeddate }[]` | | ⟲ (`cart[].picked`). Only for CIMH-stock and Pro Bono lines; supplier lines ship direct and have no units |
@@ -488,35 +490,36 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `quotes` | Quote[] | Supplier quotes. **Every version is kept** |
 | `quotes[].id` | Id (`QTE…`) | |
 | `quotes[].version` | int | Increases with each revision; only the latest can be accepted |
-| `quotes[].supplier` | string | Staff only |
+| `quotes[].supplier` | string | Customers see it too |
+| `quotes[].shippingEstimate`, `sourceShippingEstimate` | Money, Money? | Estimated shipping straight to the customer (request currency); the supplier's own USD figure when converted. Not part of `total` |
 | `quotes[].lines` | `{ lineId, unitPrice: Money, total: Money, sourceUnitPrice?: Money }[]` | `sourceUnitPrice` = the supplier's USD price when converted; `unitPrice` = round(USD × rate), total = unitPrice × qty |
 | `quotes[].sourceCurrency`, `exchangeRate` | Currency?, string? | Set when a USD supplier quote was converted to BBD (rate = BBD per 1 USD) |
 | `quotes[].total` | Money | In the request `currency` |
 | `quotes[].fileIds` | Id[] | Uploaded supplier PDFs |
 | `quotes[].expiresAt` | Timestamp | `sentAt` + 30 days |
 | `quotes[].sentAt`, `sentBy` | Timestamp, Actor | |
-| `cimhQuote` | object? | Present when ≥ 1 line has `cimhAvailable` |
+| `cimhQuote` | object? | Present when ≥ 1 line is supplied from CIMH stock |
+| `cimhQuote.shippingEstimate` | Money | Estimated shipping of the CIMH stock lines (request currency) |
 | `cimhQuote.version` | int | Tracks the supplier quote version |
 | `cimhQuote.lines` | `{ lineId, unitCostBBD: Money, unitPrice: Money, total: Money }[]` | `unitCostBBD` staff only; USD price = BBD cost ÷ rate, rounded half-up to cents |
-| `quoteVersion`, `quoteExpiresAt` | int, Timestamp | Latest sent version and its expiry (`sentAt` + 30 days); the expiry job and agreement/accept read these |
+| `quoteVersion`, `quoteExpiresAt` | int, Timestamp | Latest sent version and its expiry (`sentAt` + 30 days); the expiry job and accept read these |
 | `adminFee` | Money | Admin fee (catalogue `fees` `admin`, BBD, converted for USD) charged **once per request** (legacy rule), added to `agreement.total`; set when the quote is sent |
-| `quoteDraft` | object? | Staff draft while quoting: `supplierQuotes[]{supplier, lines{lineId, unitPrice}, fileIds}`, `cimh{lineIds, exchangeRate}`, `savedBy`, `savedAt`. A line may be priced by one supplier only |
+| `quoteDraft` | object? | Staff draft while quoting: `supplierQuotes[]{supplier, currency, exchangeRate, shippingEstimate, lines{lineId, unitPrice}, fileIds}`, `cimh{lineIds, exchangeRate, shippingEstimate}`, `savedBy`, `savedAt`. A line sits in **one** place: one supplier or CIMH stock (422 `LINE_SOURCE_CONFLICT`) |
 | `cimhQuote.exchangeRate` | Decimal128? | **Required when `currency = USD`**; entered by staff; BBD per USD |
 | `cimhQuote.total` | Money | In the request currency |
 | `cimhQuote.fileId` | Id? | Generated PDF |
 | `acceptance` | object? | |
 | `acceptance.quoteVersion` | int | |
 | `acceptance.agreementFileId` | Id | The signed agreement that made the request ACCEPTED |
-| `acceptance.choices` | `{ lineId, choice }[]` | |
+| `acceptance.choices` | `{ lineId, choice }[]` | Old requests only (no longer written) |
 | `acceptance.by`, `at`, `ip` | Actor, Timestamp, string | Commitment to pay (PII: ip) |
-| `agreement` | object? | Created when the customer chooses options (`AWAITING_AGREEMENT`) |
+| `agreement` | object? | Created when staff send the quote, one per quote version ("view and sign") |
 | `agreement.quoteVersion` | int | |
-| `agreement.choices` | `{ lineId, choice }[]` | Locked for this agreement |
-| `agreement.total` | Money | Total the customer commits to pay (request currency) |
-| `agreement.fileId` | Id? | Generated agreement PDF |
+| `agreement.total` | Money | Total the customer commits to pay (request currency): every line + estimated shipping + admin fee; the invoice charges it |
+| `agreement.fileId` | Id? | Generated agreement PDF (set only by a PDF made for this `quoteVersion`) |
 | `agreement.signedFileId` | Id? | Customer-uploaded signed copy |
 | `agreement.verified` | `{ by, at }`? | Staff verification (required before purchase orders) |
-| `agreement.rejections` | `{ by, at, reason }[]` | Signature rejected by staff; customer re-uploads |
+| `agreement.rejections` | `{ by, at, reason, fileId }[]` | Signature rejected by staff (back to `QUOTED`, ≥ 7 days left); that file can't be sent again |
 | `decline` | `{ by, at, reason }`? | |
 | `purchaseOrders` | `{ supplier, poNumber, lineIds[], placedAt, placedBy }[]` | Staff only |
 
@@ -528,7 +531,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `rejection` | `{ by, at, reason }`? | ✚ | Pro Bono reject |
 | `shipping` | `{ carrier: "FEDEX"\|"DHL"\|"HAND", tracking?, note?, cost?: Money, date, by }` | ⟲ | `tracking` required unless `HAND`. `note` keeps free text (e.g. "Hand delivered by …"). Legacy `method` → `carrier` |
 | `invoice` | `{ number, number1?, number3?, number4?, date }` | ⟲ | Legacy invoice numbering kept |
-| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, deleted? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice` |
+| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, quoteVersion?, deleted? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice`. `quoteVersion`: the quote a generated agreement / CIMH quote was made for, or the one a signed agreement was uploaded for |
 | `cancellation` | `{ by, at, reason, auto: bool }`? | ✚ | `auto: true` for quote expiry |
 | `legacy` | `{ total?, shippingEstimate?, shippingCost1? }`? | ⟲ | Read-only values from migrated orders; never written by v2 |
 
@@ -550,6 +553,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 **Rules:**
 - Allowed status transitions are exactly those in TAD §7.2, enforced in `domain/` **and** by a conditional update on the expected `status`.
 - `currency = USD` and a `cimhQuote` present → `cimhQuote.exchangeRate` is required.
+- Once quoted, every paid line has exactly one `source`; CIMH lines are reserved from the moment the quote is sent until it is signed (then picked), cancelled, declined or expired.
 - Accounts with `isCimh` cannot own a document with `status ≠ CART`. In fact they get no cart at all (the API refuses).
 - A cart with both Pro Bono and paid lines is split into two requests at submission (one `type: PAID`, one `type: PROBONO`), and the cart is emptied.
 
@@ -586,7 +590,7 @@ db.runCommand({ collMod: "orders", validator: { $jsonSchema: {
   bsonType: "object",
   required: ["id", "status", "customer", "lines", "version", "createdAt", "history", "outbox"],
   properties: {
-    status:   { enum: ["CART","SUBMITTED","QUOTING","QUOTED","AWAITING_AGREEMENT","ACCEPTED","DECLINED","PURCHASING",
+    status:   { enum: ["CART","SUBMITTED","QUOTING","QUOTED","ACCEPTED","DECLINED","PURCHASING",
                        "APPROVED","REJECTED","PICKING","SHIPPED","DELIVERED","CANCELLED"] },
     type:     { enum: ["PAID","PROBONO",null] },
     currency: { enum: ["BBD","USD",null] },

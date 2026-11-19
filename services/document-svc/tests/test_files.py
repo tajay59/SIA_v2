@@ -56,11 +56,25 @@ def test_who_may_upload(ctx: Ctx, headers: dict[str, str], kind: str, status: in
     assert not ctx.orders.attached
 
 
-def test_customer_upload_only_while_the_agreement_is_awaited(ctx: Ctx) -> None:
-    ctx.orders.requests["ORD1"]["status"] = "QUOTED"
+@pytest.mark.parametrize("status", ["QUOTING", "ACCEPTED", "PURCHASING"])
+def test_customer_upload_only_while_the_quote_is_open(ctx: Ctx, status: str) -> None:
+    ctx.orders.requests["ORD1"]["status"] = status
     r = ctx.upload("ORD1")
     assert r.status_code == 409
     assert r.json()["code"] == "INVALID_STATE"
+
+
+def test_signed_agreement_is_stamped_with_the_quote_version(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"]["quoteVersion"] = 3
+    r = ctx.upload("ORD1")
+    assert r.status_code == 201, r.text
+    assert r.json()["quoteVersion"] == 3
+    (_, attached), *_ = ctx.orders.attached
+    assert attached["quoteVersion"] == 3  # order-svc refuses it for any other version
+    (event,) = [e for _, _, e in ctx.publisher.sent if e.type == "document.uploaded"]
+    assert event.payload["quoteVersion"] == 3
+    other = ctx.upload("ORD1", kind="supplier_quote", headers=STAFF)
+    assert other.json()["quoteVersion"] is None  # only signed agreements carry it
 
 
 @pytest.mark.parametrize("kind", ["supplier_quote", "signed_agreement", "upload", "commercial_invoice"])

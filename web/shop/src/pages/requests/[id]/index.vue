@@ -1,7 +1,9 @@
 <script setup lang="ts">
 /**
  * S-11 request detail on its own page (phones, links from emails, a reload). The navy band names the place
- * ("Requests"), the request itself is the shared `RequestSheet` the docket on /requests shows beside the list.
+ * ("Orders"), the request itself is the shared `RequestSheet` the docket on /requests shows beside the list.
+ * One column at every width, with no Files section and no document preview (owner, 2026-11-18): the quote files
+ * and the agreement are read on View and sign (S-12).
  */
 import { mdiArrowLeft } from '@mdi/js'
 import { useRoute } from 'vue-router'

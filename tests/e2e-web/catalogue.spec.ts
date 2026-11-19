@@ -74,9 +74,10 @@ test.describe.serial('J-10 product with images → SHOP', () => {
     // leftover Pro Bono products from earlier runs would push the new one off it. Search keeps probono=true.
     await page.goto(`${SHOP}/pro-bono?q=${encodeURIComponent(name)}`)
     await expect(page.getByRole('heading', { level: 1, name: 'Pro Bono Spares' })).toBeVisible()
-    const card = page.getByRole('link', { name: new RegExp(name) })
+    // The card is an article; only its name is the link (thumbnails and Add to cart sit beside it).
+    const card = page.locator('article', { has: page.getByRole('link', { name: new RegExp(name) }) })
     await expect(card).toBeVisible()
-    await expect(card.getByText('Pro Bono')).toBeVisible()
+    await expect(card.getByText('Pro Bono', { exact: true })).toBeVisible()
 
     await page.goto(`${SHOP}/search?q=${encodeURIComponent(name)}`)
     await page.getByRole('link', { name: new RegExp(name) }).first().click()
