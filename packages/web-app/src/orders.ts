@@ -20,6 +20,9 @@ export type RequestLine = S['Line']
 export type RequestStatus = S['RequestStatus']
 export type LineSource = S['LineSource']
 export type Carrier = S['Carrier']
+export type Shipment = S['Shipment']
+export type ShipmentInput = S['ShipmentInput']
+export type ShipmentPatch = S['ShipmentPatch']
 export type FileRef = S['FileRef']
 
 export type Currency = S['Currency']
@@ -31,8 +34,54 @@ const documents = documentsClient()
 export const CARRIERS: { value: Carrier; title: string }[] = [
   { value: 'FEDEX', title: 'FedEx' },
   { value: 'DHL', title: 'DHL' },
+  { value: 'UPS', title: 'UPS' },
   { value: 'HAND', title: 'Hand delivery' },
+  { value: 'OTHER', title: 'Other' },
 ]
+
+/** How a shipment's carrier reads: the name staff typed for OTHER, else the carrier's name. */
+export function carrierLabel(s: Pick<Shipment, 'carrier' | 'carrierName'>): string {
+  return s.carrierName || CARRIERS.find((c) => c.value === s.carrier)?.title || s.carrier
+}
+
+/** One place that still has lines to ship: CIMH stock (or Pro Bono), or one supplier shipping direct. */
+export interface OpenSource {
+  key: string
+  source: LineSource
+  supplier: string | null
+  label: string
+  lines: RequestLine[]
+}
+
+/** Lines not yet in a shipment, grouped by where they ship from (CIMH stock first, then each supplier). */
+export function openSources(r: Pick<OrderRequest, 'type' | 'lines' | 'shipments'>): OpenSource[] {
+  const shipped = new Set((r.shipments ?? []).flatMap((s) => s.lineIds))
+  const out = new Map<string, OpenSource>()
+  for (const ln of r.lines ?? []) {
+    if (shipped.has(ln.lineId)) continue
+    const fromSupplier = r.type !== 'PROBONO' && ln.source === 'SUPPLIER'
+    const supplier = fromSupplier ? (ln.supplier ?? null) : null
+    const key = fromSupplier ? `S:${supplier ?? ''}` : 'CIMH'
+    if (!out.has(key)) {
+      out.set(key, {
+        key,
+        source: fromSupplier ? 'SUPPLIER' : 'CIMH',
+        supplier,
+        label: fromSupplier ? (supplier ?? 'Supplier') : 'CIMH stock',
+        lines: [],
+      })
+    }
+    out.get(key)!.lines.push(ln)
+  }
+  return [...out.values()].sort((a, b) => (a.key === 'CIMH' ? -1 : b.key === 'CIMH' ? 1 : a.label.localeCompare(b.label)))
+}
+
+/** Who sends a shipment, in the customer's words. */
+export function shipmentSender(s: Pick<Shipment, 'source' | 'supplier'>): string {
+  if (s.source === 'SUPPLIER') return s.supplier ? `Sent directly by ${s.supplier}` : 'Sent directly by the supplier'
+  if (s.source === 'CIMH') return 'Sent by CIMH'
+  return 'Shipment'
+}
 
 export const FILE_KIND_LABELS: Record<FileRef['kind'], string> = {
   supplier_quote: 'Supplier quote',
@@ -101,7 +150,7 @@ type ActionPath =
   | '/requests/{requestId}/purchase-orders'
   | '/requests/{requestId}/approve'
   | '/requests/{requestId}/reject'
-  | '/requests/{requestId}/ship'
+  | '/requests/{requestId}/shipments'
   | '/requests/{requestId}/deliver'
 
 /** POST one state-changing action with the request's version. Returns the updated request. */
@@ -109,6 +158,18 @@ export async function act(r: Pick<OrderRequest, 'id' | 'version'>, path: ActionP
   const params = { path: { requestId: r.id }, header: { 'If-Match': ifMatch(r.version) } }
   // Bodies differ per action; the server validates them strictly.
   return (await call(() => orders.POST(path as any, { params, body } as any))) as OrderRequest
+}
+
+/** Correct a recorded shipment (staff). */
+export async function editShipment(
+  r: Pick<OrderRequest, 'id' | 'version'>,
+  shipmentId: string,
+  body: ShipmentPatch,
+): Promise<OrderRequest> {
+  const params = { path: { requestId: r.id, shipmentId }, header: { 'If-Match': ifMatch(r.version) } }
+  return (await call(() =>
+    orders.PATCH('/requests/{requestId}/shipments/{shipmentId}', { params, body } as any),
+  )) as OrderRequest
 }
 
 export async function saveQuoteDraft(r: Pick<OrderRequest, 'id' | 'version'>, body: unknown): Promise<OrderRequest> {

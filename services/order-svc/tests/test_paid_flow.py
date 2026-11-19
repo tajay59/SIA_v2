@@ -163,7 +163,8 @@ def test_view_and_sign_journey_with_cimh_and_supplier_lines(ctx: Ctx) -> None:
     assert pick("L2", "MET2_xx", "k0").json()["code"] == "LINE_NOT_PICKABLE"
     assert pick("L1", "MET2_xx", "k1").json()["code"] == "UNIT_WRONG_PRODUCT"
     assert pick("L1", "MET1_zz", "k2").json()["code"] == "UNIT_NOT_RESERVED_FOR_ORDER"
-    r = ctx.act(rid, "ship", {"carrier": "DHL", "tracking": "123", "date": "2026-11-09"})
+    cimh_box = {"source": "CIMH", "lineIds": ["L1"], "carrier": "DHL", "tracking": "123", "date": "2026-11-09"}
+    r = ctx.act(rid, "shipments", cimh_box)
     assert r.status_code == 409
     assert r.json()["code"] == "PICKING_INCOMPLETE"
     assert pick("L1", "MET1_aa", "k3").status_code == 200
@@ -171,14 +172,46 @@ def test_view_and_sign_journey_with_cimh_and_supplier_lines(ctx: Ctx) -> None:
     assert pick("L1", "MET1_bb", "k4").json()["lines"][0]["picked"][1]["barcode"] == "MET1_bb"
     assert ctx.deps.picks == [("MET1_aa", rid, "USRSTAFF"), ("MET1_bb", rid, "USRSTAFF")]
 
-    r = ctx.act(rid, "ship", {"carrier": "DHL", "date": "2026-11-09"})
+    r = ctx.act(rid, "shipments", {**cimh_box, "tracking": None})
     assert r.status_code == 422
     assert r.json()["code"] == "TRACKING_REQUIRED"
-    shipped = ctx.ok(rid, "ship", {"carrier": "DHL", "tracking": "JD0001", "date": "2026-11-09", "cost": "45.00"})
+    r = ctx.act(rid, "shipments", {**cimh_box, "lineIds": ["L1", "L2"]})
+    assert r.json()["code"] == "LINE_SOURCE_MISMATCH"  # L2 comes from the supplier, not CIMH stock
+
+    # CIMH ships its stock: one shipment, the request stays PURCHASING until the supplier's parcel is recorded.
+    part = ctx.ok(rid, "shipments", {**cimh_box, "tracking": "JD0001", "cost": "45.00"})
+    assert part["status"] == "PURCHASING"
+    (box,) = part["shipments"]
+    assert (box["source"], box["lineIds"], box["cost"]) == ("CIMH", ["L1"], "45.00")
+    assert "JD0001" in box["trackingUrl"]
+    assert "cost" not in ctx.get(rid, USER)["shipments"][0]  # CIMH's records only
+    assert ctx.act(rid, "shipments", {**cimh_box, "tracking": "X"}).json()["code"] == "LINE_ALREADY_SHIPPED"
+
+    # The supplier ships direct, with a carrier that has no template: staff paste the link.
+    direct = {"source": "SUPPLIER", "supplier": SUPPLIER, "lineIds": ["L2"], "carrier": "OTHER",
+              "carrierName": "Island Couriers", "tracking": "IC-77", "date": "2026-11-10"}  # fmt: skip
+    r = ctx.act(rid, "shipments", {**direct, "trackingLink": "http://ic.example/77"})
+    assert r.json()["code"] == "TRACKING_URL_INVALID"
+    shipped = ctx.ok(rid, "shipments", {**direct, "trackingLink": "https://ic.example/77"})
     assert shipped["status"] == "SHIPPED"
-    assert "JD0001" in shipped["shipping"]["trackingUrl"]
+    assert [s["trackingUrl"] for s in shipped["shipments"]][1] == "https://ic.example/77"
+    assert "ship" not in shipped["allowedActions"]
+    recorded = ctx.events(rid, "order.shipment_recorded")
+    assert [e["payload"]["supplier"] for e in recorded] == [None, SUPPLIER]
+    assert recorded[1]["payload"]["items"][0]["lineId"] == "L2"
     (evt,) = ctx.events(rid, "order.shipped")
-    assert evt["payload"]["tracking"] == "JD0001"
+    assert evt["payload"]["shipments"] == 2
+
+    # A tracking typo is fixed later; the customer is told again only when staff ask.
+    sid = shipped["shipments"][0]["id"]
+    v = ctx.get(rid)["version"]
+    r = ctx.client.patch(ctx.url(f"/requests/{rid}/shipments/{sid}"), headers={**STAFF, "If-Match": str(v)},
+                         json={"tracking": "JD0002", "notifyCustomer": True})  # fmt: skip
+    assert r.status_code == 200, r.text
+    assert r.json()["shipments"][0]["tracking"] == "JD0002"
+    assert r.json()["shipments"][0]["cost"] == "45.00"
+    (upd,) = ctx.events(rid, "order.shipment_updated")
+    assert upd["payload"]["notifyCustomer"] is True
     done = ctx.ok(rid, "deliver", {"invoiceNumber": "INV-2026-001"})
     assert done["status"] == "DELIVERED"
     assert done["invoice"]["number"] == "INV-2026-001"
@@ -196,10 +229,13 @@ def test_supplier_only_request_ships_without_picking(ctx: Ctx) -> None:
     ctx.ok(rid, "purchase-orders", {"agreementVerified": True, "purchaseOrders": [
         {"supplier": "Campbell", "poNumber": "PO-9", "lineIds": ["L1", "L2"]}]})  # fmt: skip
     assert "pick" not in ctx.get(rid)["allowedActions"]
-    assert (
-        ctx.ok(rid, "ship", {"carrier": "HAND", "note": "Collected by Una", "date": "2026-11-09"})["status"]
-        == "SHIPPED"
-    )
+    box = {"source": "SUPPLIER", "supplier": SUPPLIER, "lineIds": ["L1", "L2"], "carrier": "UPS",
+           "tracking": "1Z999", "date": "2026-11-09"}  # fmt: skip
+    r = ctx.act(rid, "shipments", {**box, "supplier": "Someone else"})
+    assert r.json()["code"] == "LINE_SOURCE_MISMATCH"
+    out = ctx.ok(rid, "shipments", box)
+    assert out["status"] == "SHIPPED"
+    assert out["shipments"][0]["trackingUrl"] == "https://www.ups.com/track?tracknum=1Z999"
 
 
 def test_a_supplier_without_lines_is_left_out(ctx: Ctx) -> None:
@@ -598,3 +634,20 @@ def test_quote_preview_says_why_the_draft_cannot_be_sent(ctx: Ctx) -> None:
     r = ctx.client.get(ctx.url(f"/internal/requests/{submitted}/quote-preview"), headers=DOCUMENT)
     assert (r.status_code, r.json()["code"]) == (409, "ORDER_ILLEGAL_TRANSITION")
     assert ctx.client.get(url, headers=STAFF).status_code == 403  # internal: document-svc only
+
+
+def test_upgrade_moves_the_single_shipping_record_into_shipments(ctx: Ctx) -> None:
+    """Requests shipped before 2026-11-19 had one `shipping` record; it becomes shipments[0] covering every line."""
+    rid = ctx.paid_request("MET1", qty=1)
+    lines = [{**ln, "source": "SUPPLIER", "supplier": "Vaisala"} for ln in ctx.doc(rid)["lines"]]
+    old = {"carrier": "FEDEX", "tracking": "7712", "date": "2026-11-01", "note": None, "cost": None}
+    ctx.force(rid, status="SHIPPED", lines=lines, shipping=old)
+
+    assert ctx.run(upgrade.shipments(ctx.db["orders"])) == 1
+    raw = ctx.doc(rid)
+    assert "shipping" not in raw
+    (box,) = ctx.get(rid, USER)["shipments"]
+    assert (box["source"], box["supplier"], box["tracking"]) == ("SUPPLIER", "Vaisala", "7712")
+    assert box["lineIds"] == [ln["lineId"] for ln in lines]
+    assert box["trackingUrl"].endswith("7712")
+    assert ctx.run(upgrade.shipments(ctx.db["orders"])) == 0  # idempotent

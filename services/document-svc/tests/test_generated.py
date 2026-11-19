@@ -171,24 +171,40 @@ def test_an_old_revision_event_reads_the_cimh_lines_from_the_request(ctx: Ctx) -
     assert [e.payload["kind"] for e in _generated(ctx)] == ["agreement", "cimh_quote"]
 
 
-@pytest.mark.parametrize(("country", "expected"), [("BB", 0), ("TT", 1)])
-def test_commercial_invoice_only_for_international_shipments(ctx: Ctx, country: str, expected: int) -> None:
-    ctx.orders.requests["ORD1"] = request_doc("ORD1", "SHIPPED", shipping={"carrier": "DHL", "tracking": "123"})
+CIMH_BOX = {"id": "SHP1", "source": "CIMH", "lineIds": ["L1"], "carrier": "DHL", "tracking": "123"}
+
+
+def _shipment_event(source: str = "CIMH", shipment: str = "SHP1") -> Any:
+    return _event("order.shipment_recorded", customer="USRUSER", shipmentId=shipment, source=source,
+                  lineIds=["L1"], carrier="DHL", tracking="123", notifyCustomer=True)  # fmt: skip
+
+
+@pytest.mark.parametrize(
+    ("country", "source", "expected"), [("BB", "CIMH", 0), ("TT", "CIMH", 1), ("TT", "SUPPLIER", 0)]
+)
+def test_commercial_invoice_only_for_cimh_parcels_leaving_barbados(
+    ctx: Ctx, country: str, source: str, expected: int
+) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "PURCHASING", shipments=[CIMH_BOX])
     ctx.orders.requests["ORD1"]["shipTo"]["country"] = country
-    _run(ctx, _event("order.shipped", customer="USRUSER", carrier="DHL", tracking="123", notifyCustomer=True))
+    _run(ctx, _shipment_event(source))
+    _run(ctx, _event("order.shipped", customer="USRUSER", shipments=1))  # no longer makes anything
     assert [e.payload["kind"] for e in _generated(ctx)] == ["commercial_invoice"] * expected
 
 
-def test_commercial_invoice_lists_only_cimh_stock() -> None:
-    page = " | ".join(_text(request_doc("ORD1", "SHIPPED", shipping={"carrier": "DHL"}), pdfs.commercial_invoice))
+def test_commercial_invoice_lists_only_the_shipment_lines() -> None:
+    req = request_doc("ORD1", "SHIPPED", shipments=[CIMH_BOX])
+    page = " | ".join(_text(req, lambda r: pdfs.commercial_invoice(r, shipment_id="SHP1")))
     assert "Rain gauge — Acme" in page
     assert "Anemometer" not in page  # the supplier ships it and invoices it
+    assert "tracking 123" in page
 
 
 def test_probono_commercial_invoice(ctx: Ctx) -> None:
-    ctx.orders.requests["ORD1"] = request_doc("ORD1", "SHIPPED", type="PROBONO", shipping={"carrier": "HAND"})
+    box = {**CIMH_BOX, "carrier": "HAND", "tracking": None}
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "SHIPPED", type="PROBONO", shipments=[box])
     ctx.orders.requests["ORD1"]["shipTo"]["country"] = "GY"
-    _run(ctx, _event("order.shipped", customer="USRUSER", carrier="HAND", tracking=None, notifyCustomer=True))
+    _run(ctx, _shipment_event())
     assert len(_generated(ctx)) == 1
 
 

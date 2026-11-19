@@ -140,7 +140,7 @@ Priority: **Must** = launch blocker · **Should** = launch target · **Could** =
 | O7 | Quote expiry | As the platform, I must cancel `QUOTED` requests automatically when the quote expires. | Must | Validity: **30 days**. Customer reminded 3 days before expiry. |
 | O8 | Purchasing | As staff, I want to record purchase-order numbers per supplier and mark the request `PURCHASING`. | Must | |
 | O9 | Pick for request | As staff, I want to pick units against a request by scanning, on web or mobile. | Must | Replaces `/orders/pick`. **Only lines supplied from CIMH stock (and Pro Bono lines) are picked.** Items bought from suppliers are shipped direct to the customer and are **not** received into stock or tracked as units. |
-| O10 | Shipping | As staff, I want to record carrier, tracking number, cost and date, and optionally email the customer. | Must | Request moves to `SHIPPED`. Carriers: **FedEx, DHL, Hand delivered**. Staff or admin enter the tracking number manually once shipped (not required for hand delivery). **No carrier API integration.** The customer sees the carrier, tracking number and a link to the carrier's tracking page. |
+| O10 | Shipping | As staff, I want to record **each shipment** (CIMH's parcel of stock items, and each supplier's direct shipment) with carrier, tracking number, cost and date, and optionally email the customer. | Must | A request ships in parcels; each line is in one shipment. The request moves to `SHIPPED` when the last line is in a shipment. Carriers: **FedEx, DHL, UPS, Hand delivered, Other** (Other = carrier name + tracking link). Staff enter tracking numbers manually (not required for hand delivery) and can correct a shipment later. **No carrier API integration.** The customer sees every shipment: who sent it, its items, carrier, tracking number and a Track link; one email per shipment. Cost is CIMH's record only. |
 | O11 | Delivery | As staff, I want to mark a request `DELIVERED`. | Must | Triggers the final invoice. |
 | O12 | Customer request list | As a customer, I want to see my requests **and my organisation's requests**, filtered by status, year and requester, and open any of them to see its timeline, quotes, documents and tracking. | Must | Visibility is limited to the customer's own organisation. Only the requester (or an admin) can accept, decline or cancel a request. |
 | O13 | Staff request queue | As staff, I want a queue of requests filtered by status, year, customer, organisation or request ID, with how long each has been waiting. | Must | |
@@ -216,7 +216,7 @@ Screens in today's apps that are carried over: SHOP *Home, Inventory, InventoryI
 | Should customers in the same organisation see each other's requests? | **Resolved:** yes (O12). |
 | Should `cimh.edu.bb` accounts skip approval? | **Resolved:** yes (A3). |
 | How should existing open orders be mapped? | **Resolved:** all to `SUBMITTED`. |
-| Which carriers? | **Resolved:** FedEx, DHL, Hand delivered. |
+| Which carriers? | **Resolved:** FedEx, DHL, UPS, Hand delivered, Other (name + tracking link; 2026-11-19, plan D5). |
 | Can a quote mix BBD and USD? | **Resolved:** no. One currency per request, never both. |
 | CIMH stock quote pricing? | **Resolved:** catalogue `cost` plus admin fee. |
 | Can `@cimh.edu.bb` users request items? | **Resolved:** no. |

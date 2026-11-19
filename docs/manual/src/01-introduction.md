@@ -19,7 +19,7 @@ There is **no checkout or payment**. Customers submit **order requests**:
 - **Paid items** ("view and sign"): items CIMH holds in full come from **CIMH stock** (a generated CIMH stock quote, catalogue cost); for the rest staff collect quotes from suppliers and upload them to the request. Staff send one quote with every price, the estimated shipping and the total, and an **agreement PDF** to sign. The customer signs and uploads it (committing to pay), or cancels. Then staff order from the suppliers, who ship straight to the customer, and ship the stock items; each shipment's tracking shows on the request.
 - **Pro Bono items:** free items supplied from CIMH stock. There is no quote step: staff approve, pick, ship and deliver. Staff can limit the quantity of each Pro Bono item per request.
 - Quotes are in **BBD or USD** (one currency per request, never both) and are valid for **30 days**.
-- Carriers are **FedEx, DHL or hand delivery**. Staff enter the tracking number by hand; there is no carrier integration.
+- A request ships in **parcels**: CIMH's stock items, and each supplier's direct shipment. Carriers are **FedEx, DHL, UPS, hand delivery or Other**. Staff enter each tracking number by hand; there is no carrier integration. The customer gets a Track link per parcel.
 
 The full flows are in [Chapter 5](05-workflows.md).
 

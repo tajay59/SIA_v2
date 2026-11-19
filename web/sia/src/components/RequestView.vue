@@ -6,18 +6,23 @@
  *   narrow = "Next step" first, then the request (actions never sit at the bottom of a long page).
  * Next step: the actions allowed now (`allowedActions`, the server stays the authority); Cancel is isolated
  * below a seam. Dialogs: verify the signed agreement, then record purchase orders (product names, not line
- * ids); record shipment (local date); mark delivered; reasons for reject / cancel.
+ * ids); record a shipment per parcel (CIMH stock, each supplier's direct shipment) and correct one; mark
+ * delivered; reasons for reject / cancel.
  */
-import ShipDialog from './ShipDialog.vue'
+import ShipmentDialog from './ShipmentDialog.vue'
 import {
   act,
   ApiError,
-  CARRIERS,
-  type Carrier,
+  carrierLabel,
+  editShipment,
   fileUrl,
   getRequest,
+  openSources,
   type OrderRequest,
   QuoteTable,
+  type Shipment,
+  type ShipmentInput,
+  type ShipmentPatch,
   ReasonDialog,
   RequestFiles,
   RequestTimeline,
@@ -145,12 +150,13 @@ const steps = computed<Step[]>(() => {
           state: pickStarted && picked >= need && need > 0 ? 'done' : 'pending',
           detail: pickStarted ? `${picked} of ${need} units` : 'After acceptance',
         }
-  const carrier = x.shipping ? CARRIERS.find((c) => c.value === x.shipping!.carrier)?.title : ''
+  const boxes = x.shipments ?? []
+  const open = openSources(x).reduce((n, s) => n + s.lines.length, 0)
   return [
     pick,
-    x.shipping
-      ? { label: 'Shipped', state: 'done', detail: [carrier, x.shipping.tracking, x.shipping.note, x.shipping.date ? formatDate(x.shipping.date) : null].filter(Boolean).join(' · ') }
-      : { label: 'Shipped', state: 'pending', detail: 'Not shipped' },
+    boxes.length && !open
+      ? { label: 'Shipped', state: 'done', detail: `${boxes.length} ${boxes.length === 1 ? 'shipment' : 'shipments'}` }
+      : { label: 'Shipped', state: 'pending', detail: boxes.length ? `${boxes.length} sent · ${open} ${open === 1 ? 'item' : 'items'} to ship` : 'Not shipped' },
     // Pro Bono requests are free: they get a Pro Bono note, never an invoice.
     ...(x.type === 'PROBONO'
       ? []
@@ -209,9 +215,28 @@ const localToday = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 const shipOpen = ref(false)
-const openShip = () => (shipOpen.value = true)
-async function submitShip(body: Record<string, unknown>) {
-  if (await run('ship', '/requests/{requestId}/ship', body, 'Shipment recorded')) shipOpen.value = false
+const editing = ref<Shipment | null>(null)
+const openShip = (s: Shipment | null = null) => {
+  editing.value = s
+  shipOpen.value = true
+}
+async function submitShip(body: ShipmentInput) {
+  if (await run('ship', '/requests/{requestId}/shipments', body, 'Shipment recorded')) shipOpen.value = false
+}
+async function updateShip(id: string, body: ShipmentPatch) {
+  if (!r.value) return
+  busy.value = 'ship'
+  try {
+    r.value = await editShipment(r.value, id, body)
+    notify.toast('Shipment updated', 'success')
+    emit('changed', r.value)
+    shipOpen.value = false
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) await load()
+    notify.report(e)
+  } finally {
+    busy.value = null
+  }
 }
 const deliverOpen = ref(false)
 const invoiceNumber = ref('')
@@ -307,7 +332,7 @@ async function submitDeliver() {
                 @click="run('approve', '/requests/{requestId}/approve', undefined, 'Approved; stock is being reserved')"
               >Approve</v-btn>
               <v-btn v-if="can('pick')" :to="{ path: '/pick', query: { op: 'order', request: r.id } }" class="m3" color="primary" :prepend-icon="BTN.pick">Pick</v-btn>
-              <v-btn v-if="can('ship')" class="m3" color="primary" :prepend-icon="BTN.ship" :disabled="!!busy" @click="openShip">Record shipment</v-btn>
+              <v-btn v-if="can('ship')" class="m3" color="primary" :prepend-icon="BTN.ship" :disabled="!!busy" @click="openShip()">Record shipment</v-btn>
               <v-btn v-if="can('deliver')" class="m3" color="primary" :prepend-icon="BTN.deliver" :disabled="!!busy" @click="deliverOpen = true">Mark delivered</v-btn>
               <v-btn v-if="can('reject-agreement')" variant="outlined" class="m3" :disabled="!!busy" @click="reasonFor = 'reject-agreement'">Reject signature</v-btn>
             </div>
@@ -397,6 +422,26 @@ async function submitDeliver() {
             </div>
           </section>
 
+          <section v-if="r.shipments?.length" class="panel">
+            <header class="console-head">
+              <h2 class="console-title">Shipments</h2>
+              <span class="t-caption muted console-mono">{{ r.shipments.length }}</span>
+            </header>
+            <ul class="pos shipments">
+              <li v-for="s in r.shipments" :key="s.id">
+                <span class="po-sup">{{ s.source === 'SUPPLIER' ? `${s.supplier ?? 'Supplier'} (direct)` : s.source === 'CIMH' ? 'CIMH stock' : 'Shipment' }}</span>
+                <span>
+                  {{ carrierLabel(s) }}
+                  <template v-if="s.tracking"> · <a v-if="s.trackingUrl" :href="s.trackingUrl" target="_blank" rel="noopener" class="console-mono">{{ s.tracking }}</a><span v-else class="console-mono">{{ s.tracking }}</span></template>
+                  <template v-if="s.date"> · <span class="console-mono">{{ formatDate(s.date) }}</span></template>
+                  <template v-if="s.cost"> · {{ money(s.cost) }}</template>
+                </span>
+                <span class="muted">{{ s.lineIds.map((id) => `${lineQty(id)}× ${lineName(id)}`).join(', ') }}<template v-if="s.note"> · {{ s.note }}</template></span>
+                <v-btn v-if="can('edit-shipment')" size="small" variant="text" class="m3 edit" :disabled="!!busy" :aria-label="`Correct the ${carrierLabel(s)} shipment`" @click="openShip(s)">Correct</v-btn>
+              </li>
+            </ul>
+          </section>
+
           <section v-if="purchaseOrders.length" class="panel">
             <header class="console-head"><h2 class="console-title">Purchase orders</h2></header>
             <ul class="pos">
@@ -457,7 +502,7 @@ async function submitDeliver() {
         </v-card>
       </v-dialog>
 
-      <ShipDialog v-model="shipOpen" :request-id="r.id" :customer="r.organisationName || r.customerName || null" :busy="busy === 'ship'" @submit="submitShip" />
+      <ShipmentDialog v-model="shipOpen" :request="r" :shipment="editing" :busy="busy === 'ship'" @submit="submitShip" @update="updateShip" />
 
       <v-dialog v-model="deliverOpen" max-width="480">
         <v-card title="Mark delivered">
@@ -916,6 +961,20 @@ async function submitDeliver() {
 }
 .po-sup {
   font-weight: 500;
+}
+.shipments li {
+  grid-template-columns: minmax(120px, 1fr) minmax(0, 1.4fr) minmax(0, 2fr) auto;
+  align-items: center;
+}
+@container (max-width: 700px) {
+  .pos li,
+  .shipments li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+  .shipments .edit {
+    justify-self: start;
+  }
 }
 
 .dlg {

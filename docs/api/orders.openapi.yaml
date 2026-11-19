@@ -353,11 +353,12 @@ paths:
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
-  /requests/{requestId}/ship:
+  /requests/{requestId}/shipments:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     post:
       tags: [staff-actions]
-      summary: Record shipment, PURCHASING/PICKING → SHIPPED (staff); every CIMH/Pro Bono unit must be picked first (409 PICKING_INCOMPLETE)
+      summary: Record one shipment (staff); covering the last unshipped line moves PURCHASING/PICKING → SHIPPED
+      description: 'One parcel: CIMH stock lines (every unit picked, else 409 PICKING_INCOMPLETE; Pro Bono lines count as CIMH) or one supplier''s lines shipped direct (each needs a purchase order, else 409 NO_PURCHASE_ORDER). A line is in one shipment only (409 LINE_ALREADY_SHIPPED); every line must come from the named source (422 LINE_SOURCE_MISMATCH). Tracking unless HAND (422 TRACKING_REQUIRED); OTHER needs carrierName and an https trackingLink (422 TRACKING_URL_INVALID). Emits order.shipment_recorded, plus order.shipped when the request moves to SHIPPED. Paid: PURCHASING; Pro Bono: PICKING.'
       parameters:
         - { $ref: './common.yaml#/components/parameters/IfMatch' }
         - { $ref: './common.yaml#/components/parameters/CsrfToken' }
@@ -365,7 +366,27 @@ paths:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/ShipmentInput' } } }
       responses:
-        '200': { description: SHIPPED, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '200': { description: Shipment recorded (status SHIPPED once every line is covered), content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
+  /requests/{requestId}/shipments/{shipmentId}:
+    parameters:
+      - { $ref: '#/components/parameters/RequestId' }
+      - { name: shipmentId, in: path, required: true, schema: { type: string } }
+    patch:
+      tags: [staff-actions]
+      summary: Correct a recorded shipment (staff); the customer is emailed again only with notifyCustomer
+      description: Allowed while PURCHASING, PICKING, SHIPPED or DELIVERED. Lines and source cannot change. Emits order.shipment_updated.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ShipmentPatch' } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
@@ -482,7 +503,8 @@ components:
       description: Where a paid line comes from, fixed by staff when the quote is sent (CIMH stock is picked and shipped by CIMH; supplier items ship directly to the customer)
     Carrier:
       type: string
-      enum: [FEDEX, DHL, HAND]
+      enum: [FEDEX, DHL, UPS, HAND, OTHER]
+      description: OTHER = a carrier without a tracking template; staff give its name and paste the tracking link
     ReasonBody:
       type: object
       required: [reason]
@@ -589,14 +611,50 @@ components:
         fileId: { type: [string, 'null'] }
     ShipmentInput:
       type: object
-      required: [carrier, date]
+      additionalProperties: false
+      required: [source, lineIds, carrier, date]
       properties:
+        source: { $ref: '#/components/schemas/LineSource' }
+        supplier: { type: [string, 'null'], minLength: 1, maxLength: 120, description: Required when source is SUPPLIER; must be the lines' supplier }
+        lineIds: { type: array, minItems: 1, maxItems: 200, items: { type: string } }
         carrier: { $ref: '#/components/schemas/Carrier' }
+        carrierName: { type: [string, 'null'], minLength: 1, maxLength: 60, description: Required when carrier is OTHER }
         tracking: { type: [string, 'null'], maxLength: 100, description: Required unless carrier is HAND }
+        trackingLink: { type: [string, 'null'], maxLength: 500, description: 'OTHER only: the carrier''s https tracking page' }
         note: { type: [string, 'null'], maxLength: 300, description: e.g. who hand-delivered }
-        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: CIMH's records; never shown to the customer }
         date: { type: string, format: date }
         notifyCustomer: { type: boolean, default: true }
+    ShipmentPatch:
+      type: object
+      additionalProperties: false
+      properties:
+        carrier: { $ref: '#/components/schemas/Carrier' }
+        carrierName: { type: [string, 'null'], minLength: 1, maxLength: 60 }
+        tracking: { type: [string, 'null'], maxLength: 100 }
+        trackingLink: { type: [string, 'null'], maxLength: 500 }
+        note: { type: [string, 'null'], maxLength: 300 }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ] }
+        date: { type: string, format: date }
+        notifyCustomer: { type: boolean, default: false }
+    Shipment:
+      type: object
+      required: [id, source, lineIds, carrier]
+      properties:
+        id: { type: string, description: 'SHP…' }
+        source: { oneOf: [ { $ref: '#/components/schemas/LineSource' }, { type: 'null' } ], description: 'CIMH (stock or Pro Bono) or SUPPLIER (shipped direct); null only on shipments moved from the old single record whose lines had mixed sources' }
+        supplier: { type: [string, 'null'] }
+        lineIds: { type: array, items: { type: string } }
+        carrier: { $ref: '#/components/schemas/Carrier' }
+        carrierName: { type: [string, 'null'] }
+        tracking: { type: [string, 'null'] }
+        trackingUrl: { type: [string, 'null'], description: 'Track link: carrier template (FedEx, DHL, UPS) or the link staff entered (OTHER)' }
+        note: { type: [string, 'null'] }
+        date: { type: [string, 'null'], format: date }
+        at: { type: [string, 'null'], format: date-time }
+        cost: { oneOf: [ { $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' } ], description: staff/admin only }
+        trackingLink: { type: [string, 'null'], description: staff/admin only }
+        by: { type: [object, 'null'], description: staff/admin only }
     FileRef:
       type: object
       required: [id, kind, name, mime, size]
@@ -667,18 +725,14 @@ components:
                 rejections: { type: array, items: { type: object, properties: { reason: { type: string }, at: { type: string, format: date-time } } } }
             decline: { type: [object, 'null'] }
             purchaseOrders: { type: array, items: { type: object }, description: staff/admin only }
-            shipping:
-              type: [object, 'null']
-              properties:
-                carrier: { $ref: '#/components/schemas/Carrier' }
-                tracking: { type: [string, 'null'] }
-                trackingUrl: { type: [string, 'null'], description: Public carrier tracking page }
-                note: { type: [string, 'null'] }
-                date: { type: string, format: date }
+            shipments:
+              type: array
+              description: One per parcel (CIMH stock, each supplier's direct shipment), oldest first
+              items: { $ref: '#/components/schemas/Shipment' }
             files: { type: array, items: { $ref: '#/components/schemas/FileRef' } }
             cancellation: { type: [object, 'null'] }
             history: { type: array, items: { $ref: './common.yaml#/components/schemas/StatusChange' } }
             allowedActions:
               type: array
               description: Actions the caller may take now (drives UI buttons)
-              items: { type: string, enum: [accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, deliver] }
+              items: { type: string, enum: [accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, edit-shipment, deliver] }

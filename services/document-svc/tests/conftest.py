@@ -94,7 +94,7 @@ def request_doc(rid: str, status: str = "QUOTED", **kw: Any) -> dict[str, Any]:
         "adminFee": "25.00",
         # 300 CIMH + 180 supplier + 20 + 35 estimated shipping + 25 admin fee
         "agreement": {"quoteVersion": 1, "total": "560.00", "fileId": None},
-        "shipping": None, "invoice": None, "quoteExpiresAt": "2026-12-08T00:00:00Z",
+        "shipments": [], "invoice": None, "quoteExpiresAt": "2026-12-08T00:00:00Z",
         **kw,
     }  # fmt: skip
 

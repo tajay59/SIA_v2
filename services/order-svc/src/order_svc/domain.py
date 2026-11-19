@@ -14,10 +14,12 @@ from bson.decimal128 import Decimal128
 PAID, PROBONO = "PAID", "PROBONO"
 CART = "CART"
 CIMH, SUPPLIER = "CIMH", "SUPPLIER"
-CARRIERS = ("FEDEX", "DHL", "HAND")
+# Carriers (plan D5). OTHER = a carrier with no template: staff paste the tracking link (https only).
+CARRIERS = ("FEDEX", "DHL", "UPS", "HAND", "OTHER")
 TRACKING_URLS = {
     "FEDEX": "https://www.fedex.com/fedextrack/?trknbr={}",
     "DHL": "https://www.dhl.com/global-en/home/tracking/tracking-express.html?tracking-id={}",
+    "UPS": "https://www.ups.com/track?tracknum={}",
 }
 
 # (type, from, to) -> (action, who). who: "staff" = staff or admin; "requester" = the requester or an admin;
@@ -122,7 +124,10 @@ def line_source(line: dict[str, Any]) -> str | None:
     return value if value in (CIMH, SUPPLIER) else None
 
 
-def tracking_url(carrier: str | None, tracking: str | None) -> str | None:
+def tracking_url(carrier: str | None, tracking: str | None, link: str | None = None) -> str | None:
+    """The customer's Track link: a carrier template, or for OTHER the https link staff entered."""
+    if carrier == "OTHER":
+        return link if link and link.startswith("https://") else None
     if not carrier or not tracking or carrier not in TRACKING_URLS:
         return None
     from urllib.parse import quote

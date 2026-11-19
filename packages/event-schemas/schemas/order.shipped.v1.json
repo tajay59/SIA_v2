@@ -48,32 +48,25 @@
           "type": "object",
           "required": [
             "orderId",
-            "customer",
-            "carrier"
+            "customer"
           ],
           "properties": {
             "orderId": {
               "type": "string"
             },
+            "orderType": {
+              "type": "string",
+              "enum": [
+                "PAID",
+                "PROBONO"
+              ]
+            },
             "customer": {
               "type": "string"
             },
-            "carrier": {
-              "type": "string",
-              "enum": [
-                "FEDEX",
-                "DHL",
-                "HAND"
-              ]
-            },
-            "tracking": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "notifyCustomer": {
-              "type": "boolean"
+            "shipments": {
+              "type": "integer",
+              "minimum": 1
             }
           }
         }

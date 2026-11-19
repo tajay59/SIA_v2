@@ -55,3 +55,48 @@ async def view_and_sign(orders: Any) -> dict[str, Any]:
             extra={"linesRenamed": renamed, "movedToQuoted": moved, "needResend": len(resend), "requestIds": resend},
         )
     return {"linesRenamed": renamed, "movedToQuoted": moved, "needResend": resend}
+
+
+async def shipments(orders: Any) -> int:
+    """shipments (2026-11-19, plan §5 step 4): the one `shipping` record becomes `shipments[0]` covering every line.
+
+    Source: CIMH for Pro Bono; for paid requests the lines' source (and supplier) when they all agree, else null.
+    The old field is removed so a second run finds nothing."""
+    moved = 0
+    async for doc in orders.find({"shipping": {"$exists": True}}):
+        ship = doc.get("shipping")
+        unset = {"$unset": {"shipping": ""}}
+        if not isinstance(ship, dict) or not ship.get("carrier"):
+            await orders.update_one({"_id": doc["_id"]}, unset)
+            continue
+        lines = doc.get("lines") or []
+        source: str | None
+        supplier: str | None
+        if doc.get("type") == "PROBONO":
+            source, supplier = "CIMH", None
+        else:
+            found = {(ln.get("source") or ln.get("choice"), ln.get("supplier")) for ln in lines}
+            source, supplier = found.pop() if len(found) == 1 else (None, None)
+        shipment = {
+            "id": "SHP" + str(doc["id"])[-24:],
+            "source": source,
+            "supplier": supplier,
+            "lineIds": [ln["lineId"] for ln in lines if "lineId" in ln],
+            "carrier": ship["carrier"],
+            "carrierName": None,
+            "tracking": ship.get("tracking"),
+            "trackingLink": None,
+            "date": ship.get("date"),
+            "cost": ship.get("cost"),
+            "note": ship.get("note"),
+            "by": ship.get("by") or SYSTEM,
+            "at": ship.get("at") or doc.get("statusAt") or now(),
+        }
+        res = await orders.update_one(
+            {"_id": doc["_id"], "shipping": {"$exists": True}},
+            {"$set": {"shipments": [*(doc.get("shipments") or []), shipment]}, **unset},
+        )
+        moved += res.modified_count
+    if moved:
+        log.warning("shipments upgrade", extra={"requestsMoved": moved})
+    return moved

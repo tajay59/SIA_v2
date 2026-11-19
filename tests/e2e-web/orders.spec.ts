@@ -338,9 +338,12 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('link', { name: 'Record the shipment' }).click()
 
     await page.getByRole('button', { name: 'Record shipment' }).click()
+    // One parcel per source: the request's only line comes from CIMH stock, ticked and ready (every unit picked).
+    await expect(page.getByRole('dialog').getByRole('checkbox', { name: new RegExp(paidName) })).toBeChecked()
     await page.getByLabel('Hand delivery').check()
     await page.getByLabel('Delivered by / collected by').fill('Collected by Cass')
     await shot(page, 'sia-ship-dialog')
+    await auditDialog(page, 'Record shipment')
     await page.getByRole('dialog').getByRole('button', { name: 'Record shipment' }).click()
     await expect(page.getByText('Shipment recorded')).toBeVisible()
     await page.getByRole('button', { name: 'Mark delivered' }).click()
@@ -353,7 +356,11 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/requests/${paidRequest}`)
     await expect(page.getByRole('region', { name: 'Where it stands' }).getByText('Delivered', { exact: true })).toBeVisible()
-    await expect(page.getByText('Collected by Cass')).toBeVisible()
+    // One row per parcel: this request had only CIMH stock, so one shipment, sent by CIMH.
+    const parcels = page.getByRole('list', { name: 'Shipments' })
+    await expect(parcels.getByRole('listitem')).toHaveCount(1)
+    await expect(parcels.getByText('Sent by CIMH')).toBeVisible()
+    await expect(parcels.getByText('Collected by Cass')).toBeVisible()
     await shot(page, 'shop-request-delivered')
     await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // where the line came from
     // order.delivered → document-consumer makes the invoice → it joins the papers in place of the dashed sheet.

@@ -52,7 +52,7 @@ These figures are used to size the system and set the targets in section 5. Re-c
 | Password hashing | **argon2-cffi** (Argon2id) | Existing Werkzeug hashes are upgraded to Argon2id at each user's next login |
 | JWT | **PyJWT** | Signed with EdDSA (Ed25519) or RS256 so services can verify tokens without the private key |
 | Email | **aiosmtplib** + **Jinja2** templates | |
-| Shipping | No carrier APIs. Staff/admin enter the carrier (FedEx, DHL, Hand delivered) and tracking number manually | The existing FedEx API code is removed |
+| Shipping | No carrier APIs. Staff/admin record each shipment (carrier FedEx, DHL, UPS, Hand delivered or Other with a pasted https link; tracking number) manually | The existing FedEx API code is removed |
 | Testing | **pytest**, pytest-asyncio, **testcontainers** (MongoDB, Kafka, Redis), **Schemathesis** (API contract tests) | |
 | Lint / format | **Ruff**, **mypy** | |
 
@@ -269,7 +269,7 @@ The two 6 GB GPUs are used by **media-worker** for background removal (rembg/onn
 | System | Use | Requirement |
 |---|---|---|
 | CIMH mail server | All email | Authenticated SMTP over TLS; SPF/DKIM/DMARC configured for the sending domain |
-| Carriers (FedEx, DHL) | None | No integration. Tracking numbers are entered manually by staff; the request page shows a link to the carrier's public tracking page |
+| Carriers (FedEx, DHL, UPS, others) | None | No integration. Tracking numbers are entered manually by staff; the request page shows a Track link per shipment (carrier's public tracking page, or the link staff pasted for Other) |
 | Have I Been Pwned (Pwned Passwords) | Breached-password check | k-anonymity API: only a short hash prefix is sent, never the password; if the service is unavailable, sign-up continues without the check |
 
 ## 10. Constraints

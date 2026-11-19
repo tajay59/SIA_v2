@@ -63,6 +63,8 @@ channels:
       orderQuoteExpiring: { $ref: '#/components/messages/orderQuoteExpiring' }
       orderAccepted: { $ref: '#/components/messages/orderAccepted' }
       orderProbonoApproved: { $ref: '#/components/messages/orderProbonoApproved' }
+      orderShipmentRecorded: { $ref: '#/components/messages/orderShipmentRecorded' }
+      orderShipmentUpdated: { $ref: '#/components/messages/orderShipmentUpdated' }
       orderShipped: { $ref: '#/components/messages/orderShipped' }
       orderCancelled: { $ref: '#/components/messages/orderCancelled' }
   documentEvents:
@@ -200,6 +202,23 @@ components:
         status: { type: string }
         isCimh: { type: boolean }
         organisationId: { type: [string, 'null'] }
+    ShipmentPayload:
+      type: object
+      required: [orderId, customer, shipmentId, lineIds, carrier]
+      properties:
+        orderId: { type: string }
+        orderType: { type: string, enum: [PAID, PROBONO] }
+        customer: { type: string }
+        shipmentId: { type: string }
+        source: { type: [string, 'null'], enum: [CIMH, SUPPLIER, null] }
+        supplier: { type: [string, 'null'] }
+        lineIds: { type: array, items: { type: string } }
+        items: { type: array, items: { type: object, required: [lineId, name, qty], properties: { lineId: { type: string }, name: { type: string }, qty: { type: integer } } } }
+        carrier: { type: string, enum: [FEDEX, DHL, UPS, HAND, OTHER] }
+        carrierName: { type: [string, 'null'] }
+        tracking: { type: [string, 'null'] }
+        trackingUrl: { type: [string, 'null'] }
+        notifyCustomer: { type: boolean }
     Line:
       type: object
       required: [lineId, productId, qty]
@@ -535,21 +554,37 @@ components:
           - $ref: '#/components/schemas/Envelope'
           - properties:
               payload: { type: object, required: [orderId, lines], properties: { orderId: { type: string }, lines: { type: array, items: { $ref: '#/components/schemas/Line' } } } }
+    orderShipmentRecorded:
+      name: order.shipment_recorded
+      summary: One parcel left (CIMH stock or a supplier's direct shipment); notification-svc emails the customer unless notifyCustomer is false, document-svc makes a commercial invoice for a CIMH parcel leaving Barbados
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { $ref: '#/components/schemas/ShipmentPayload' }
+    orderShipmentUpdated:
+      name: order.shipment_updated
+      summary: Staff corrected a shipment (tracking, carrier, link); emailed only when notifyCustomer is true
+      payload:
+        allOf:
+          - $ref: '#/components/schemas/Envelope'
+          - properties:
+              payload: { $ref: '#/components/schemas/ShipmentPayload' }
     orderShipped:
       name: order.shipped
+      summary: Every line is in a shipment (status SHIPPED). Not emailed; each shipment was.
       payload:
         allOf:
           - $ref: '#/components/schemas/Envelope'
           - properties:
               payload:
                 type: object
-                required: [orderId, customer, carrier]
+                required: [orderId, customer]
                 properties:
                   orderId: { type: string }
+                  orderType: { type: string, enum: [PAID, PROBONO] }
                   customer: { type: string }
-                  carrier: { type: string, enum: [FEDEX, DHL, HAND] }
-                  tracking: { type: [string, 'null'] }
-                  notifyCustomer: { type: boolean }
+                  shipments: { type: integer, minimum: 1 }
     orderCancelled:
       name: order.cancelled
       payload:

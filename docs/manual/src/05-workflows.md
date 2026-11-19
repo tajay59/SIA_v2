@@ -39,7 +39,7 @@ Account statuses: see [Chapter 2.2](02-users-roles-apps.md#22-account-life-cycle
 | 7 | Staff | Checks the signature. If it's not acceptable, rejects it with a reason and the customer uploads again (stock stays held, ≥ 7 days) | `QUOTED` |
 | 8 | Staff | Confirms the agreement is verified and records purchase-order numbers for each supplier | `PURCHASING` |
 | 9 | Staff | Picks the **CIMH-stock lines only**. Supplier items are shipped **direct** to the customer and never enter stock | |
-| 10 | Staff | Records carrier (FedEx, DHL, Hand delivered) and tracking number; the customer may be emailed | `SHIPPED` |
+| 10 | Staff | Records each parcel: CIMH's stock items once picked, each supplier's direct shipment (carrier FedEx, DHL, UPS, Hand delivered or Other; tracking number); the customer gets an email per parcel | `SHIPPED` once every line is in a shipment |
 | 11 | Staff | Marks delivered; the invoice is generated | `DELIVERED` |
 
 Acceptance records **who, when, from which IP and the signed agreement file**. Only a copy signed for the latest quote version is accepted; earlier versions are kept. The signed total is what CIMH invoices.

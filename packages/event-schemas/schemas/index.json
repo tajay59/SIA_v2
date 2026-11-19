@@ -18,6 +18,8 @@
   "order.quote_revised": "order.quote_revised.v1.json",
   "order.quoted": "order.quoted.v1.json",
   "order.quoting_started": "order.quoting_started.v1.json",
+  "order.shipment_recorded": "order.shipment_recorded.v1.json",
+  "order.shipment_updated": "order.shipment_updated.v1.json",
   "order.shipped": "order.shipped.v1.json",
   "order.submitted": "order.submitted.v1.json",
   "product.created": "product.created.v1.json",

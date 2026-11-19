@@ -687,7 +687,6 @@ def m07_orders(
             "history": [status_change(status, NOW)],
             "outbox": [],
             "version": 1,
-            "shipping": shipping,
             "invoice": invoice,
             "files": [],
         }
@@ -729,10 +728,29 @@ def m07_orders(
             "paid": bool(o.get("paid")),
             "files": files,
         }
+
+        def parcels(doc: dict[str, Any], shipping: dict[str, Any] | None = shipping) -> list[dict[str, Any]]:
+            """Legacy kept one shipping record per order: it becomes the request's only shipment (all lines)."""
+            if not shipping:
+                return []
+            return [
+                {
+                    "id": "SHP" + doc["id"][-24:],
+                    "source": "CIMH" if doc["type"] == "PROBONO" else None,
+                    "supplier": None,
+                    "lineIds": [ln["lineId"] for ln in doc["lines"]],
+                    "carrierName": None,
+                    "trackingLink": None,
+                    **shipping,
+                    "at": shipping["date"],
+                }
+            ]
+
         if paid:
             out.append(
                 {"id": o["id"], "type": "PAID", "currency": "BBD", "lines": lines(paid, "L"), **base, "legacy": legacy}
             )
+            out[-1]["shipments"] = parcels(out[-1])
         if pro:
             pid = o["id"] if not paid else "ORD" + secrets.token_hex(16)
             doc = {
@@ -743,6 +761,7 @@ def m07_orders(
                 **base,
                 "legacy": legacy if not paid else {"files": []},
             }
+            doc["shipments"] = parcels(doc)
             if paid:
                 note = {**status_change(status, NOW), "reason": f"{REASON}; split from {o['id']}"}
                 doc["history"] = [note]

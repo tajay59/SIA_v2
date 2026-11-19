@@ -16,6 +16,7 @@
 import {
   act,
   ApiError,
+  carrierLabel,
   countryName,
   currentAgreement,
   DocumentThumb,
@@ -23,11 +24,13 @@ import {
   FILE_KIND_LABELS,
   getRequest,
   isClosed,
+  openSources,
   type OrderRequest,
   pricedQuote,
   QuoteTable,
   ReasonDialog,
   requestTitle,
+  shipmentSender,
   ShortRef,
   StatusChip,
   useNotify,
@@ -40,6 +43,16 @@ import DocumentReader from './DocumentReader.vue'
 
 const props = withDefaults(defineProps<{ id: string; level?: 1 | 2; setTitle?: boolean; dir?: 1 | -1 }>(), { level: 1, setTitle: false, dir: 1 })
 const emit = defineEmits<{ changed: [OrderRequest] }>()
+
+// ---- Delivery: one row per shipment, and the items that have not left yet
+const lineLabel = (lineId: string) => {
+  const ln = request.value?.lines.find((l) => l.lineId === lineId)
+  return ln ? `${ln.product.name}${ln.qty > 1 ? ` (${ln.qty})` : ''}` : lineId
+}
+const shipStarted = computed(() => ['PURCHASING', 'PICKING', 'SHIPPED'].includes(request.value?.status ?? '') && !!request.value?.shipments?.length)
+const toShip = computed(() =>
+  request.value ? openSources(request.value).flatMap((s) => s.lines.map((l) => lineLabel(l.lineId))) : [],
+)
 const session = useSession()
 const notify = useNotify()
 const request = ref<OrderRequest | null>(null)
@@ -196,7 +209,7 @@ const well = computed<{ tone: Tone; title: string; text: string } | null>(() => 
     case 'PICKING':
       return { tone: 'cimh', title: 'Approved', text: 'CIMH is picking the items. An email follows when they are shipped.' }
     case 'SHIPPED':
-      return { tone: 'cimh', title: 'On its way', text: 'The shipping details are under Delivery.' }
+      return { tone: 'cimh', title: 'On its way', text: 'Each parcel and its tracking link is under Delivery.' }
     case 'DELIVERED':
       return { tone: 'done', title: 'Delivered', text: 'Everything on this request has been delivered.' }
     case 'REJECTED':
@@ -473,22 +486,32 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
             <dt>Quote currency</dt>
             <dd>{{ request.currency }}</dd>
           </div>
-          <div v-if="request.shipping">
-            <dt>Shipped</dt>
-            <dd>
-              {{ request.shipping.date ? formatDate(request.shipping.date) : '' }} by
-              {{ request.shipping.carrier === 'HAND' ? 'hand delivery' : request.shipping.carrier }}
-              <template v-if="request.shipping.tracking">
-                <br />Tracking:
-                <a v-if="request.shipping.trackingUrl" :href="request.shipping.trackingUrl" target="_blank" rel="noopener" class="t-mono">
-                  {{ request.shipping.tracking }} <v-icon :icon="mdiOpenInNew" size="14" />
-                </a>
-                <span v-else class="t-mono">{{ request.shipping.tracking }}</span>
-              </template>
-              <template v-if="request.shipping.note"><br />{{ request.shipping.note }}</template>
-            </dd>
-          </div>
         </dl>
+        <!-- One row per parcel (CIMH stock, each supplier shipping direct), then what has not left yet. -->
+        <ul v-if="request.shipments?.length || (shipStarted && toShip.length)" class="parcels" aria-label="Shipments">
+          <li v-for="s in request.shipments" :key="s.id" class="parcel">
+            <v-icon :icon="mdiPackageVariantClosed" size="20" class="parcel-icon" aria-hidden="true" />
+            <div class="parcel-body">
+              <p class="parcel-head">
+                <strong>{{ shipmentSender(s) }}</strong>
+                <span class="parcel-meta">{{ carrierLabel(s) }}<template v-if="s.date"> · {{ formatDate(s.date) }}</template></span>
+              </p>
+              <p class="parcel-items">{{ s.lineIds.map(lineLabel).join(', ') }}</p>
+              <p v-if="s.note" class="parcel-items">{{ s.note }}</p>
+            </div>
+            <a v-if="s.trackingUrl" :href="s.trackingUrl" target="_blank" rel="noopener" class="track" :aria-label="`Track ${s.tracking ?? ''} with ${carrierLabel(s)} (opens a new tab)`">
+              Track <span class="t-mono">{{ s.tracking }}</span> <v-icon :icon="mdiOpenInNew" size="14" aria-hidden="true" />
+            </a>
+            <span v-else-if="s.tracking" class="track plain t-mono">{{ s.tracking }}</span>
+          </li>
+          <li v-if="shipStarted && toShip.length" class="parcel waiting">
+            <v-icon :icon="mdiClockAlertOutline" size="20" class="parcel-icon" aria-hidden="true" />
+            <div class="parcel-body">
+              <p class="parcel-head"><strong>Not shipped yet</strong></p>
+              <p class="parcel-items">{{ toShip.join(', ') }}</p>
+            </div>
+          </li>
+        </ul>
       </section>
 
       <!-- Dated changes, folded: the path above already shows where it stands. -->
@@ -1077,6 +1100,64 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   margin: 0;
   font-size: 14px;
   line-height: 22px;
+}
+.parcels {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.parcel {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.parcel-icon {
+  margin-top: 1px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.parcel p {
+  margin: 0;
+}
+.parcel-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+.parcel-meta,
+.parcel-items {
+  font-size: 14px;
+  line-height: 20px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.track {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.track.plain {
+  font-weight: 400;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.waiting .parcel-head {
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+@media (max-width: 599px) {
+  .parcel {
+    grid-template-columns: 20px minmax(0, 1fr);
+  }
+  .track {
+    grid-column: 2;
+  }
 }
 .actions {
   display: flex;
