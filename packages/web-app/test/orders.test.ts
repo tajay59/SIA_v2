@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addCents, currentAgreement, customerActionNeeded, type OrderRequest, pricedQuote, statusSteps } from '../src/orders'
+import { addCents, currentAgreement, customerActionNeeded, openSources, type OrderRequest, pricedQuote, shipmentSender, statusSteps } from '../src/orders'
 
 const line = (lineId: string, qty = 1, extra: Record<string, unknown> = {}) =>
   ({ lineId, productId: `P${lineId}`, qty, product: { name: lineId, type: 'MET', probono: false }, ...extra }) as OrderRequest['lines'][number]
@@ -41,5 +41,25 @@ describe('orders helpers', () => {
     expect(customerActionNeeded({ status: 'QUOTING' })).toBeNull()
     expect(statusSteps('PROBONO')).toEqual(['SUBMITTED', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED'])
     expect(statusSteps('PAID')).toEqual(['SUBMITTED', 'QUOTING', 'QUOTED', 'ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED'])
+  })
+
+  it('groups the lines still to ship by where they ship from, CIMH stock first', () => {
+    const r = {
+      type: 'PAID',
+      lines: [
+        line('L1', 1, { source: 'SUPPLIER', supplier: 'Vaisala' }),
+        line('L2', 1, { source: 'CIMH' }),
+        line('L3', 1, { source: 'SUPPLIER', supplier: 'Campbell' }),
+        line('L4', 1, { source: 'SUPPLIER', supplier: 'Vaisala' }),
+      ],
+      shipments: [{ id: 'SHP1', source: 'SUPPLIER', supplier: 'Campbell', lineIds: ['L3'], carrier: 'UPS' }],
+    } as unknown as OrderRequest
+    expect(openSources(r).map((s) => [s.label, s.lines.map((x) => x.lineId)])).toEqual([
+      ['CIMH stock', ['L2']],
+      ['Vaisala', ['L1', 'L4']],
+    ])
+    const probono = { type: 'PROBONO', lines: [line('L1')], shipments: [] } as unknown as OrderRequest
+    expect(openSources(probono)[0].source).toBe('CIMH')
+    expect(shipmentSender({ source: 'SUPPLIER', supplier: 'Vaisala' })).toBe('Sent directly by Vaisala')
   })
 })

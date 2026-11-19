@@ -388,7 +388,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description AWAITING_AGREEMENT */
+                /** @description QUOTED (back to the customer) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -899,7 +899,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/requests/{requestId}/ship": {
+    "/requests/{requestId}/shipments": {
         parameters: {
             query?: never;
             header?: never;
@@ -910,7 +910,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Record shipment, PURCHASING/PICKING → SHIPPED (staff); every CIMH/Pro Bono unit must be picked first (409 PICKING_INCOMPLETE) */
+        /**
+         * Record one shipment (staff); covering the last unshipped line moves PURCHASING/PICKING → SHIPPED
+         * @description One parcel: CIMH stock lines (every unit picked, else 409 PICKING_INCOMPLETE; Pro Bono lines count as CIMH) or one supplier's lines shipped direct (each needs a purchase order, else 409 NO_PURCHASE_ORDER). A line is in one shipment only (409 LINE_ALREADY_SHIPPED); every line must come from the named source (422 LINE_SOURCE_MISMATCH). Tracking unless HAND (422 TRACKING_REQUIRED); OTHER needs carrierName and an https trackingLink (422 TRACKING_URL_INVALID). Emits order.shipment_recorded, plus order.shipped when the request moves to SHIPPED. Paid: PURCHASING; Pro Bono: PICKING.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -931,7 +934,7 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description SHIPPED */
+                /** @description Shipment recorded (status SHIPPED once every line is covered) */
                 200: {
                     headers: {
                         [name: string]: unknown;
@@ -949,6 +952,63 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/shipments/{shipmentId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+                shipmentId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Correct a recorded shipment (staff); the customer is emailed again only with notifyCustomer
+         * @description Allowed while PURCHASING, PICKING, SHIPPED or DELIVERED. Lines and source cannot change. Emits order.shipment_updated.
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                    shipmentId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ShipmentPatch"];
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Request"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
         trace?: never;
     };
     "/requests/{requestId}/deliver": {
@@ -1283,8 +1343,11 @@ export interface components {
          * @enum {string}
          */
         LineSource: "CIMH" | "SUPPLIER";
-        /** @enum {string} */
-        Carrier: "FEDEX" | "DHL" | "HAND";
+        /**
+         * @description OTHER = a carrier without a tracking template; staff give its name and paste the tracking link
+         * @enum {string}
+         */
+        Carrier: "FEDEX" | "DHL" | "UPS" | "HAND" | "OTHER";
         ReasonBody: {
             reason: string;
         };
@@ -1390,16 +1453,61 @@ export interface components {
             fileId?: string | null;
         };
         ShipmentInput: {
+            source: components["schemas"]["LineSource"];
+            /** @description Required when source is SUPPLIER; must be the lines' supplier */
+            supplier?: string | null;
+            lineIds: string[];
             carrier: components["schemas"]["Carrier"];
+            /** @description Required when carrier is OTHER */
+            carrierName?: string | null;
             /** @description Required unless carrier is HAND */
             tracking?: string | null;
+            /** @description OTHER only: the carrier's https tracking page */
+            trackingLink?: string | null;
             /** @description e.g. who hand-delivered */
             note?: string | null;
+            /** @description CIMH's records; never shown to the customer */
             cost?: components["schemas"]["Money"] | null;
             /** Format: date */
             date: string;
             /** @default true */
             notifyCustomer: boolean;
+        };
+        ShipmentPatch: {
+            carrier?: components["schemas"]["Carrier"];
+            carrierName?: string | null;
+            tracking?: string | null;
+            trackingLink?: string | null;
+            note?: string | null;
+            cost?: components["schemas"]["Money"] | null;
+            /** Format: date */
+            date?: string;
+            /** @default false */
+            notifyCustomer: boolean;
+        };
+        Shipment: {
+            /** @description SHP… */
+            id: string;
+            /** @description CIMH (stock or Pro Bono) or SUPPLIER (shipped direct); null only on shipments moved from the old single record whose lines had mixed sources */
+            source: components["schemas"]["LineSource"] | null;
+            supplier?: string | null;
+            lineIds: string[];
+            carrier: components["schemas"]["Carrier"];
+            carrierName?: string | null;
+            tracking?: string | null;
+            /** @description Track link: carrier template (FedEx, DHL, UPS) or the link staff entered (OTHER) */
+            trackingUrl?: string | null;
+            note?: string | null;
+            /** Format: date */
+            date?: string | null;
+            /** Format: date-time */
+            at?: string | null;
+            /** @description staff/admin only */
+            cost?: components["schemas"]["Money"] | null;
+            /** @description staff/admin only */
+            trackingLink?: string | null;
+            /** @description staff/admin only */
+            by?: Record<string, never> | null;
         };
         FileRef: {
             id: string;
@@ -1481,20 +1589,13 @@ export interface components {
             decline?: Record<string, never> | null;
             /** @description staff/admin only */
             purchaseOrders?: Record<string, never>[];
-            shipping?: {
-                carrier?: components["schemas"]["Carrier"];
-                tracking?: string | null;
-                /** @description Public carrier tracking page */
-                trackingUrl?: string | null;
-                note?: string | null;
-                /** Format: date */
-                date?: string;
-            } | null;
+            /** @description One per parcel (CIMH stock, each supplier's direct shipment), oldest first */
+            shipments?: components["schemas"]["Shipment"][];
             files?: components["schemas"]["FileRef"][];
             cancellation?: Record<string, never> | null;
             history: components["schemas"]["StatusChange"][];
             /** @description Actions the caller may take now (drives UI buttons) */
-            allowedActions?: ("accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "deliver")[];
+            allowedActions?: ("accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "edit-shipment" | "deliver")[];
         };
         /**
          * Format: date-time

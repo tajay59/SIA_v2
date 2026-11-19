@@ -5,7 +5,7 @@
   order.quoted / order.quote_revised                  -> agreement (the page the customer signs: "view and sign")
                             with CIMH lines            -> cimh_quote
                             (both for the event's quote version; skipped if staff revised again meanwhile)
-  order.shipped             ship-to outside Barbados   -> commercial_invoice (customs)
+  order.shipment_recorded   CIMH parcel, ship-to outside Barbados -> commercial_invoice for its lines (customs)
   order.delivered           PAID -> invoice, PROBONO -> probono_invoice
 Each produces document.generated, which order-svc attaches to the request and notification-svc may mail.
 Delivery is at-least-once; the file id comes from the event id, so a redelivery rewrites the same file.
@@ -35,7 +35,7 @@ def make_handler(service: DocumentService) -> Any:
         p, t = event.payload, event.type
         rid = p.get("orderId")
         # order.agreement_requested (choose and sign, before 2026-11-17) is no longer produced; a stray one is ignored.
-        if t not in ("order.quoted", "order.quote_revised", "order.shipped", "order.delivered"):
+        if t not in ("order.quoted", "order.quote_revised", "order.shipment_recorded", "order.delivered"):
             return
         if not isinstance(rid, str):
             raise ValueError(f"{t} {event.eventId} lacks orderId")  # -> DLQ
@@ -49,11 +49,13 @@ def make_handler(service: DocumentService) -> Any:
                 ids = [x["lineId"] for x in ((req or {}).get("cimhQuote") or {}).get("lines") or []]
             if ids:
                 await service.generate("cimh_quote", rid, event, quote_version=version, line_ids=list(ids))
-        elif t == "order.shipped":
+        elif t == "order.shipment_recorded":
+            if p.get("source") != "CIMH":
+                return  # suppliers ship direct with their own customs papers
             req = await service.orders.request(rid)
             country = ((req or {}).get("shipTo") or {}).get("country")
             if req and country and country != HOME_COUNTRY:
-                await service.generate("commercial_invoice", rid, event)
+                await service.generate("commercial_invoice", rid, event, shipment_id=p.get("shipmentId"))
         else:
             kind = "probono_invoice" if p.get("orderType") == "PROBONO" else "invoice"
             await service.generate(kind, rid, event)

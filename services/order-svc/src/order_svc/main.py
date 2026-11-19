@@ -85,6 +85,7 @@ def build_app(
     async def lifespan(_: FastAPI) -> Any:
         await store.ensure_indexes()
         await upgrade.view_and_sign(store.orders)  # idempotent one-off (2026-11-17); remove after cut-over
+        await upgrade.shipments(store.orders)  # idempotent one-off (2026-11-19); remove after cut-over
         yield
 
     app.router.lifespan_context = lifespan

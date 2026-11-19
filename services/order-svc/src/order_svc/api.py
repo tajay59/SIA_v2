@@ -121,15 +121,37 @@ class PickIn(Strict):
     unit: Annotated[str, Field(min_length=1, max_length=128)]
 
 
-class ShipIn(BaseModel):
+Day = date  # a field named `date` shadows the type inside a model
+Carrier = Literal["FEDEX", "DHL", "UPS", "HAND", "OTHER"]
+
+
+class ShipmentIn(BaseModel):
     model_config = ConfigDict(extra="forbid")  # `date` arrives as a string: not strict
 
-    carrier: Literal["FEDEX", "DHL", "HAND"]
+    source: Literal["CIMH", "SUPPLIER"]
+    supplier: str | None = Field(default=None, min_length=1, max_length=120)
+    lineIds: list[Id] = Field(min_length=1, max_length=200)
+    carrier: Carrier
+    carrierName: str | None = Field(default=None, min_length=1, max_length=60)
     tracking: str | None = Field(default=None, max_length=100)
+    trackingLink: str | None = Field(default=None, max_length=500)
     note: str | None = Field(default=None, max_length=300)
     cost: MoneyStr | None = None
     date: date
     notifyCustomer: bool = True
+
+
+class ShipmentPatch(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    carrier: Carrier | None = None
+    carrierName: str | None = Field(default=None, min_length=1, max_length=60)
+    tracking: str | None = Field(default=None, max_length=100)
+    trackingLink: str | None = Field(default=None, max_length=500)
+    note: str | None = Field(default=None, max_length=300)
+    cost: MoneyStr | None = None
+    date: Day | None = None
+    notifyCustomer: bool = False
 
 
 class DeliverIn(BaseModel):
@@ -384,13 +406,30 @@ async def pick(
     return with_etag(out)
 
 
-@router.post("/requests/{requestId}/ship", tags=["staff-actions"])
-async def ship(
-    requestId: str, body: ShipIn, request: Request, v: IfMatch = None, me: Principal = Depends(require_staff)
+@router.post("/requests/{requestId}/shipments", tags=["staff-actions"])
+async def record_shipment(
+    requestId: str, body: ShipmentIn, request: Request, v: IfMatch = None, me: Principal = Depends(require_staff)
 ) -> JSONResponse:
     data = body.model_dump()
     data["date"] = body.date.isoformat()
-    return with_etag(await svc(request).ship(me, requestId, if_match(v), data, cid(request)))
+    out = await svc(request).record_shipment(me, requestId, if_match(v), data, cid(request))
+    return with_etag(out)
+
+
+@router.patch("/requests/{requestId}/shipments/{shipmentId}", tags=["staff-actions"])
+async def update_shipment(
+    requestId: str,
+    shipmentId: str,
+    body: ShipmentPatch,
+    request: Request,
+    v: IfMatch = None,
+    me: Principal = Depends(require_staff),
+) -> JSONResponse:
+    data = body.model_dump(exclude_unset=True)
+    if body.date is not None:
+        data["date"] = body.date.isoformat()
+    out = await svc(request).update_shipment(me, requestId, shipmentId, if_match(v), data, cid(request))
+    return with_etag(out)
 
 
 @router.post("/requests/{requestId}/deliver", tags=["staff-actions"])

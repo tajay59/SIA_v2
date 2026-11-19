@@ -50,10 +50,11 @@ def test_probono_journey(ctx: Ctx) -> None:
     r = pick("PRO1_c")
     assert r.status_code == 409
     assert r.json()["code"] == "LINE_FULLY_PICKED"
-    shipped = ctx.ok(
-        rid, "ship", {"carrier": "FEDEX", "tracking": "7712", "date": "2026-11-10", "notifyCustomer": False}
-    )
-    assert shipped["shipping"]["trackingUrl"].endswith("7712")
+    body = {"source": "CIMH", "lineIds": ["L1"], "carrier": "FEDEX", "tracking": "7712", "date": "2026-11-10",
+            "notifyCustomer": False}  # fmt: skip
+    shipped = ctx.ok(rid, "shipments", body)
+    assert shipped["status"] == "SHIPPED"
+    assert shipped["shipments"][0]["trackingUrl"].endswith("7712")
     assert ctx.ok(rid, "deliver")["status"] == "DELIVERED"
     ctx.events(rid)
 

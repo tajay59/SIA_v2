@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "order.shipment_updated",
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "eventId",
+        "type",
+        "version",
+        "occurredAt",
+        "correlationId",
+        "payload"
+      ],
+      "properties": {
+        "eventId": {
+          "type": "string",
+          "description": "ULID; also the dedup key"
+        },
+        "type": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "correlationId": {
+          "type": "string"
+        },
+        "actorId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "payload": {
+          "type": "object"
+        }
+      }
+    },
+    {
+      "properties": {
+        "payload": {
+          "type": "object",
+          "required": [
+            "orderId",
+            "customer",
+            "shipmentId",
+            "lineIds",
+            "carrier"
+          ],
+          "properties": {
+            "orderId": {
+              "type": "string"
+            },
+            "orderType": {
+              "type": "string",
+              "enum": [
+                "PAID",
+                "PROBONO"
+              ]
+            },
+            "customer": {
+              "type": "string"
+            },
+            "shipmentId": {
+              "type": "string"
+            },
+            "source": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "CIMH",
+                "SUPPLIER",
+                null
+              ]
+            },
+            "supplier": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "lineIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "lineId",
+                  "name",
+                  "qty"
+                ],
+                "properties": {
+                  "lineId": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "qty": {
+                    "type": "integer"
+                  }
+                }
+              }
+            },
+            "carrier": {
+              "type": "string",
+              "enum": [
+                "FEDEX",
+                "DHL",
+                "UPS",
+                "HAND",
+                "OTHER"
+              ]
+            },
+            "carrierName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "tracking": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "trackingUrl": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "notifyCustomer": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

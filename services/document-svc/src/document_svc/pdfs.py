@@ -320,16 +320,18 @@ def probono_invoice(req: dict[str, Any]) -> bytes:
     return _build("Pro Bono delivery note", req, body)
 
 
-def commercial_invoice(req: dict[str, Any]) -> bytes:
-    """For customs on international shipments (ship-to country is not Barbados)."""
+def commercial_invoice(req: dict[str, Any], shipment_id: str | None = None) -> bytes:
+    """For customs on a CIMH parcel leaving Barbados: the lines of that one shipment (all CIMH lines without one)."""
     cur = req.get("currency") or "BBD"
-    ship = req.get("shipping") or {}
+    ship = next((s for s in req.get("shipments") or [] if s.get("id") == shipment_id), None) or {}
+    keep = set(ship.get("lineIds") or []) or None
     if req.get("type") == "PROBONO":
-        rows = [[_product(ln), str(ln.get("qty", "")), "0.00", "0.00"] for ln in req.get("lines") or []]
+        rows = [[_product(ln), str(ln.get("qty", "")), "0.00", "0.00"] for ln in req.get("lines") or []
+                if keep is None or ln.get("lineId") in keep]  # fmt: skip
         note = "No commercial value: Pro Bono items donated by CIMH."
     else:
         rows = [[_product(ln), str(ln.get("qty", "")), u, t] for ln, _, u, t, src in _priced(req)
-                if src == "CIMH"]  # fmt: skip
+                if src == "CIMH" and (keep is None or ln.get("lineId") in keep)]  # fmt: skip
         note = "Supplier items ship directly from the supplier and are invoiced by them."
     shipper = [_p("Shipper", H2), _p(ORG), _p(ORG_ADDRESS)]
     consignee = [_p("Consignee", H2)] + [_p(x) for x in _address(req.get("shipTo"))]
@@ -338,7 +340,12 @@ def commercial_invoice(req: dict[str, Any]) -> bytes:
     body: list[Any] = [parties, Spacer(1, 4 * mm)]
     if ship:
         code = str(ship.get("carrier") or "")
-        carrier = {"FEDEX": "FedEx", "DHL": "DHL", "HAND": "Hand delivery"}.get(code, code)
+        carrier = ship.get("carrierName") or {
+            "FEDEX": "FedEx",
+            "DHL": "DHL",
+            "UPS": "UPS",
+            "HAND": "Hand delivery",
+        }.get(code, code)
         body.append(_p(f"Carrier: {carrier}" + (f" · tracking {ship['tracking']}" if ship.get("tracking") else "")))
     body += [
         Spacer(1, 4 * mm),

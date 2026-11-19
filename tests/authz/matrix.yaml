@@ -721,7 +721,13 @@ endpoints:
     - admin
     ownership: staff
     note: staff
-  POST /api/orders/v1/requests/{requestId}/ship:
+  POST /api/orders/v1/requests/{requestId}/shipments:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff
+  PATCH /api/orders/v1/requests/{requestId}/shipments/{shipmentId}:
     roles:
     - staff
     - admin

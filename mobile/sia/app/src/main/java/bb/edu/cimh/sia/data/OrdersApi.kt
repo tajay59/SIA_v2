@@ -49,6 +49,10 @@ data class ShippingAddress(
     val country: String? = null,
 )
 
+/** One parcel (CIMH stock, or a supplier shipping direct); only its lines matter here. */
+@Serializable
+data class Shipment(val id: String, val source: String? = null, val lineIds: List<String> = emptyList())
+
 @Serializable
 data class OrderRequest(
     val id: String,
@@ -60,23 +64,33 @@ data class OrderRequest(
     val lines: List<RequestLine> = emptyList(),
     val shipTo: ShippingAddress? = null,
     val allowedActions: List<String> = emptyList(),
+    val shipments: List<Shipment> = emptyList(),
 ) {
     /** Only CIMH-stock lines (paid) and every Pro Bono line are picked; supplier items ship direct. */
     val pickableLines: List<RequestLine> get() = lines.filter { type == "PROBONO" || it.source == "CIMH" }
     val allPicked: Boolean get() = pickableLines.all { it.picked.size >= it.qty }
+
+    /** CIMH-stock / Pro Bono lines not yet in a shipment: what M-08 sends. Supplier parcels are recorded on the web. */
+    val cimhToShip: List<RequestLine> get() {
+        val shipped = shipments.flatMap { it.lineIds }.toSet()
+        return pickableLines.filter { it.lineId !in shipped }
+    }
 }
 
 @Serializable
 data class PickForRequestBody(val lineId: String, val unit: String)
 
+/** POST /requests/{id}/shipments: one CIMH parcel of picked lines (paid PURCHASING, Pro Bono PICKING). */
 @Serializable
 data class ShipmentInput(
+    val lineIds: List<String>,
     val carrier: String,
     val tracking: String? = null,
     val note: String? = null,
     /** yyyy-MM-dd */
     val date: String,
     val notifyCustomer: Boolean = true,
+    val source: String = "CIMH",
 )
 
 class OrdersApi(baseUrl: String, client: OkHttpClient) {
@@ -94,6 +108,7 @@ class OrdersApi(baseUrl: String, client: OkHttpClient) {
     suspend fun pick(requestId: String, body: PickForRequestBody, key: String): OrderRequest =
         api.post(api.url(listOf("requests", requestId, "picks")), body, serializer(), serializer(), mapOf("Idempotency-Key" to key))
 
+    /** Records one shipment; the request becomes SHIPPED when it covers the last unshipped line. */
     suspend fun ship(request: OrderRequest, body: ShipmentInput): OrderRequest =
-        api.post(api.url(listOf("requests", request.id, "ship")), body, serializer(), serializer(), mapOf("If-Match" to "\"${request.version}\""))
+        api.post(api.url(listOf("requests", request.id, "shipments")), body, serializer(), serializer(), mapOf("If-Match" to "\"${request.version}\""))
 }

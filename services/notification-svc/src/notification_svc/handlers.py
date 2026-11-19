@@ -23,11 +23,7 @@ log = logging.getLogger("notification")
 SENT_TTL = 14 * 24 * 3600  # longer than any retry path (retry topics + DLQ replay window)
 
 SUCCESS, WARNING, ERROR, INFO = "#1A7F37", "#B54708", "#B42318", "#006FA8"
-CARRIERS = {"FEDEX": "FedEx", "DHL": "DHL", "HAND": "Hand delivery"}
-TRACK = {
-    "FEDEX": "https://www.fedex.com/fedextrack/?trknbr={}",
-    "DHL": "https://www.dhl.com/global-en/home/tracking/tracking-express.html?tracking-id={}",
-}
+CARRIERS = {"FEDEX": "FedEx", "DHL": "DHL", "UPS": "UPS", "HAND": "Hand delivery"}
 STAFF_WHY = "you are on a CIMH Stores staff notification list"
 REQUEST_WHY = "you made a request on CIMH Stores"
 
@@ -343,24 +339,30 @@ class Notifier:
             button="Send it again",
         )
 
-    async def shipped(self, e: EventEnvelope) -> list[Message]:
+    async def shipment(self, e: EventEnvelope) -> list[Message]:
+        """One email per parcel (CIMH stock, or a supplier shipping direct): what is in it and its Track link.
+
+        order.shipment_updated mails only when staff ask (notifyCustomer); order.shipped is not mailed."""
         p = e.payload
-        if p.get("notifyCustomer") is False:
+        if p.get("notifyCustomer") is False or (e.type == "order.shipment_updated" and not p.get("notifyCustomer")):
             return []
-        carrier = p.get("carrier") or ""
-        facts = [("Carrier", CARRIERS.get(carrier, carrier))]
+        carrier = p.get("carrierName") or CARRIERS.get(p.get("carrier") or "", p.get("carrier") or "")
+        sender = f"directly by {p['supplier']}" if p.get("source") == "SUPPLIER" and p.get("supplier") else "by CIMH"
+        facts = [("Sent", sender), ("Carrier", carrier)]
         if p.get("tracking"):
             facts.append(("Tracking number", p["tracking"]))
-            if carrier in TRACK:
-                facts.append(("Track it", TRACK[carrier].format(quote(p["tracking"]))))
+        if p.get("trackingUrl"):
+            facts.append(("Track it", p["trackingUrl"]))
+        items = [f"{x['name']} (qty {x['qty']})" for x in p.get("items") or []]
+        updated = e.type == "order.shipment_updated"
         return await self.to_customer(
             e,
-            subject=f"Your request has shipped ({p['orderId']})",
-            heading="On its way",
+            subject=f"{'Shipment details changed' if updated else 'Part of your request has shipped'} ({p['orderId']})",
+            heading="Shipment details changed" if updated else "On its way",
             request_id=p["orderId"],
             status=("Shipped", INFO),
             facts=facts,
-            paragraphs=["Supplier items may arrive separately, straight from the supplier."],
+            paragraphs=[("In this shipment: " + "; ".join(items)) if items else "Your items are on their way."],
             link=self.shop(f"/requests/{p['orderId']}"),
             button="View the request",
         )
@@ -509,7 +511,8 @@ Notifier.ROUTES = {
     "order.quote_expiring": Notifier.quote_expiring,
     "order.expired": Notifier.expired,
     "order.agreement_rejected": Notifier.agreement_rejected,
-    "order.shipped": Notifier.shipped,
+    "order.shipment_recorded": Notifier.shipment,
+    "order.shipment_updated": Notifier.shipment,
     "order.delivered": Notifier.delivered,
     "order.probono_rejected": Notifier.probono_rejected,
     "order.cancelled": Notifier.cancelled,

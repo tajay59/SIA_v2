@@ -229,7 +229,9 @@ fun PickOrderScreen(vm: PickOrderViewModel, requestId: String, onShip: () -> Uni
             }
         }
         val complete = r.pickableLines.all { s.progress(it.lineId) >= it.qty }
-        if (complete) {
+        if (complete && r.cimhToShip.isEmpty()) {
+            Text(if (r.pickableLines.isEmpty()) "Supplier parcels are recorded in SIA on the web." else "The CIMH items have shipped.")
+        } else if (complete) {
             // The server checks that every unit is picked (409 PICKING_INCOMPLETE); queued picks must reach it first.
             Button(onClick = onShip, enabled = s.queued.isEmpty()) {
                 Text("Ship")
@@ -245,7 +247,8 @@ fun PickOrderScreen(vm: PickOrderViewModel, requestId: String, onShip: () -> Uni
 
 // ---------------------------------------------------------------- M-08 ship
 
-private val CARRIERS = listOf("FEDEX" to "FedEx", "DHL" to "DHL", "HAND" to "Hand delivery")
+// "Other" (a carrier name + its tracking link) is recorded in SIA on the web.
+private val CARRIERS = listOf("FEDEX" to "FedEx", "DHL" to "DHL", "UPS" to "UPS", "HAND" to "Hand delivery")
 
 /** M-08 (APD §5): carrier, tracking (typed or scanned from the label), note, date. Needs the network. */
 @Composable
@@ -324,7 +327,14 @@ fun ShipScreen(orders: OrdersApi, requestId: String, onShipped: () -> Unit, modi
                     try {
                         orders.ship(
                             r,
-                            ShipmentInput(carrier, tracking.trim().ifBlank { null }.takeIf { carrier != "HAND" }, note.trim().ifBlank { null }, date, notify),
+                            ShipmentInput(
+                                lineIds = r.cimhToShip.map { it.lineId },
+                                carrier = carrier,
+                                tracking = tracking.trim().ifBlank { null }.takeIf { carrier != "HAND" },
+                                note = note.trim().ifBlank { null },
+                                date = date,
+                                notifyCustomer = notify,
+                            ),
                         )
                         onShipped()
                     } catch (e: NetworkException) {

@@ -47,7 +47,7 @@ ENUMS = {
         "CANCELLED",
     },
     ("orders", "type"): {"PAID", "PROBONO"},
-    ("orders", "shipping.carrier"): {"FEDEX", "DHL", "HAND"},
+    ("orders", "shipments.carrier"): {"FEDEX", "DHL", "UPS", "HAND", "OTHER"},
 }
 
 

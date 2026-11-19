@@ -16,6 +16,7 @@
 import {
   act,
   ApiError,
+  carrierLabel,
   countryName,
   currentAgreement,
   DocumentThumb,
@@ -23,11 +24,13 @@ import {
   FILE_KIND_LABELS,
   getRequest,
   isClosed,
+  openSources,
   type OrderRequest,
   pricedQuote,
   QuoteTable,
   ReasonDialog,
   requestTitle,
+  shipmentSender,
   ShortRef,
   StatusChip,
   useNotify,
@@ -40,6 +43,16 @@ import DocumentReader from './DocumentReader.vue'
 
 const props = withDefaults(defineProps<{ id: string; level?: 1 | 2; setTitle?: boolean; dir?: 1 | -1 }>(), { level: 1, setTitle: false, dir: 1 })
 const emit = defineEmits<{ changed: [OrderRequest] }>()
+
+// ---- Delivery: one row per shipment, and the items that have not left yet
+const lineLabel = (lineId: string) => {
+  const ln = request.value?.lines.find((l) => l.lineId === lineId)
+  return ln ? `${ln.product.name} × ${ln.qty}` : lineId
+}
+const shipStarted = computed(() => ['PURCHASING', 'PICKING', 'SHIPPED'].includes(request.value?.status ?? '') && !!request.value?.shipments?.length)
+const toShip = computed(() =>
+  request.value ? openSources(request.value).flatMap((s) => s.lines.map((l) => lineLabel(l.lineId))) : [],
+)
 const session = useSession()
 const notify = useNotify()
 const request = ref<OrderRequest | null>(null)
@@ -196,9 +209,15 @@ const well = computed<{ tone: Tone; title: string; text: string } | null>(() => 
     case 'PICKING':
       return { tone: 'cimh', title: 'Approved', text: 'CIMH is picking the items. An email follows when they are shipped.' }
     case 'SHIPPED':
-      return { tone: 'cimh', title: 'On its way', text: 'The shipping details are under Delivery.' }
+      return { tone: 'cimh', title: 'On its way', text: 'Each parcel and its tracking link is under Delivery.' }
     case 'DELIVERED':
-      return { tone: 'done', title: 'Delivered', text: 'Everything on this request has been delivered.' }
+      return {
+        tone: 'done',
+        title: 'Delivered',
+        text: r.type === 'PROBONO'
+          ? 'Everything on this request has been delivered. The delivery note is under Papers.'
+          : 'Everything on this request has been delivered. The invoice for the agreed total is under Papers.',
+      }
     case 'REJECTED':
       return { tone: 'stop', title: 'Not approved', text: closingReason.value ? `CIMH did not approve it: ${closingReason.value}.` : 'This request was not approved.' }
     default:
@@ -298,6 +317,14 @@ const sourceOf = (l: OrderRequest['lines'][number]) =>
 // The hand-off shows no prices (View and sign has them). A live quote someone else signs (or one waiting for its
 // agreement) still leads; later the quote is a record after the items.
 const order = computed(() => (handoff.value ? ['items'] : quoteLive.value ? ['quote', 'items'] : ['items', 'quote']))
+/** Once signed (or closed) the quote is a record: folded under the items, its total named in the summary. */
+const quoteRecord = computed(() => {
+  const r = request.value
+  if (!r || quoteLive.value || !showQuote.value) return null
+  const total = pricedQuote(r).total
+  const word = SIGNED.includes(r.status) ? 'Agreed total' : 'Quoted total'
+  return total ? `${word} ${formatMoney(total, r.currency ?? 'BBD')}` : word
+})
 
 const dialog = ref<null | 'decline' | 'cancel'>(null)
 const busy = ref(false)
@@ -420,7 +447,15 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 
       <template v-for="part in order" :key="part">
         <!-- The total is said once: in the quote's own total row (its name follows the state). -->
-        <section v-if="part === 'quote' && showQuote" class="section" aria-labelledby="sec-quote">
+        <details v-if="part === 'quote' && showQuote && quoteRecord" class="section quote-record">
+          <summary class="sec-title record-sum">
+            <span>Quote</span>
+            <span class="record-total">{{ quoteRecord }}</span>
+            <v-icon :icon="mdiChevronDown" size="20" class="history-chev" aria-hidden="true" />
+          </summary>
+          <QuoteTable :request="request" />
+        </details>
+        <section v-else-if="part === 'quote' && showQuote" class="section" aria-labelledby="sec-quote">
           <component :is="secTag" id="sec-quote" class="sec-title">Quote</component>
           <QuoteTable :request="request" />
         </section>
@@ -473,22 +508,32 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
             <dt>Quote currency</dt>
             <dd>{{ request.currency }}</dd>
           </div>
-          <div v-if="request.shipping">
-            <dt>Shipped</dt>
-            <dd>
-              {{ request.shipping.date ? formatDate(request.shipping.date) : '' }} by
-              {{ request.shipping.carrier === 'HAND' ? 'hand delivery' : request.shipping.carrier }}
-              <template v-if="request.shipping.tracking">
-                <br />Tracking:
-                <a v-if="request.shipping.trackingUrl" :href="request.shipping.trackingUrl" target="_blank" rel="noopener" class="t-mono">
-                  {{ request.shipping.tracking }} <v-icon :icon="mdiOpenInNew" size="14" />
-                </a>
-                <span v-else class="t-mono">{{ request.shipping.tracking }}</span>
-              </template>
-              <template v-if="request.shipping.note"><br />{{ request.shipping.note }}</template>
-            </dd>
-          </div>
         </dl>
+        <!-- One row per parcel (CIMH stock, each supplier shipping direct), then what has not left yet. -->
+        <ul v-if="request.shipments?.length || (shipStarted && toShip.length)" class="parcels" aria-label="Shipments">
+          <li v-for="s in request.shipments" :key="s.id" class="parcel">
+            <v-icon :icon="mdiPackageVariantClosed" size="20" class="parcel-icon" aria-hidden="true" />
+            <div class="parcel-body">
+              <p class="parcel-head"><strong>{{ shipmentSender(s) }}</strong></p>
+              <p class="parcel-meta">
+                {{ carrierLabel(s) }}<template v-if="s.date"> · {{ formatDate(s.date) }}</template><template v-if="s.note"> · {{ s.note }}</template>
+                <template v-if="s.tracking">
+                  ·
+                  <a v-if="s.trackingUrl" :href="s.trackingUrl" target="_blank" rel="noopener" class="track" :aria-label="`Track ${s.tracking} with ${carrierLabel(s)} (opens a new tab)`">Track {{ s.tracking }}<v-icon :icon="mdiOpenInNew" size="14" aria-hidden="true" /></a>
+                  <span v-else>Tracking {{ s.tracking }}</span>
+                </template>
+              </p>
+              <p class="parcel-items">{{ s.lineIds.map(lineLabel).join(', ') }}</p>
+            </div>
+          </li>
+          <li v-if="shipStarted && toShip.length" class="parcel waiting">
+            <v-icon :icon="mdiClockAlertOutline" size="20" class="parcel-icon" aria-hidden="true" />
+            <div class="parcel-body">
+              <p class="parcel-head"><strong>Not shipped yet</strong></p>
+              <p class="parcel-items">{{ toShip.join(', ') }}</p>
+            </div>
+          </li>
+        </ul>
       </section>
 
       <!-- Dated changes, folded: the path above already shows where it stands. -->
@@ -543,7 +588,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 }
 @keyframes sheet-in {
   from {
-    opacity: 0;
+    opacity: 0.85;
     transform: translateY(calc(var(--dir, 1) * 10px));
   }
 }
@@ -934,7 +979,8 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 }
 
 /* History: a ruled section head that opens the dated list in place (native details: keyboard and readers). */
-.history-sum {
+.history-sum,
+.record-sum {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
@@ -943,19 +989,23 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   cursor: pointer;
   list-style: none;
 }
-.history-sum::-webkit-details-marker {
+.history-sum::-webkit-details-marker,
+.record-sum::-webkit-details-marker {
   display: none;
 }
-.history-sum:hover > span:first-child {
+.history-sum:hover > span:first-child,
+.record-sum:hover > span:first-child {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
-.history-sum:focus-visible {
+.history-sum:focus-visible,
+.record-sum:focus-visible {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 2px;
   border-radius: 2px;
 }
-.history-n {
+.history-n,
+.record-total {
   font-weight: 400;
   letter-spacing: 0;
 }
@@ -963,10 +1013,12 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   margin-left: auto;
   transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
-.history[open] .history-chev {
+.history[open] .history-chev,
+.quote-record[open] .history-chev {
   transform: rotate(180deg);
 }
-.history[open] .history-sum {
+.history[open] .history-sum,
+.quote-record[open] .record-sum {
   margin-bottom: var(--sp-1);
 }
 .changes {
@@ -1077,6 +1129,52 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   margin: 0;
   font-size: 14px;
   line-height: 22px;
+}
+.parcels {
+  list-style: none;
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.parcel {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: start;
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.parcel-icon {
+  margin-top: 1px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.parcel p {
+  margin: 0;
+}
+.parcel-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sp-2);
+  font-size: 14px;
+  line-height: 22px;
+}
+.parcel-meta,
+.parcel-items {
+  font-size: 14px;
+  line-height: 20px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.track {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 24px;
+  font-weight: 500;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.waiting .parcel-head {
+  color: rgb(var(--v-theme-on-surface-variant));
 }
 .actions {
   display: flex;

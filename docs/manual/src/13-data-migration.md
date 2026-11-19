@@ -137,7 +137,7 @@ Each non-empty `accounts.cart` → one `orders` document `id: CRT…`, `status: 
 | — | `organisationId` from the customer's account (M02) |
 | `ordered` | `submittedAt`, `createdAt` |
 | `shipto` / `billedto` | `shipTo` / `billTo` (`organization` → `organisation`, `office` → `attention`) |
-| `shipping.method` free text | `"FedEx"` → `FEDEX` · `"DHL"` → `DHL` · `"Hand delivered…"` → `HAND` (+ `note` = original text) · empty → no `shipping` · other → `HAND` + `note`, listed in report |
+| `shipping.method` free text | `"FedEx"` → `FEDEX` · `"DHL"` → `DHL` · `"Hand delivered…"` → `HAND` (+ `note` = original text) · empty → no shipment · other → `HAND` + `note`, listed in report. The record becomes `shipments[0]` covering every line (source CIMH on Pro Bono, else null) |
 | `shipping.tracking/cost/date` | `tracking`, `cost` (Money), `date` (string dates parsed; unparseable → report) |
 | `shipping.cost1`, `total`, `shippingestimate` | `legacy.shippingCost1`, `legacy.total`, `legacy.shippingEstimate` (read-only) |
 | `invoice{number…, date}` | `invoice` (date string → Date) |

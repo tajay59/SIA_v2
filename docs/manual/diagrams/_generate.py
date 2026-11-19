@@ -371,7 +371,7 @@ states("11-paid-request-status", "Paid order request status flow: view and sign"
      ("QUOTED", "ACCEPTED", "signed agreement<br>uploaded", "exitX=1;exitY=0.25;entryX=0;entryY=0.25;"),
      ("ACCEPTED", "QUOTED", "signature rejected", "exitX=0;exitY=0.75;entryX=1;entryY=0.75;"),
      ("ACCEPTED", "PURCHASING", "verified +<br>POs placed"),
-     ("PURCHASING", "SHIPPED", "carrier + tracking<br>(supplier items direct)"), ("SHIPPED", "DELIVERED", ""), ("DELIVERED", "END", ""),
+     ("PURCHASING", "SHIPPED", "last parcel recorded<br>(CIMH + each supplier)"), ("SHIPPED", "DELIVERED", ""), ("DELIVERED", "END", ""),
      ("QUOTED", "QUOTED", "quote revised<br>(new agreement)", "exitX=0.75;exitY=0;entryX=0.25;entryY=0;"),
      ("QUOTED", "DECLINED", "customer cancels", DOWN.format(ex=0.75, en=0.48)),
      ("SUBMITTED", "CANCELLED", "cancel", DOWN.format(ex=0.5, en=0.075)),
@@ -437,7 +437,9 @@ sequence("14-paid-request-flow", "Paid request: quote, view and sign, fulfilment
     ("alt", "or cancel request → DECLINED → CANCELLED (stock released)"),
     ("s", "o", "verify signature + purchase orders → PURCHASING"),
     ("alt", "supplier items ship direct to the customer (no stock); staff pick CIMH-stock lines only"),
-    ("s", "o", "ship: carrier + tracking → SHIPPED"),
+    ("s", "o", "record each parcel: CIMH stock, each supplier (carrier, tracking, link)"),
+    ("o", "k", "order.shipment_recorded per parcel (one email each)"),
+    ("s", "o", "last line in a parcel → SHIPPED"),
     ("s", "o", "→ DELIVERED"),
     ("k", "d", "generate invoice (the signed total)"),
 ], col=165)
@@ -639,7 +641,7 @@ flow("25-journey-quote-acceptance", "J-02 / J-03 Customer: cart → request → 
     "sign": ("<b>S-12 step 2</b><br>download agreement + sign", 470, 600, "screen", 200, 55),
     "upload": ("<b>S-12 step 3</b><br>upload signed copy", 470, 710, "screen", 200, 55),
     "accepted": ("ACCEPTED<br>(commitment to pay)", 760, 710, "ok", 190, 55),
-    "track": ("<b>S-11</b> track: PURCHASING →<br>SHIPPED (tracking) → DELIVERED", 1010, 710, "screen", 230, 55),
+    "track": ("<b>S-11</b> one Track link per parcel:<br>CIMH + each supplier → DELIVERED", 1010, 710, "screen", 230, 55),
     "expired": ("Quote expired (30 d)<br>→ CANCELLED", 160, 600, "bad", 190, 55),
     "rejected": ("Email: signature rejected", 760, 820, "email", 190, 45),
 }, [

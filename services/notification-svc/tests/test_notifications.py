@@ -161,8 +161,15 @@ CASES = [
         f"{SHOP}/requests/ORD9/agreement?task=send",
     ),
     (
-        "order.shipped",
-        {**ORDER, "carrier": "DHL", "tracking": "JD0001", "notifyCustomer": True},
+        "order.shipment_recorded",
+        {
+            **ORDER,
+            "shipmentId": "SHP1",
+            "lineIds": ["L1"],
+            "carrier": "DHL",
+            "tracking": "JD0001",
+            "notifyCustomer": True,
+        },
         ["una@met.bb"],
         f"{SHOP}/requests/ORD9",
     ),
@@ -277,7 +284,15 @@ def test_retry_after_a_partial_failure_sends_only_the_missing(env: tuple[Notifie
             {**QUOTED, "customer": "USRGONE"},
         ),  # suspended
         ("order.delivered", {**MOVE, "customer": "USRNOBODY"}),  # erased
-        ("order.shipped", {**ORDER, "carrier": "HAND", "tracking": None, "notifyCustomer": False}),
+        (
+            "order.shipment_recorded",
+            {**ORDER, "shipmentId": "S", "lineIds": [], "carrier": "HAND", "notifyCustomer": False},
+        ),
+        (
+            "order.shipment_updated",
+            {**ORDER, "shipmentId": "S", "lineIds": [], "carrier": "DHL", "notifyCustomer": False},
+        ),
+        ("order.shipped", {**ORDER, "shipments": 2}),  # every shipment was mailed already
         ("user.verified", user(status="ACTIVE", isCimh=True)),  # @cimh: user.approved (auto) mails them
         (
             "document.generated",
@@ -315,12 +330,16 @@ def test_no_email(env: tuple[Notifier, FakeMailer, FakeDirectory], etype: str, p
     assert mailer.sent == []
 
 
-def test_shipped_has_tracking_and_carrier_link(env: tuple[Notifier, FakeMailer, FakeDirectory]) -> None:
+def test_shipment_names_sender_items_and_track_link(env: tuple[Notifier, FakeMailer, FakeDirectory]) -> None:
     n, mailer, _ = env
-    run(n, ev("order.shipped", {**ORDER, "carrier": "FEDEX", "tracking": "7777", "notifyCustomer": True}))
+    box = {**ORDER, "shipmentId": "SHP1", "lineIds": ["L2"], "source": "SUPPLIER", "supplier": "Vaisala",
+           "items": [{"lineId": "L2", "name": "Anemometer", "qty": 2}], "carrier": "FEDEX", "tracking": "7777",
+           "trackingUrl": "https://www.fedex.com/fedextrack/?trknbr=7777", "notifyCustomer": True}  # fmt: skip
+    run(n, ev("order.shipment_recorded", box))
     text = mailer.sent[0].text
+    assert "directly by Vaisala" in text
+    assert "Anemometer (qty 2)" in text
     assert "FedEx" in text
-    assert "7777" in text
     assert "fedex.com/fedextrack/?trknbr=7777" in text
 
 

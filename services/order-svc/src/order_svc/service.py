@@ -204,6 +204,10 @@ def _lines_payload(lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ]
 
 
+# Statuses where a recorded shipment can still be corrected (tracking typo, a late link).
+SHIPMENT_EDITABLE = ("PURCHASING", "PICKING", "SHIPPED", "DELIVERED")
+
+
 @dataclass
 class Change:
     """What one action does to a request (besides the status move, version and history)."""
@@ -614,7 +618,6 @@ class OrderService:
                 "rejections": [{"reason": r.get("reason"), "at": iso(r.get("at"))} for r in ag.get("rejections") or []],
             }
         acc = doc.get("acceptance")
-        ship = doc.get("shipping")
         out |= {
             "lines": lines,
             "shipTo": doc.get("shipTo"),
@@ -636,15 +639,7 @@ class OrderService:
             "decline": self._who(doc.get("decline")),
             "approval": self._who(doc.get("approval")),
             "rejection": self._who(doc.get("rejection")),
-            "shipping": {
-                "carrier": ship["carrier"],
-                "tracking": ship.get("tracking"),
-                "trackingUrl": d.tracking_url(ship["carrier"], ship.get("tracking")),
-                "note": ship.get("note"),
-                "date": iso(ship.get("date")),
-            }
-            if ship
-            else None,
+            "shipments": [self._shipment(s, staff) for s in doc.get("shipments") or []],
             "invoice": {"number": doc["invoice"].get("number"), "date": iso(doc["invoice"].get("date"))}
             if doc.get("invoice")
             else None,
@@ -688,6 +683,27 @@ class OrderService:
         return out
 
     @staticmethod
+    def _shipment(s: dict[str, Any], staff: bool) -> dict[str, Any]:
+        out = {
+            "id": s["id"],
+            "source": s.get("source"),
+            "supplier": s.get("supplier"),
+            "lineIds": list(s.get("lineIds") or []),
+            "carrier": s["carrier"],
+            "carrierName": s.get("carrierName"),
+            "tracking": s.get("tracking"),
+            "trackingUrl": d.tracking_url(s["carrier"], s.get("tracking"), s.get("trackingLink")),
+            "note": s.get("note"),
+            "date": iso(s.get("date")),
+            "at": iso(s.get("at")),
+        }
+        if staff:
+            out["cost"] = d.money_str(s.get("cost"))
+            out["trackingLink"] = s.get("trackingLink")
+            out["by"] = s.get("by")
+        return out
+
+    @staticmethod
     def _who(v: Any) -> dict[str, Any] | None:
         if not isinstance(v, dict):
             return None
@@ -722,11 +738,11 @@ class OrderService:
                     "QUOTING": ["quote-draft", "send-quote"],
                     "QUOTED": ["quote-draft", "send-quote"],
                     "ACCEPTED": ["reject-agreement", "purchase-orders"],
-                    "PURCHASING": ["ship"],
+                    "PURCHASING": ["ship"] if self._unshipped(doc) else [],
                     "SHIPPED": ["deliver"],
                 }.get(st, [])
                 if st == "PURCHASING" and self._pickable(doc):
-                    out.insert(len(out) - 1, "pick")
+                    out.insert(0, "pick")
             else:
                 out += {
                     "SUBMITTED": ["approve", "reject"],
@@ -734,7 +750,14 @@ class OrderService:
                     "PICKING": ["pick", "ship"],
                     "SHIPPED": ["deliver"],
                 }.get(st, [])
+            if doc.get("shipments") and st in SHIPMENT_EDITABLE:
+                out.append("edit-shipment")
         return out
+
+    @staticmethod
+    def _unshipped(doc: dict[str, Any]) -> list[str]:
+        done = {x for s in doc.get("shipments") or [] for x in s.get("lineIds") or []}
+        return [ln["lineId"] for ln in doc.get("lines") or [] if ln["lineId"] not in done]
 
     @staticmethod
     def _pickable(doc: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1285,32 +1308,160 @@ class OrderService:
             res = await self.store.orders.find_one_and_update({"id": rid}, update, return_document=ReturnDocument.AFTER)
         return self.view(res, p)
 
-    async def ship(self, p: Principal, rid: str, version: int, body: dict[str, Any], cid: str) -> dict[str, Any]:
-        async def build(doc: dict[str, Any], dst: str) -> Change:
-            short = [ln["lineId"] for ln in self._pickable(doc) if len(ln.get("picked") or []) < ln["qty"]]
+    async def record_shipment(
+        self, p: Principal, rid: str, version: int, body: dict[str, Any], cid: str
+    ) -> dict[str, Any]:
+        """One parcel: CIMH stock (or Pro Bono) picked lines, or one supplier's lines shipped direct (plan D5).
+
+        Covering the last unshipped line moves the request to SHIPPED in the same conditional update."""
+        doc = await self._load(rid)
+        st, typ = doc["status"], doc["type"]
+        if not ((typ == d.PAID and st == "PURCHASING") or (typ == d.PROBONO and st == "PICKING")):
+            raise illegal(st, "ship")
+        if int(doc.get("version") or 1) != version:
+            raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
+        by_id = {ln["lineId"]: ln for ln in doc["lines"]}
+        ids = list(dict.fromkeys(body["lineIds"]))
+        unknown = [x for x in ids if x not in by_id]
+        if unknown:
+            raise invalid("lineIds", f"Unknown lines: {', '.join(unknown)}")
+        open_ids = set(self._unshipped(doc))
+        done = [x for x in ids if x not in open_ids]
+        if done:
+            raise conflict("LINE_ALREADY_SHIPPED", f"Already in a shipment: {', '.join(done)}")
+        source = body["source"]
+        supplier = (body.get("supplier") or "").strip() or None
+        if typ == d.PROBONO and source != d.CIMH:
+            raise invalid("source", "Pro Bono items ship from CIMH stock")
+        if source == d.SUPPLIER and not supplier:
+            raise invalid("supplier", "Name the supplier that shipped these items")
+        for x in ids:
+            ln = by_id[x]
+            src = d.CIMH if typ == d.PROBONO else d.line_source(ln)
+            if src != source or (source == d.SUPPLIER and ln.get("supplier") != supplier):
+                where = "CIMH stock" if source == d.CIMH else supplier
+                raise invalid("lineIds", f"{ln['product']['name']} does not come from {where}", "LINE_SOURCE_MISMATCH")
+        if source == d.CIMH:
+            short = [x for x in ids if len(by_id[x].get("picked") or []) < by_id[x]["qty"]]
             if short:
                 raise conflict("PICKING_INCOMPLETE", f"Pick every unit first ({', '.join(short)})")
-            if body["carrier"] != "HAND" and not (body.get("tracking") or "").strip():
-                raise invalid("tracking", "Enter the tracking number", "TRACKING_REQUIRED")
-            cost = body.get("cost")
-            shipping = {
-                "carrier": body["carrier"],
-                "tracking": (body.get("tracking") or "").strip() or None,
-                "note": body.get("note"),
-                "cost": d.to_db(d.money(cost)) if cost else None,
-                "date": body["date"],
-                "by": actor(p),
-            }
-            payload = {
-                "orderId": doc["id"],
-                "customer": doc["customer"],
-                "carrier": body["carrier"],
-                "tracking": shipping["tracking"],
-                "notifyCustomer": body.get("notifyCustomer", True),
-            }
-            return Change(set={"shipping": shipping}, events=[_event("order.shipped", doc, payload, p, cid)])
+        else:
+            ordered = {x for po in doc.get("purchaseOrders") or [] for x in po.get("lineIds") or []}
+            missing = [x for x in ids if x not in ordered]
+            if missing:
+                raise conflict("NO_PURCHASE_ORDER", f"No purchase order for {', '.join(missing)}")
+        fields = self._shipment_fields(body)
+        t = now()
+        shipment = {
+            "id": "SHP" + uuid.uuid4().hex[:24],
+            "source": source,
+            "supplier": supplier if source == d.SUPPLIER else None,
+            "lineIds": ids,
+            **fields,
+            "by": actor(p),
+            "at": t,
+        }
+        notify = body.get("notifyCustomer", True)
+        events = [_event("order.shipment_recorded", doc, self._shipment_payload(doc, shipment, notify), p, cid)]
+        if not open_ids - set(ids):
 
-        return await self._act(p, rid, version, "ship", build)
+            async def build(cur: dict[str, Any], dst: str) -> Change:
+                payload = {"orderId": cur["id"], "orderType": cur["type"], "customer": cur["customer"],
+                           "shipments": len(cur.get("shipments") or []) + 1}  # fmt: skip
+                return Change(
+                    set={"shipments": [*(cur.get("shipments") or []), shipment]},
+                    events=[*events, _event("order.shipped", cur, payload, p, cid)],
+                )
+
+            return await self._act(p, rid, version, "ship", build)
+        return await self._patch(p, doc, version, {"$push": {"shipments": shipment}}, events)
+
+    async def update_shipment(
+        self, p: Principal, rid: str, sid: str, version: int, body: dict[str, Any], cid: str
+    ) -> dict[str, Any]:
+        """Fix a recorded shipment (carrier, tracking, link, date, cost, note); optionally tell the customer again."""
+        doc = await self._load(rid)
+        if doc["status"] not in SHIPMENT_EDITABLE:
+            raise illegal(doc["status"], "edit-shipment")
+        if int(doc.get("version") or 1) != version:
+            raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
+        idx = next((i for i, s in enumerate(doc.get("shipments") or []) if s["id"] == sid), None)
+        if idx is None:
+            raise not_found("No shipment with this id")
+        old = doc["shipments"][idx]
+        merged = {k: old.get(k) for k in ("carrier", "carrierName", "tracking", "trackingLink", "date", "cost", "note")}
+        merged |= {k: v for k, v in body.items() if k != "notifyCustomer"}
+        if body.get("cost") is None and old.get("cost") is not None:
+            merged["cost"] = d.money_str(old["cost"])
+        fields = self._shipment_fields(merged)
+        shipment = {**old, **fields, "updatedBy": actor(p), "updatedAt": now()}
+        notify = bool(body.get("notifyCustomer", False))
+        events = [_event("order.shipment_updated", doc, self._shipment_payload(doc, shipment, notify), p, cid)]
+        return await self._patch(p, doc, version, {"$set": {f"shipments.{idx}": shipment}}, events)
+
+    @staticmethod
+    def _shipment_fields(body: dict[str, Any]) -> dict[str, Any]:
+        carrier = body["carrier"]
+        tracking = (body.get("tracking") or "").strip() or None
+        name = (body.get("carrierName") or "").strip() or None
+        link = (body.get("trackingLink") or "").strip() or None
+        if carrier != "HAND" and not tracking:
+            raise invalid("tracking", "Enter the tracking number", "TRACKING_REQUIRED")
+        if carrier == "OTHER":
+            if not name:
+                raise invalid("carrierName", "Name the carrier")
+            if not link or not link.startswith("https://") or len(link) > 500:
+                raise invalid("trackingLink", "Paste the carrier's tracking link (https://…)", "TRACKING_URL_INVALID")
+        cost = body.get("cost")
+        return {
+            "carrier": carrier,
+            "carrierName": name if carrier == "OTHER" else None,
+            "tracking": tracking,
+            "trackingLink": link if carrier == "OTHER" else None,
+            "date": body["date"],
+            "cost": d.to_db(d.money(cost)) if cost not in (None, "") else None,
+            "note": body.get("note"),
+        }
+
+    @staticmethod
+    def _shipment_payload(doc: dict[str, Any], s: dict[str, Any], notify: bool) -> dict[str, Any]:
+        return {
+            "orderId": doc["id"],
+            "orderType": doc["type"],
+            "customer": doc["customer"],
+            "shipmentId": s["id"],
+            "source": s.get("source"),
+            "supplier": s.get("supplier"),
+            "lineIds": s["lineIds"],
+            "items": [
+                {"lineId": ln["lineId"], "name": ln["product"]["name"], "qty": ln["qty"]}
+                for ln in doc["lines"]
+                if ln["lineId"] in s["lineIds"]
+            ],
+            "carrier": s["carrier"],
+            "carrierName": s.get("carrierName"),
+            "tracking": s.get("tracking"),
+            "trackingUrl": d.tracking_url(s["carrier"], s.get("tracking"), s.get("trackingLink")),
+            "notifyCustomer": notify,
+        }
+
+    async def _patch(
+        self, p: Principal, doc: dict[str, Any], version: int, update: dict[str, Any], events: list[OutboxEvent]
+    ) -> dict[str, Any]:
+        """A change without a status move: same conditional update (id, status, version) as `_act`."""
+        t = now()
+        update = {**update, "$inc": {"version": 1}}
+        update["$set"] = {**update.get("$set", {}), "updatedAt": t}
+        if events:
+            push = dict(update.get("$push", {}))
+            push["outbox"] = {"$each": [e.model_dump(mode="python") for e in events]}
+            update["$push"] = push
+        res = await self.store.orders.find_one_and_update(
+            {"id": doc["id"], "status": doc["status"], "version": version}, update, return_document=ReturnDocument.AFTER
+        )
+        if res is None:
+            raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
+        return self.view(res, p)
 
     async def deliver(self, p: Principal, rid: str, version: int, body: dict[str, Any], cid: str) -> dict[str, Any]:
         async def build(doc: dict[str, Any], dst: str) -> Change:
