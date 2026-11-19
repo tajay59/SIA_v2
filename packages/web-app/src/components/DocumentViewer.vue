@@ -351,6 +351,12 @@ onBeforeUnmount(() => {
   font-weight: 600;
   white-space: nowrap;
 }
+/* On the grey desk ground the primary blue is 4.45:1: the message's link takes the ink colour, underlined. */
+.doc-msg .doc-link {
+  color: rgb(var(--v-theme-on-surface));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .doc-body {
   flex: 1;
   min-height: 0;
