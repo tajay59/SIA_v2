@@ -408,19 +408,42 @@ async function submit() {
               <span class="sheet-count tnum">{{ itemsWord }}</span>
             </header>
 
-            <section class="sheet-part" aria-label="Items">
-              <div v-for="g in groups" :key="g.key" class="sheet-group">
-                <p class="part-label">
-                  {{ g.free ? 'Pro Bono' : 'To be quoted' }}
-                  <span v-if="g.free" class="probono-badge">Free</span>
-                </p>
-                <ul class="sheet-items">
-                  <li v-for="l in g.items" :key="l.productId">
-                    <span class="it-name">{{ l.product.name }}</span>
-                    <span class="it-qty tnum">× {{ l.qty }}</span>
-                  </li>
-                </ul>
-              </div>
+            <section class="sheet-part items-part" aria-label="Items">
+              <table class="items-table">
+                <caption class="sr-only">Items in this request</caption>
+                <thead>
+                  <tr>
+                    <th scope="col" class="c-n">#</th>
+                    <th scope="col">Item</th>
+                    <th scope="col" class="c-num">Model no.</th>
+                    <th scope="col" class="c-qty">Qty</th>
+                  </tr>
+                </thead>
+                <tbody v-for="g in groups" :key="g.key">
+                  <tr class="group-row">
+                    <th scope="colgroup" colspan="4">
+                      <span class="group-label">{{ g.free ? 'Pro Bono' : 'To be quoted' }}</span>
+                      <span v-if="g.free" class="probono-badge">Free</span>
+                      <span class="group-count tnum">{{ g.items.length }} {{ g.items.length === 1 ? 'line' : 'lines' }}</span>
+                    </th>
+                  </tr>
+                  <tr v-for="(l, i) in g.items" :key="l.productId">
+                    <td class="c-n tnum">{{ i + 1 }}</td>
+                    <th scope="row" class="c-item">
+                      <span class="it-name">{{ l.product.name }}</span>
+                      <span v-if="l.product.make || l.product.modelname" class="it-sub">{{ [l.product.make, l.product.modelname].filter(Boolean).join(' · ') }}</span>
+                    </th>
+                    <td class="c-num">{{ l.product.modelnumber || '—' }}</td>
+                    <td class="c-qty tnum">{{ l.qty }}</td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <th scope="row" colspan="3">Total</th>
+                    <td class="c-qty tnum">{{ cart.count }}</td>
+                  </tr>
+                </tfoot>
+              </table>
               <p v-if="split" class="sheet-note">Sent as two requests: one to be quoted, one Pro Bono.</p>
               <button type="button" class="change" @click="step = 1">Change items</button>
             </section>
@@ -923,11 +946,11 @@ button.node-hit:hover .node-label {
 
 /* ---- step 3: choice left, the request read back on a sheet right */
 .pane.review {
-  max-width: 1120px;
+  max-width: 1200px;
 }
 .review-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  grid-template-columns: minmax(300px, 440px) minmax(0, 1fr);
   gap: var(--sp-10, 40px);
   align-items: start;
 }
@@ -1017,6 +1040,93 @@ button.node-hit:hover .node-label {
 .it-qty {
   flex: none;
   font-weight: 600;
+}
+/* The request read back as a table: line, item (make · model under the name), model number, quantity. */
+.items-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 15px;
+  line-height: 22px;
+}
+.items-table thead th {
+  padding: 0 var(--sp-2) var(--sp-2);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-align: left;
+  color: rgb(var(--v-theme-on-surface-variant));
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.items-table td,
+.items-table tbody th {
+  padding: var(--sp-2);
+  vertical-align: top;
+  text-align: left;
+  font-weight: 400;
+  border-bottom: 1px solid rgba(var(--v-border-color), calc(var(--v-border-opacity) * 0.6));
+}
+.items-table .group-row th {
+  padding: var(--sp-4) var(--sp-2) var(--sp-2);
+  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+}
+.items-table tbody:first-of-type .group-row th {
+  padding-top: var(--sp-3);
+}
+.group-row th > span {
+  vertical-align: middle;
+}
+.group-label {
+  font-size: 13px;
+  font-weight: 700;
+  margin-right: var(--sp-2);
+}
+.group-count {
+  float: right;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.c-n {
+  width: 32px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.c-item {
+  min-width: 0;
+}
+.c-item .it-name {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.it-sub {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+.c-num {
+  width: 1%;
+  white-space: nowrap;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 13px;
+}
+.items-table thead .c-num {
+  font-family: inherit;
+  font-size: 12px;
+}
+.c-qty {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right !important;
+  font-weight: 600 !important;
+}
+.items-table tfoot th,
+.items-table tfoot td {
+  padding: var(--sp-3) var(--sp-2) 0;
+  font-weight: 700;
+  text-align: left;
+  border-bottom: 0;
 }
 .addrs {
   display: grid;
