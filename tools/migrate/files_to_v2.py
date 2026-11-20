@@ -34,12 +34,16 @@ MIGRATE = {"id": "svc:migrate", "name": "Legacy migration", "role": "system"}
 
 
 def main() -> None:
-    legacy, conv, out = (Path(a) for a in sys.argv[1:4])
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    orders_only = "--orders-only" in sys.argv
+    legacy, conv, out = (Path(a) for a in args[:3])
     media = out / "media"
     rep: dict[str, list[str]] = {"missing": [], "rejected": [], "done": []}
     updates: list[dict] = []
 
-    products = json_util.loads((conv / "product.json").read_text(encoding="utf-8"))
+    # --orders-only: a later run that adds order files (e.g. the legacy uploads/ folder) to a live database.
+    # Product images are skipped there because their update replaces the image list staff may have edited.
+    products = [] if orders_only else json_util.loads((conv / "product.json").read_text(encoding="utf-8"))
     for p in products:
         images = []
         for name in p.get("legacyImages") or []:
@@ -92,7 +96,8 @@ def main() -> None:
             if src is None:
                 rep["missing"].append(f"order {o['id']}: file {f['legacyFile'][:40]}")
                 continue
-            fid = "FIL" + secrets.token_hex(12).upper()
+            # Same file -> same id on every run, so re-runs never duplicate.
+            fid = "FIL" + hashlib.sha256(f"{o['id']}|{f['legacyFile']}".encode()).hexdigest()[:24].upper()
             rel = f"protected/orders/{o['id']}/{fid}{src.suffix.lower()}"
             (media / rel).parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, media / rel)
@@ -120,14 +125,23 @@ def main() -> None:
             meta_path.write_text(json.dumps(meta), encoding="utf-8")
         if files:
             rep["done"].append(f"order {o['id']}: {len(files)} file(s)")
-            updates.append({"c": "orders", "q": {"id": o["id"]}, "u": {"$set": {"files": files}}})
+        # Append each file unless the request already has it (by name and kind: the first loads used random ids).
+        # Never $set the list: files uploaded or generated since the migration must stay.
+        for e in files:
+            updates.append(
+                {
+                    "c": "orders",
+                    "q": {"id": o["id"], "files": {"$not": {"$elemMatch": {"name": e["name"], "kind": e["kind"]}}}},
+                    "u": {"$push": {"files": e}},
+                }
+            )
 
     out.mkdir(parents=True, exist_ok=True)
     payload = json_util.dumps(updates, json_options=json_util.CANONICAL_JSON_OPTIONS)
     (out / "apply.js").write_text(
-        f"const ups = EJSON.parse({json.dumps(payload)});\n"
+        f"{{ const ups = EJSON.parse({json.dumps(payload)});\n"
         "let n = 0; for (const x of ups) { n += db[x.c].updateOne(x.q, x.u).modifiedCount; }\n"
-        "print('updated', n, 'of', ups.length);\n",
+        "print('updated', n, 'of', ups.length); }\n",
         encoding="utf-8",
     )
     (out / "files-report.json").write_text(json.dumps(rep, indent=1), encoding="utf-8")

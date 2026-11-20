@@ -12,6 +12,11 @@ Input: a mongoexport of the legacy `inventory` db in `db/` (git-ignored: real pe
    `python tools/migrate/files_to_v2.py <legacy app dir> db/v2 db/v2-files`, copy `db/v2-files` to the server
    and run `bash load_files_staging.sh <dir>`.
    Product and order ids are stable, so it can run any time after step 2.
+   **Adding order files later** (e.g. the legacy `uploads/` folder, 66 files missing from `db/`): rerun with
+   `--orders-only`. File ids are derived from (order id, legacy name) and each file is appended only if the
+   request has no file with the same name and kind, so re-runs never duplicate and never drop files uploaded or
+   generated since. Product images are skipped (their update replaces the list). Media for files already
+   attached is still written to disk (unreferenced; harmless).
 
 Rules applied beyond the plan: duplicate emails keep the account with orders, else the oldest; accounts get
 their organisation from their latest order (legacy had no org field); unknown countries default to `BB`.
