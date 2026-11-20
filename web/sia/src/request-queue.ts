@@ -9,6 +9,8 @@ import { markRaw } from 'vue'
 import IUrgent from '~icons/material-symbols/error-rounded'
 import IAct from '~icons/material-symbols/arrow-circle-right-rounded'
 import IFulfil from '~icons/material-symbols/package-2-rounded'
+import IInvoice from '~icons/material-symbols/receipt-long-rounded'
+import ICustoms from '~icons/material-symbols/public-rounded'
 import IExpiring from '~icons/material-symbols/timer-rounded'
 import IWait from '~icons/material-symbols/hourglass-top-rounded'
 import IClosed from '~icons/material-symbols/check-circle-rounded'
@@ -92,6 +94,8 @@ export const BTN = {
   pick: markRaw(IFulfil),
   ship: markRaw(IShip),
   deliver: markRaw(IDeliver),
+  invoice: markRaw(IInvoice),
+  customs: markRaw(ICustoms),
   stow: markRaw(IStow),
   scan: markRaw(IScan),
   retry: markRaw(IRefresh),

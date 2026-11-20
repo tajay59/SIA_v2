@@ -234,6 +234,53 @@ class DocumentService:
             raise not_found("Request not found")
         return await asyncio.to_thread(pdfs.agreement, req, preview=True)
 
+    # ------------------------------------------------------------------ staff-built invoices
+
+    async def _staff_request(self, p: Principal, rid: str) -> dict[str, Any]:
+        if not p.is_staff:
+            raise forbidden("Only staff can build invoices")
+        req = await self.orders.request(rid)
+        if req is None or req.get("status") == "CART":
+            raise not_found("Request not found")
+        return req
+
+    async def invoice_draft(self, p: Principal, rid: str, kind: str) -> dict[str, Any]:
+        """The lines, fee and shipping the invoice builder starts from (staff edit them before creating)."""
+        return pdfs.invoice_draft(await self._staff_request(p, rid), kind)
+
+    async def invoice_preview(self, p: Principal, rid: str, body: dict[str, Any]) -> bytes:
+        req = await self._staff_request(p, rid)
+        return await asyncio.to_thread(pdfs.built_invoice, req, body, preview=True)
+
+    async def create_invoice(self, p: Principal, rid: str, body: dict[str, Any], cid: str) -> dict[str, Any]:
+        """Render, store and attach a staff-built invoice / commercial invoice; document.generated carries who
+        to email (`notify`), so notification-svc mails the customer and/or the staff invoice list."""
+        req = await self._staff_request(p, rid)
+        kind = body["kind"]
+        data = await asyncio.to_thread(pdfs.built_invoice, req, body)
+        fid = "FIL" + secrets.token_hex(16)
+        number = "".join(ch for ch in str(body["number"]) if ch.isalnum() or ch in "-_")[:40]
+        name = f"{NAMES[kind]}-{number or rid}.pdf"
+        meta = self._generated_meta(fid, rid, kind, name, data, p.sub)
+        meta["uploadedBy"] = actor(p)
+        meta["number"] = body["number"]
+        self.files.save(meta, data)
+        notify = {"customer": bool(body.get("emailCustomer")), "staff": bool(body.get("emailStaff"))}
+        extra: dict[str, Any] = {"notify": notify, "number": body["number"]}
+        if isinstance(req.get("customer"), str):
+            extra["customer"] = req["customer"]
+        try:
+            await self._emit("document.generated", meta, cid, p.sub, **extra)
+        except ProblemError:
+            self.files.remove(meta)
+            raise
+        try:
+            await self.orders.attach(rid, meta)
+        except ProblemError:
+            log.warning("sync attach failed; document.generated will attach it", extra={"fileId": fid})
+        await self._audit(p, f"{kind}.created", fid, cid, requestId=rid, number=body["number"])
+        return public(meta)
+
     @staticmethod
     def _generated_meta(fid: str, rid: str | None, kind: str, name: str, data: bytes, by: str) -> dict[str, Any]:
         return {

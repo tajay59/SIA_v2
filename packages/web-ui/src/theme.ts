@@ -160,5 +160,12 @@ export function vuetifyOptions(app: App, defaultTheme: 'cimhLight' | 'cimhDark' 
     defaults.VBtn = { rounded: 'pill', variant: 'flat', class: 'm3' }
     defaults.VTab = { rounded: 0, class: '' }
   }
+  // The date picker is Vuetify's own (owner, 2026-11-20): header shown ("Select date" + the chosen date), default
+  // density, and its day/month buttons free of the app's M3 button class (console.css / m3.css would repaint the
+  // chosen day's filled circle).
+  // A fixed width: v-date-input would otherwise squeeze the picker to the field's width (321 < 328 px, the last
+  // column cut off).
+  defaults.VDateInput = { ...defaults.VDateInput, hideHeader: false }
+  defaults.VDatePicker = { width: 360, maxWidth: 'calc(100vw - 24px)', density: 'default', color: 'primary', VBtn: { class: '', density: 'default' } }
   return { theme: { defaultTheme, themes }, defaults }
 }

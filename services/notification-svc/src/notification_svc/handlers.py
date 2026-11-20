@@ -451,6 +451,34 @@ class Notifier:
                 link=self.sia(f"/requests/{rid}"),
                 button="Check the signature",
             )
+        notify = p.get("notify")
+        if e.type == "document.generated" and isinstance(notify, dict) and kind in ("invoice", "commercial_invoice"):
+            # Built by staff in SIA (invoice builder): each tick decides who is mailed.
+            name = "Commercial invoice" if kind == "commercial_invoice" else "Invoice"
+            facts = [("Number", str(p["number"]))] if p.get("number") else []
+            out: list[Message] = []
+            if notify.get("customer"):
+                out += await self.to_customer(
+                    e,
+                    subject=f"{name} for your request ({rid})",
+                    heading=f"Your {name.lower()} is ready",
+                    paragraphs=[f"The {name.lower()} is attached to the request."],
+                    request_id=rid,
+                    facts=facts,
+                    link=self.shop(f"/requests/{rid}"),
+                    button="View the request",
+                )
+            if notify.get("staff"):
+                out += await self.staff(
+                    "invoice",
+                    subject=f"{name} created: {rid}",
+                    heading=f"A {name.lower()} was created",
+                    request_id=rid,
+                    facts=facts,
+                    link=self.sia(f"/requests/{rid}"),
+                    button="Open the request",
+                )
+            return out
         if e.type == "document.generated" and kind in ("invoice", "probono_invoice"):
             return await self.staff(
                 "invoice",

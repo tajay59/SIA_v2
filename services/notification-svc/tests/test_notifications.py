@@ -201,6 +201,28 @@ CASES = [
         LISTS["invoice"],
         f"{SIA}/requests/ORD9",
     ),
+    # Staff-built (SIA invoice builder): the ticks decide who is mailed.
+    *[
+        (
+            "document.generated",
+            {
+                "orderId": "ORD9",
+                "fileId": f"FIL{kind}{cust}{staff}",
+                "kind": kind,
+                "name": "i.pdf",
+                "mime": "application/pdf",
+                "size": 1,
+                "sha256": "0",
+                "customer": "USRUSER",
+                "number": "0080926",
+                "notify": {"customer": cust, "staff": staff},
+            },
+            (["una@met.bb"] if cust else []) + (LISTS["invoice"] if staff else []),
+            None,
+        )
+        for kind in ("invoice", "commercial_invoice")
+        for cust, staff in ((True, True), (True, False), (False, True), (False, False))
+    ],
     (
         "document.uploaded",
         {

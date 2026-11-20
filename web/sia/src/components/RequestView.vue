@@ -10,6 +10,7 @@
  * delivered; reasons for reject / cancel.
  */
 import ShipmentDialog from './ShipmentDialog.vue'
+import InvoiceDialog from './InvoiceDialog.vue'
 import {
   act,
   ApiError,
@@ -18,6 +19,7 @@ import {
   fileUrl,
   getRequest,
   openSources,
+  type InvoiceKind,
   type OrderRequest,
   QuoteTable,
   type Shipment,
@@ -86,6 +88,19 @@ watch(
   { flush: 'post' },
 )
 const can = (a: string) => r.value?.allowedActions?.includes(a as never) ?? false
+// Invoice builder: once the customer has agreed (paid) or staff approved (Pro Bono). A commercial invoice covers
+// CIMH stock only (supplier items ship direct and the supplier invoices them).
+const INVOICEABLE = new Set(['ACCEPTED', 'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED', 'DELIVERED'])
+const canInvoice = computed(() => !!r.value && INVOICEABLE.has(r.value.status))
+const canCommercial = computed(
+  () => canInvoice.value && (r.value!.type === 'PROBONO' || (r.value!.lines ?? []).some((l) => l.source === 'CIMH')),
+)
+const invoiceOpen = ref(false)
+const invoiceKind = ref<InvoiceKind>('invoice')
+function openInvoice(kind: InvoiceKind) {
+  invoiceKind.value = kind
+  invoiceOpen.value = true
+}
 
 async function run(key: string, path: Parameters<typeof act>[1], body: unknown, done: string): Promise<boolean> {
   if (!r.value) return false
@@ -297,7 +312,7 @@ async function submitDeliver() {
             <h2 class="console-title">Next step</h2>
             <p class="next-text"><v-icon :icon="TONE_ICON[why(r).tone]" size="18" />{{ why(r).text }}</p>
             <div class="next-actions">
-              <p v-if="!r.allowedActions?.length" class="t-caption muted">Nothing for staff to do on this request now.</p>
+              <p v-if="!r.allowedActions?.length && !canInvoice" class="t-caption muted">Nothing for staff to do on this request now.</p>
               <v-btn
                 v-if="can('start-quoting')"
                 class="m3"
@@ -335,6 +350,12 @@ async function submitDeliver() {
               <v-btn v-if="can('ship')" class="m3" color="primary" :prepend-icon="BTN.ship" :disabled="!!busy" @click="openShip()">Record shipment</v-btn>
               <v-btn v-if="can('deliver')" class="m3" color="primary" :prepend-icon="BTN.deliver" :disabled="!!busy" @click="deliverOpen = true">Mark delivered</v-btn>
               <v-btn v-if="can('reject-agreement')" variant="outlined" class="m3" :disabled="!!busy" @click="reasonFor = 'reject-agreement'">Reject signature</v-btn>
+            </div>
+            <div v-if="canInvoice" class="invoice-acts">
+              <v-btn variant="outlined" class="m3" :prepend-icon="BTN.invoice" @click="openInvoice('invoice')">Create invoice</v-btn>
+              <v-btn v-if="canCommercial" variant="outlined" class="m3" :prepend-icon="BTN.customs" @click="openInvoice('commercial_invoice')">
+                Create commercial invoice
+              </v-btn>
             </div>
             <div v-if="can('reject') || can('cancel')" class="danger-zone">
               <v-btn v-if="can('reject')" variant="outlined" class="m3 m3-danger" :prepend-icon="BTN.reject" :disabled="!!busy" @click="reasonFor = 'reject'">Reject request</v-btn>
@@ -502,6 +523,7 @@ async function submitDeliver() {
         </v-card>
       </v-dialog>
 
+      <InvoiceDialog v-model="invoiceOpen" :request="r" :kind="invoiceKind" @created="load" />
       <ShipmentDialog v-model="shipOpen" :request="r" :shipment="editing" :busy="busy === 'ship'" @submit="submitShip" @update="updateShip" />
 
       <v-dialog v-model="deliverOpen" max-width="480">
@@ -727,6 +749,14 @@ async function submitDeliver() {
   flex-wrap: wrap;
   gap: var(--sp-2);
   margin-top: var(--sp-1);
+}
+.invoice-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid rgb(var(--v-theme-seam));
 }
 .danger-zone {
   display: flex;

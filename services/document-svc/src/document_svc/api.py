@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
@@ -111,6 +112,69 @@ async def agreement_preview(requestId: str, request: Request, me: Principal = De
         "X-Content-Type-Options": "nosniff",
     }
     return Response(content=data, media_type="application/pdf", headers=headers)
+
+
+InvoiceKind = Literal["invoice", "commercial_invoice"]
+Money = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,2})?$")]
+
+
+class InvoiceLineIn(Strict):
+    lineId: str | None = Field(default=None, max_length=64)
+    description: str = Field(min_length=1, max_length=300)
+    qty: int = Field(ge=1, le=100_000)
+    unitPrice: Money
+
+
+class InvoiceIn(Strict):
+    kind: InvoiceKind
+    number: str = Field(min_length=1, max_length=50)
+    date: Annotated[str, Field(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+    lines: list[InvoiceLineIn] = Field(min_length=1, max_length=200)
+    fees: Money = "0.00"
+    discount: Money = "0.00"
+    shipping: Money = "0.00"
+    emailCustomer: bool = False
+    emailStaff: bool = False
+
+
+def _pdf(data: bytes, name: str) -> Response:
+    headers = {
+        "Content-Disposition": f'inline; filename="{name}"',
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    }
+    return Response(content=data, media_type="application/pdf", headers=headers)
+
+
+def _invoice_body(body: InvoiceIn) -> dict[str, Any]:
+    out = body.model_dump()
+    try:
+        out["date"] = datetime.fromisoformat(body.date)
+    except ValueError as exc:
+        raise ProblemError(422, "VALIDATION_FAILED", errors=[{"field": "date", "message": "not a date"}]) from exc
+    return out
+
+
+@router.get("/requests/{requestId}/invoice-draft", tags=["files"])
+async def invoice_draft(
+    requestId: str, request: Request, kind: Annotated[InvoiceKind, Query()], me: Principal = Depends(require_staff)
+) -> dict[str, Any]:
+    return await svc(request).invoice_draft(me, requestId, kind)
+
+
+@router.post("/requests/{requestId}/invoice-preview", tags=["files"])
+async def invoice_preview(
+    requestId: str, body: InvoiceIn, request: Request, me: Principal = Depends(require_staff)
+) -> Response:
+    data = await svc(request).invoice_preview(me, requestId, _invoice_body(body))
+    return _pdf(data, f"{body.kind}-preview.pdf")
+
+
+@router.post("/requests/{requestId}/invoices", status_code=201, tags=["files"])
+async def create_invoice(
+    requestId: str, body: InvoiceIn, request: Request, me: Principal = Depends(require_staff)
+) -> dict[str, Any]:
+    return await svc(request).create_invoice(me, requestId, _invoice_body(body), cid(request))
 
 
 @router.post("/internal/labels", status_code=201, tags=["internal"])

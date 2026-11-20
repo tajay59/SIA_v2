@@ -373,6 +373,41 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByLabel('Invoice number (optional)').fill(`INV-${run}`)
     await page.getByRole('dialog').getByRole('button', { name: 'Mark delivered' }).click()
     await expect(page.getByText('Marked delivered')).toBeVisible()
+
+    // Invoice builder: every priced line, the preview drawn beside the panel, stored on the request.
+    await page.getByRole('button', { name: 'Create invoice', exact: true }).click()
+    const inv = page.getByRole('dialog')
+    await expect(inv.locator('.line')).toHaveCount(2)
+    await expect(inv.getByLabel('Invoice #')).toHaveValue(`INV-${run}`) // the number given at delivery
+    // The date is a Vuetify date input: pressing it opens the v-date-picker.
+    await inv.locator('.v-date-input .v-field').click()
+    await expect(page.locator('.v-date-picker')).toBeVisible()
+    // Whole picker inside the dialog (it once opened from the field's left edge and ran past the dialog's right side).
+    const pick = (await page.locator('.v-date-picker').boundingBox())!
+    const box = (await inv.locator('.v-card').first().boundingBox())!
+    expect(pick.x + pick.width).toBeLessThanOrEqual(box.x + box.width + 1)
+    expect(pick.x).toBeGreaterThanOrEqual(box.x - 1)
+    await shot(page, 'sia-invoice-date-picker', { fullPage: false })
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.v-date-picker')).toBeHidden()
+    await expect(inv.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
+    await auditDialog(page, 'Create invoice')
+    await inv.getByRole('button', { name: 'Create invoice', exact: true }).click()
+    await expect(page.getByText(`Invoice INV-${run} created; emailed to the customer and staff`)).toBeVisible()
+    await expect(inv).toBeHidden()
+    // Commercial invoice: CIMH stock only (the supplier's item shipped direct).
+    await page.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
+    const ci = page.getByRole('dialog')
+    await expect(ci.locator('.line')).toHaveCount(1)
+    await expect(ci.getByLabel('Line 1 description')).toHaveValue(new RegExp(paidName))
+    await ci.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
+    await expect(ci.locator('.problems')).toContainText('Enter the commercial invoice number') // marked, not disabled
+    await ci.getByLabel('Commercial invoice #').fill(`CI-${run}`)
+    await ci.getByLabel('Customer', { exact: true }).uncheck()
+    await expect(ci.getByLabel('Customer', { exact: true })).not.toBeChecked()
+    await expect(ci.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
+    await ci.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
+    await expect(page.getByText(`Commercial invoice CI-${run} created; emailed to staff`)).toBeVisible()
   })
 
   test('J-04 customer sees the request delivered', async ({ page }) => {
@@ -391,7 +426,8 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     // order.delivered → document-consumer makes the invoice → it joins the papers in place of the dashed sheet.
     await expect(async () => {
       await page.reload()
-      await expect(page.getByRole('region', { name: 'Papers', exact: true }).getByRole('button', { name: /^Read Invoice full size/ })).toBeVisible({ timeout: 2000 })
+      // The invoice made at delivery and the one staff built in J-06 (invoice builder).
+      await expect(page.getByRole('region', { name: 'Papers', exact: true }).getByRole('button', { name: /^Read Invoice full size/ })).toHaveCount(2, { timeout: 2000 })
     }).toPass({ timeout: 45_000 })
     await expect(page.getByText('Comes when the items are delivered')).toHaveCount(0)
   })
