@@ -255,7 +255,7 @@ async function submit() {
                 autocomplete="off"
                 :error="tried && !form.number.trim()"
               />
-              <DateField v-model="form.date" label="Date" />
+              <DateField v-model="form.date" label="Date" :menu-props="{ location: 'bottom end', origin: 'top end' }" />
             </div>
 
             <div v-if="recipient.length" class="to">

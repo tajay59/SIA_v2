@@ -382,6 +382,11 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     // The date is a Vuetify date input: pressing it opens the v-date-picker.
     await inv.locator('.v-date-input .v-field').click()
     await expect(page.locator('.v-date-picker')).toBeVisible()
+    // Whole picker inside the dialog (it once opened from the field's left edge and ran past the dialog's right side).
+    const pick = (await page.locator('.v-date-picker').boundingBox())!
+    const box = (await inv.locator('.v-card').first().boundingBox())!
+    expect(pick.x + pick.width).toBeLessThanOrEqual(box.x + box.width + 1)
+    expect(pick.x).toBeGreaterThanOrEqual(box.x - 1)
     await page.keyboard.press('Escape')
     await expect(page.locator('.v-date-picker')).toBeHidden()
     await expect(inv.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
