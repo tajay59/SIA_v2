@@ -623,6 +623,7 @@ def m07_orders(
     products_by_id: dict[str, Any],
     rep: dict[str, Any],
     unknown: Counter,
+    org_names: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     out = []
     for o in orders:
@@ -677,7 +678,10 @@ def m07_orders(
                 "lastname": o.get("lastname", ""),
                 "email": acc["email"] if acc else "",
             },
+            "customerName": f"{o.get('firstname', '')} {o.get('lastname', '')}".strip()
+            or (acc["email"] if acc else o["customer"]),
             "organisationId": acc.get("organisationId") if acc else None,
+            "organisationName": (org_names or {}).get(acc.get("organisationId")) if acc else None,
             "shipTo": contact(o["shipto"], unknown),
             "billTo": contact(o["billedto"], unknown),
             "notes": None,
@@ -798,7 +802,9 @@ def main() -> None:
     by_prod = {p["id"]: p for p in products_v2}
     units, stock = m04_storage(storage, products_v2, rep)
     history_v2 = m05_history(history, units, rep)
-    orders_v2 = m06_carts(accounts, by_prod, rep) + m07_orders(orders, by_acc, by_prod, rep, unknown_countries)
+    orders_v2 = m06_carts(accounts, by_prod, rep) + m07_orders(
+        orders, by_acc, by_prod, rep, unknown_countries, {g["id"]: g["name"] for g in organisations}
+    )
     if unknown_countries:
         rep["review"].append(
             f"{sum(unknown_countries.values())} address(es) with an unmapped country: "

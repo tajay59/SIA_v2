@@ -137,7 +137,7 @@ Each non-empty `accounts.cart` → one `orders` document `id: CRT…`, `status: 
 | `complete:true` | `status: DELIVERED` |
 | `cancelled:true` | `status: CANCELLED` (`cancellation.reason:"Cancelled in legacy system"`) |
 | otherwise | **`status: SUBMITTED`** (decision); `legacy.paid` kept for staff reference |
-| `customer` | same; `customerSnapshot` from legacy `firstname/lastname` + account email |
+| `customer` | same; `customerSnapshot` from legacy `firstname/lastname` + account email; `customerName` (first + last, else email) and `organisationName` (from the account's organisation) written too, since staff lists show them |
 | — | `organisationId` from the customer's account (M02) |
 | `ordered` | `submittedAt`, `createdAt` |
 | `shipto` / `billedto` | `shipTo` / `billTo` (`organization` → `organisation`, `office` → `attention`) |
