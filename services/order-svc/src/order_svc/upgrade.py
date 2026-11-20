@@ -100,3 +100,43 @@ async def shipments(orders: Any) -> int:
     if moved:
         log.warning("shipments upgrade", extra={"requestsMoved": moved})
     return moved
+
+
+async def customer_names(orders: Any, deps: Any) -> int:
+    """customer names (2026-11-20): requests migrated from legacy had no `customerName`/`organisationName`, so staff
+    lists showed the account id. The name comes from the request's own `customerSnapshot`; the organisation name
+    is asked of identity once per customer (fail-soft: a failed lookup is retried at the next start).
+    Only missing fields are written, so a second run changes nothing."""
+    fixed = 0
+    orgs: dict[str, str | None] = {}
+    identity_down = False
+    filt = {
+        "$or": [
+            {"customerName": {"$in": [None, ""]}},
+            {"organisationName": {"$in": [None, ""]}, "organisationId": {"$nin": [None, ""]}},
+        ]
+    }
+    async for doc in orders.find(filt):
+        sets: dict[str, Any] = {}
+        if not doc.get("customerName"):
+            snap = doc.get("customerSnapshot") or {}
+            name = f"{snap.get('firstname') or ''} {snap.get('lastname') or ''}".strip() or snap.get("email")
+            if name:
+                sets["customerName"] = name
+        if not doc.get("organisationName") and doc.get("organisationId"):
+            customer = doc.get("customer")
+            if customer not in orgs and not identity_down:
+                try:
+                    acc = await deps.account(customer) or {}
+                except Exception:  # identity down: stop asking, try again next start
+                    identity_down, acc = True, {}
+                same_org = acc.get("organisationId") == doc.get("organisationId")  # moved since: don't guess
+                orgs[customer] = acc.get("organisationName") if same_org else None
+            if orgs.get(customer):
+                sets["organisationName"] = orgs[customer]
+        if sets:
+            res = await orders.update_one({"_id": doc["_id"]}, {"$set": sets})
+            fixed += res.modified_count
+    if fixed:
+        log.warning("customer-names upgrade", extra={"requestsFilled": fixed})
+    return fixed

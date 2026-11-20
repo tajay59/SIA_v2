@@ -651,3 +651,28 @@ def test_upgrade_moves_the_single_shipping_record_into_shipments(ctx: Ctx) -> No
     assert box["lineIds"] == [ln["lineId"] for ln in lines]
     assert box["trackingUrl"].endswith("7712")
     assert ctx.run(upgrade.shipments(ctx.db["orders"])) == 0  # idempotent
+
+
+def test_upgrade_fills_missing_customer_and_organisation_names(ctx: Ctx) -> None:
+    """Migrated requests had no names, so staff lists showed the account id (2026-11-20)."""
+    rid = ctx.paid_request("MET1", qty=1)
+    ctx.run(ctx.db["orders"].update_one({"id": rid}, {"$unset": {"customerName": "", "organisationName": ""}}))
+    assert ctx.get(rid)["customerName"] == "USRUSER"  # the symptom
+
+    assert ctx.run(upgrade.customer_names(ctx.db["orders"], ctx.deps)) == 1
+    body = ctx.get(rid)
+    assert (body["customerName"], body["organisationName"]) == ("Una User", "Met Office")
+    assert ctx.run(upgrade.customer_names(ctx.db["orders"], ctx.deps)) == 0  # idempotent
+
+
+def test_upgrade_names_survive_identity_being_down(ctx: Ctx) -> None:
+    rid = ctx.paid_request("MET1", qty=1)
+    ctx.run(ctx.db["orders"].update_one({"id": rid}, {"$unset": {"customerName": "", "organisationName": ""}}))
+
+    async def down(_: str) -> None:
+        raise RuntimeError("identity down")
+
+    ctx.deps.account = down  # type: ignore[method-assign]
+    assert ctx.run(upgrade.customer_names(ctx.db["orders"], ctx.deps)) == 1  # name from the snapshot still filled
+    body = ctx.get(rid)
+    assert (body["customerName"], body["organisationName"]) == ("Una User", None)
