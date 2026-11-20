@@ -250,6 +250,7 @@ export async function siaGo(page: Page, name: string, _group?: 'Reports' | 'Admi
  */
 export async function auditDialog(page: Page, name: string): Promise<void> {
   await expect(page.getByRole('dialog')).toBeVisible()
+  await settle(page)
   const result = await new AxeBuilder({ page })
     .include('.v-dialog.v-overlay--active .v-overlay__content') // the dialog only: an open toast is an overlay too
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -258,8 +259,15 @@ export async function auditDialog(page: Page, name: string): Promise<void> {
   expect(found, found.join('\n')).toEqual([])
   await shot(page, name)
 }
+/** Waits until entrance motion has finished (infinite loops such as a breathing ring are left running). */
+export async function settle(page: Page): Promise<void> {
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+  )
+}
 /** axe on one part of a page (e.g. a pane that opens in place), same tags and bar as `auditDialog`. */
 export async function auditPart(page: Page, selector: string, name: string): Promise<void> {
+  await settle(page) // a pane that is still fading in reads as low contrast (J-03 send step, CI 2026-11-19)
   const result = await new AxeBuilder({ page })
     .include(selector)
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])
@@ -271,10 +279,7 @@ export async function auditPart(page: Page, selector: string, name: string): Pro
  * them mid re-layout (the S-11/S-12 document pane came out half-drawn). */
 export async function shot(page: Page, name: string, { fullPage = true }: { fullPage?: boolean } = {}): Promise<void> {
   if (!process.env.SHOTS) return
-  // Entrance motion must settle first (infinite loops such as a breathing ring are left running).
-  await page.waitForFunction(() =>
-    document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
-  )
+  await settle(page)
   await page.screenshot({ path: `${process.env.SHOTS}/${test.info().project.name}-${name}.png`, fullPage })
 }
 

@@ -165,6 +165,7 @@ Update CLI skills: `npx skills update -p`.
 | Rotate secrets; archive customer files on the server | To do (owner) |
 
 ## Progress log (newest first)
+- 2026-11-20: CI e2e flake on #49: axe read the S-12 send pane mid fade-in (doc head 2.51:1). `auditPart`/`auditDialog` now wait for finite animations (shared `settle()` in e2e support, also used by `shot`).
 - 2026-11-19: `docs/OUTSTANDING.md`: everything left to finish (PRs, security, hardware, P7/P8 exits, P9 on hardware, DR-2/DR-3, UAT, planned docs, cut-over), each marked Owner / Claude / Both.
 - 2026-11-19: Missing order uploads (G6): the local `SIA/app/uploads` belongs to 34 other orders (none in the export), so the 66 files exist only on the legacy server. `files_to_v2.py` made re-runnable: ids from (order, legacy name), append-if-absent instead of `$set files` (a re-run would have dropped every file added since migration), `--orders-only` skips product images; tested on a throwaway Mongo.
 - 2026-11-19: ADRs 0001–0015 written in `docs/adr/` (context, options, decision, consequences, from TAD and what was built); TAD §11 + manual ch. 9: 0014 Accepted, 0015 view and sign; 0012 still Proposed (owner).
