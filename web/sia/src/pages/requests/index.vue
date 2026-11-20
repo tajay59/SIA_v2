@@ -14,6 +14,8 @@ import OrganisationPicker from '../../components/OrganisationPicker.vue'
 import RequestDetail from '../../components/RequestDetail.vue'
 import RequestView from '../../components/RequestView.vue'
 import RequestQueue from '../../components/RequestQueue.vue'
+import SegmentedChoice from '../../components/SegmentedChoice.vue'
+import ICheck from '~icons/material-symbols/check-rounded'
 import { ALL_STATUS, BTN, CLOSED_STATUS, OPEN_STATUS } from '../../request-queue'
 import { type CountKey, countLabel, useWorkCounts } from '../../work-counts'
 
@@ -123,8 +125,47 @@ const orgModel = computed<Organisation | null>({
   get: () => (filters.value.org ? ({ id: filters.value.org, name: filters.value.orgName } as Organisation) : null),
   set: (o) => update({ org: o?.id ?? null, orgName: o?.name ?? '' }),
 })
+const STATUS_GROUPS = [
+  { key: 'open', title: 'Open', status: OPEN_STATUS },
+  { key: 'closed', title: 'Closed', status: CLOSED_STATUS },
+]
+function toggleStatus(s: RequestStatus) {
+  const now = filters.value.status
+  statusModel.value = now.includes(s) ? now.filter((x) => x !== s) : ALL_STATUS.filter((x) => x === s || now.includes(x))
+}
+// Segments cover the last three years; older ones sit in the "Earlier" menu (the segment then shows nothing chosen).
+const recentYear = computed(() => (filters.value.year && years.slice(0, 3).includes(filters.value.year) ? filters.value.year : filters.value.year ? -1 : null))
+// "Only open/closed" and Clear change many chips at once: their checks sweep in chip order.
+const sweep = ref(false)
+let sweepTimer: ReturnType<typeof setTimeout> | undefined
+function sweepOnce() {
+  sweep.value = true
+  clearTimeout(sweepTimer)
+  sweepTimer = setTimeout(() => (sweep.value = false), 500)
+}
+function onlyGroup(g: RequestStatus[]) {
+  sweepOnce()
+  statusModel.value = g
+}
+// Opening the panel: head and rows rise in behind the height transition (once per open).
+const entering = ref(false)
+let enterTimer: ReturnType<typeof setTimeout> | undefined
+watch(moreOpen, (open) => {
+  clearTimeout(enterTimer)
+  entering.value = open
+  if (open) enterTimer = setTimeout(() => (entering.value = false), 520)
+})
+onBeforeUnmount(() => {
+  clearTimeout(sweepTimer)
+  clearTimeout(enterTimer)
+})
+const moreSummary = computed(() => {
+  const n = filters.value.status.length
+  return n === ALL_STATUS.length ? 'Every status' : `${n} of ${ALL_STATUS.length} statuses`
+})
 const filtered = computed(() => Object.keys(serialize(filters.value)).length > 0)
 function clearFilters() {
+  sweepOnce()
   search.value = ''
   void router.replace({ query: {} })
 }
@@ -232,7 +273,7 @@ const time = computed(() =>
         :class="{ open: moreOpen }"
         @click="moreOpen = !moreOpen"
       >
-        More filters<span v-if="extraCount" class="badge console-mono">{{ extraCount }}</span>
+        More filters<span v-if="extraCount" class="badge console-mono"><span :key="extraCount" class="console-roll">{{ extraCount }}</span></span>
       </v-btn>
       <span class="updated">
         <span v-if="time" class="t-caption muted">Updated {{ time }}</span>
@@ -241,48 +282,73 @@ const time = computed(() =>
     </div>
 
     <v-expand-transition>
-      <div v-show="moreOpen" id="more-filters" class="more">
-        <v-select
-          v-model="statusModel"
-          :items="ALL_STATUS.map((s) => ({ title: statusLabel(s), value: s }))"
-          label="Statuses"
-          multiple
-          chips
-          closable-chips
-          hide-details
-          density="compact"
-          class="f-status"
-        />
-        <v-select
-          :model-value="filters.type"
-          :items="[{ title: 'Any type', value: null }, { title: 'Paid', value: 'PAID' }, { title: 'Pro Bono', value: 'PROBONO' }]"
-          label="Type"
-          hide-details
-          density="compact"
-          class="f-small"
-          @update:model-value="(v: Filters['type']) => update({ type: v })"
-        />
-        <v-select
-          :model-value="filters.year"
-          :items="[{ title: 'Any year', value: null }, ...years.map((y) => ({ title: String(y), value: y }))]"
-          label="Year"
-          hide-details
-          density="compact"
-          class="f-small"
-          @update:model-value="(v: number | null) => update({ year: v })"
-        />
-        <OrganisationPicker v-model="orgModel" :initial-query="filters.orgName" class="f-org" />
-        <v-select
-          :model-value="filters.sort"
-          :items="[{ title: 'Newest', value: 'newest' }, { title: 'Waiting longest', value: 'waiting' }, { title: 'Oldest', value: 'oldest' }]"
-          label="Sort"
-          hide-details
-          density="compact"
-          class="f-small"
-          @update:model-value="(v: Sort) => update({ sort: v })"
-        />
-        <v-btn variant="text" class="m3" :disabled="!filtered" @click="clearFilters">Clear filters</v-btn>
-      </div>
+      <section v-show="moreOpen" id="more-filters" class="more" :class="{ entering, sweep }" aria-labelledby="more-title">
+        <header class="more-head">
+          <h2 id="more-title" class="console-title">More filters</h2>
+          <span class="t-caption muted roll-box"><span :key="moreSummary" class="console-roll">{{ moreSummary }}</span></span>
+          <v-btn variant="text" size="small" class="m3 more-clear" :disabled="!filtered" @click="clearFilters">Clear filters</v-btn>
+        </header>
+        <fieldset class="cell cell-status">
+          <legend class="cell-label">Statuses</legend>
+          <div v-for="g in STATUS_GROUPS" :key="g.key" class="sgroup">
+            <span class="sgroup-name">{{ g.title }}</span>
+            <div class="schips">
+              <label v-for="(s, i) in g.status" :key="s" :style="{ '--i': i }" class="schip" :class="{ on: filters.status.includes(s) }">
+                <input type="checkbox" class="schip-input" :checked="filters.status.includes(s)" @change="toggleStatus(s)" />
+                <Transition name="check"><ICheck v-if="filters.status.includes(s)" class="schip-check" aria-hidden="true" /></Transition>{{ statusLabel(s) }}
+              </label>
+            </div>
+            <v-btn variant="text" size="small" class="sgroup-all" @click="onlyGroup(g.status)">Only {{ g.title.toLowerCase() }}</v-btn>
+          </div>
+        </fieldset>
+        <div class="cells">
+          <div class="cell">
+            <span class="cell-label" aria-hidden="true">Type</span>
+            <SegmentedChoice
+              :model-value="filters.type"
+              name="f-type"
+              label="Type"
+              :options="[{ title: 'Any', value: null }, { title: 'Paid', value: 'PAID' }, { title: 'Pro Bono', value: 'PROBONO' }]"
+              @update:model-value="(v) => update({ type: v as Filters['type'] })"
+            />
+          </div>
+          <div class="cell">
+            <span class="cell-label" aria-hidden="true">Sent in</span>
+            <SegmentedChoice
+              :model-value="recentYear"
+              name="f-year"
+              label="Sent in"
+              :options="[{ title: 'Any', value: null }, ...years.slice(0, 3).map((y) => ({ title: String(y), value: y }))]"
+              @update:model-value="(v) => update({ year: v as number | null })"
+            />
+            <v-select
+              v-if="years.length > 3"
+              :model-value="recentYear === -1 ? filters.year : null"
+              :items="years.slice(3)"
+              placeholder="Earlier"
+              aria-label="Earlier year"
+              hide-details
+              density="compact"
+              class="f-earlier"
+              @update:model-value="(v: number | null) => update({ year: v })"
+            />
+          </div>
+          <div class="cell">
+            <span class="cell-label" aria-hidden="true">Order</span>
+            <SegmentedChoice
+              :model-value="filters.sort"
+              name="f-sort"
+              label="Order"
+              :options="[{ title: 'Newest', value: 'newest' }, { title: 'Waiting longest', value: 'waiting' }, { title: 'Oldest', value: 'oldest' }]"
+              @update:model-value="(v) => update({ sort: v as Sort })"
+            />
+          </div>
+          <div class="cell cell-org">
+            <span class="cell-label" aria-hidden="true">Organisation</span>
+            <OrganisationPicker v-model="orgModel" :initial-query="filters.orgName" label="Any organisation" />
+        </div>
+        </div>
+      </section>
     </v-expand-transition>
 
     <nav class="tabs" aria-label="Requests by stage">
@@ -374,24 +440,246 @@ const time = computed(() =>
   align-items: center;
   gap: var(--sp-1);
 }
+/* More filters: one console panel. The head bar names it and holds Clear; statuses span the panel as two
+   toggle groups (Open, Closed); type, year, order and organisation sit in seamed cells below. */
 .more {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
 }
-.f-status {
-  flex: 2 1 320px;
+.more-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
 }
-.f-org {
+.more-head > * {
+  white-space: nowrap;
+}
+.more-clear {
+  margin-left: auto;
+}
+.cell > :deep(.seg) {
+  flex-wrap: nowrap;
+}
+.cell {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  align-content: start;
+  gap: var(--sp-2) var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 0;
+  border-right: 1px solid rgb(var(--v-theme-seam));
+}
+.cell:last-child {
+  border-right: 0;
+}
+.cells > .cell {
+  border-top: 1px solid rgb(var(--v-theme-seam));
+  margin-top: -1px;
+}
+.cell-label {
+  flex: 1 0 100%;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgb(var(--v-theme-secondary));
+}
+.cells {
+  display: flex;
+  flex-wrap: wrap;
+}
+.cell-status {
+  display: grid;
+  gap: var(--sp-2);
+  border-right: 0;
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.cell-status > legend {
+  float: left;
+  margin-bottom: var(--sp-1);
+}
+.sgroup {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+}
+.sgroup-name {
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+}
+.schips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.schip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--v-theme-field-outline));
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+  isolation: isolate;
+  transition:
+    background-color 160ms ease-out,
+    border-color 200ms ease-out,
+    padding 220ms var(--ease-out),
+    transform 120ms ease-out;
+}
+/* The wash: fills from the left as the check wipes in, drains back to the left when turned off. */
+.schip::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: rgb(var(--v-theme-primary-subtle));
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 160ms ease-in;
+}
+.schip:hover {
+  background: rgba(var(--v-theme-on-surface), 0.06);
+}
+.schip:active {
+  transform: scale(0.96);
+}
+.schip.on {
+  padding-left: 8px;
+  border-color: transparent;
+}
+.schip.on::before {
+  transform: scaleX(1);
+  transition: transform 260ms var(--ease-out);
+}
+.more.sweep .schip.on::before,
+.more.sweep .schip {
+  transition-delay: calc(var(--i, 0) * 28ms);
+}
+.schip-input {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.schip:has(.schip-input:focus-visible) {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 1px;
+}
+.schip-check {
+  width: 18px;
+  height: 18px;
+  color: rgb(var(--v-theme-primary));
+}
+/* A check wipes in from the left when its status is turned on (Vue Transition: only on insertion, never
+   on first render or when the panel opens). Bulk changes sweep in chip order. */
+/* The check also opens its own room (width 0 ↔ 18 px), so the chip grows and its neighbours glide instead of
+   jumping. */
+.check-enter-active {
+  transition:
+    clip-path 220ms var(--ease-out),
+    width 220ms var(--ease-out),
+    margin 220ms var(--ease-out);
+}
+.check-enter-from {
+  clip-path: inset(0 100% 0 0);
+  width: 0;
+  margin-right: -4px;
+}
+.check-leave-active {
+  transition:
+    clip-path 160ms ease-in,
+    opacity 160ms ease-in,
+    width 180ms var(--ease-out),
+    margin 180ms var(--ease-out);
+}
+.check-leave-to {
+  clip-path: inset(0 0 0 100%);
+  opacity: 0;
+  width: 0;
+  margin-right: -4px;
+}
+.more.sweep .check-enter-active {
+  transition-delay: calc(var(--i, 0) * 28ms);
+}
+.roll-box {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.more.entering > * {
+  animation: filter-rise 300ms var(--ease-out) both;
+}
+.more.entering > :nth-child(2) {
+  animation-delay: 40ms;
+}
+.more.entering > :nth-child(3) {
+  animation-delay: 80ms;
+}
+@keyframes filter-rise {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+.sgroup-all {
+  justify-self: end;
+}
+.f-earlier {
+  flex: 0 0 120px;
+}
+.cell-org {
+  flex: 1 1 260px;
+}
+.cell-org :deep(.v-input) {
   flex: 1 1 220px;
 }
-.f-small {
-  flex: 0 1 160px;
+@media (max-width: 1099.98px) {
+  .cells {
+    flex-direction: column;
+  }
+  .cell {
+    border-right: 0;
+    border-bottom: 1px solid rgb(var(--v-theme-seam));
+  }
+  .cell:last-child {
+    border-bottom: 0;
+  }
+  .sgroup {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sp-1) var(--sp-3);
+  }
+  .sgroup-all {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .schips {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 599.98px) {
+  .more-head .t-caption {
+    display: none;
+  }
+  .cell > :deep(.seg) {
+    flex-wrap: wrap;
+  }
 }
 
 /* Stage tabs: one connected strip cut by seams; the current stage carries the action-blue underline. */
@@ -499,9 +787,49 @@ const time = computed(() =>
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .check-enter-active,
+  .more.sweep .check-enter-active {
+    transition: opacity 160ms ease-out;
+    transition-delay: 0ms;
+  }
+  .check-enter-from,
+  .check-leave-to {
+    clip-path: none;
+    opacity: 0;
+  }
+  /* Chips: the wash fades instead of filling, no squeeze, no padding slide. */
+  .schip,
+  .more.sweep .schip {
+    transition: background-color 160ms ease-out;
+    transition-delay: 0ms;
+  }
+  .schip:active {
+    transform: none;
+  }
+  .schip::before,
+  .schip.on::before,
+  .more.sweep .schip.on::before {
+    transform: none;
+    opacity: 0;
+    transition: opacity 160ms ease-out;
+    transition-delay: 0ms;
+  }
+  .schip.on::before,
+  .more.sweep .schip.on::before {
+    opacity: 1;
+  }
+  .more.entering > * {
+    animation: filter-fade 200ms ease-out both;
+  }
   .toolbar .v-btn.m3 :deep(.v-btn__append),
+  .schip,
   .tab {
     transition: none;
+  }
+}
+@keyframes filter-fade {
+  from {
+    opacity: 0;
   }
 }
 </style>

@@ -76,10 +76,12 @@ async function setQty(productId: string, qty: number) {
   }
 }
 // A typed quantity: whole numbers only; 0 removes the line, anything else unreadable snaps back.
+// A typed quantity that is not a whole number snaps back: the field is re-mounted with the current value.
+const qtyReset = ref(0)
 function typedQty(productId: string, current: number, el: HTMLInputElement) {
   const n = Number(el.value.trim())
-  if (!Number.isInteger(n) || n < 0) {
-    el.value = String(current)
+  if (el.value.trim() === '' || !Number.isInteger(n) || n < 0) {
+    qtyReset.value++
     return
   }
   if (n !== current) void setQty(productId, n)
@@ -288,15 +290,16 @@ async function submit() {
                   </div>
                   <div class="qty" role="group" :aria-label="`Quantity of ${l.product.name}`">
                     <v-btn :icon="mdiMinus" size="small" variant="text" aria-label="Fewer" :disabled="busy === l.productId" @click="setQty(l.productId, l.qty - 1)" />
-                    <input
-                      :key="`${l.productId}-${l.qty}`"
-                      class="qty-input tnum"
-                      :value="l.qty"
+                    <v-text-field
+                      :key="`${l.productId}-${l.qty}-${qtyReset}`"
+                      class="qty-field"
+                      :model-value="String(l.qty)"
                       inputmode="numeric"
-                      pattern="[0-9]*"
                       maxlength="4"
                       :aria-label="`Quantity of ${l.product.name}`"
                       :disabled="busy === l.productId"
+                      hide-details
+                      density="compact"
                       @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
                       @change="typedQty(l.productId, l.qty, $event.target as HTMLInputElement)"
                     />
@@ -775,19 +778,21 @@ button.node-hit:hover .node-label {
   border-radius: 999px;
   padding: 0 2px;
 }
-.qty-input {
-  width: 3.5ch;
-  min-height: 32px;
-  text-align: center;
-  font: inherit;
-  font-weight: 600;
-  color: inherit;
-  background: transparent;
-  border: 0;
-  border-radius: 4px;
+/* Quantity: a small Vuetify pill field (solo-inverted like every input), centred digits. */
+.qty-field {
+  flex: 0 0 64px;
+  width: 64px;
 }
-.qty-input:focus-visible {
-  outline: 2px solid rgb(var(--v-theme-primary));
+.qty-field :deep(.v-field) {
+  --v-input-control-height: 32px;
+  padding-inline: 0;
+}
+.qty-field :deep(.v-field__input) {
+  min-height: 32px;
+  padding: 0 8px;
+  text-align: center;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .slip {
   position: sticky;
