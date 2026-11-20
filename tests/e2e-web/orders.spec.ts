@@ -387,6 +387,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     const box = (await inv.locator('.v-card').first().boundingBox())!
     expect(pick.x + pick.width).toBeLessThanOrEqual(box.x + box.width + 1)
     expect(pick.x).toBeGreaterThanOrEqual(box.x - 1)
+    await shot(page, 'sia-invoice-date-picker', { fullPage: false })
     await page.keyboard.press('Escape')
     await expect(page.locator('.v-date-picker')).toBeHidden()
     await expect(inv.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
