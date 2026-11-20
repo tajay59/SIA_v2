@@ -200,6 +200,52 @@ export const fileUrl = (id: string) => `${BASE.documents}/files/${encodeURICompo
 /** The agreement a Send quote would email, drawn from the saved draft and marked as a preview (staff; never stored). */
 export const agreementPreviewUrl = (requestId: string) => `${BASE.documents}/requests/${encodeURIComponent(requestId)}/agreement-preview`
 
+/** Staff-built invoice / commercial invoice (SIA invoice builder; document-svc, legacy SIA layout). */
+export type InvoiceKind = 'invoice' | 'commercial_invoice'
+export interface InvoiceLineInput { lineId?: string | null; description: string; qty: number; unitPrice: string }
+export interface InvoiceInput {
+  kind: InvoiceKind
+  number: string
+  /** YYYY-MM-DD */
+  date: string
+  lines: InvoiceLineInput[]
+  fees: string
+  discount: string
+  shipping: string
+  emailCustomer: boolean
+  emailStaff: boolean
+}
+export interface InvoiceDraft {
+  kind: InvoiceKind
+  number: string | null
+  lines: InvoiceLineInput[]
+  fees: string
+  discount: string
+  shipping: string
+  /** Bill-to (invoice) or ship-to (commercial invoice), one row per printed line. */
+  recipient: string[]
+}
+
+const reqPath = (requestId: string) => ({ params: { path: { requestId } } })
+
+/** The lines, fee and shipping the builder starts from: every priced line, or only CIMH-stock lines (commercial). */
+export async function getInvoiceDraft(requestId: string, kind: InvoiceKind): Promise<InvoiceDraft> {
+  const opts = { params: { path: { requestId }, query: { kind } } }
+  return (await call(() => documents.GET('/requests/{requestId}/invoice-draft' as any, opts as any))) as InvoiceDraft
+}
+
+/** The PDF as it would be created, marked as a preview (never stored). */
+export async function previewInvoice(requestId: string, body: InvoiceInput): Promise<Blob> {
+  const opts = { ...reqPath(requestId), body, parseAs: 'blob' }
+  return (await call(() => documents.POST('/requests/{requestId}/invoice-preview' as any, opts as any))) as Blob
+}
+
+/** Store the invoice on the request; document-svc emails the customer and/or the staff invoice list as ticked. */
+export async function createInvoice(requestId: string, body: InvoiceInput): Promise<{ id: string; name: string }> {
+  const opts = { ...reqPath(requestId), body }
+  return (await call(() => documents.POST('/requests/{requestId}/invoices' as any, opts as any))) as { id: string; name: string }
+}
+
 /** The supplier's own USD unit price and the rate, when staff converted a USD supplier quote to BBD. */
 export interface PriceSource { unitPrice: string; currency: 'USD' | 'BBD'; rate: string }
 export interface PricedLine {

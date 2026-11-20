@@ -227,6 +227,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/invoice-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * What the invoice builder starts from (staff, admin)
+         * @description Every priced line of the request (`invoice`) or only its CIMH-stock lines (`commercial_invoice`; supplier items
+         *     ship direct and are invoiced by the supplier); Pro Bono lines at 0.00. Description = "<model number> - <name>".
+         *     Fees = the admin fee (invoice only); shipping = the costs recorded on the parcels (invoice only).
+         */
+        get: {
+            parameters: {
+                query: {
+                    kind: components["schemas"]["InvoiceKind"];
+                };
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The draft */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            kind: components["schemas"]["InvoiceKind"];
+                            number?: string | null;
+                            lines: components["schemas"]["InvoiceLine"][];
+                            fees: string;
+                            discount: string;
+                            shipping: string;
+                            /** @description Bill-to (invoice) or ship-to (commercial invoice), one row per line */
+                            recipient: string[];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/invoice-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview a staff-built invoice or commercial invoice (staff, admin)
+         * @description Rendered in the legacy SIA layout and marked "Preview · not sent". Nothing is stored or published.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["InvoiceIn"];
+                };
+            };
+            responses: {
+                /** @description The preview */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/pdf": string;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/invoices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a staff-built invoice or commercial invoice (staff, admin)
+         * @description Renders the PDF, stores it, attaches it to the request (kind `invoice` / `commercial_invoice`) and publishes
+         *     `document.generated` with `notify` (emailCustomer / emailStaff), so notification-svc emails the customer and/or
+         *     the staff `invoice` list. Audited. Can be repeated (a corrected invoice is a new file).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["InvoiceIn"];
+                };
+            };
+            responses: {
+                /** @description The stored file */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": Record<string, never>;
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                422: components["responses"]["Unprocessable"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/labels": {
         parameters: {
             query?: never;
@@ -355,6 +522,29 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        InvoiceKind: "invoice" | "commercial_invoice";
+        Money: string;
+        InvoiceLine: {
+            lineId?: string | null;
+            description: string;
+            qty: number;
+            unitPrice: components["schemas"]["Money"];
+        };
+        InvoiceIn: {
+            kind: components["schemas"]["InvoiceKind"];
+            number: string;
+            /** @description YYYY-MM-DD */
+            date: string;
+            lines: components["schemas"]["InvoiceLine"][];
+            fees?: components["schemas"]["Money"];
+            discount?: components["schemas"]["Money"];
+            shipping?: components["schemas"]["Money"];
+            /** @default false */
+            emailCustomer: boolean;
+            /** @default false */
+            emailStaff: boolean;
+        };
         File: {
             id: string;
             /** @description null for label batches */

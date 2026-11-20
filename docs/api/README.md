@@ -212,6 +212,9 @@ Catalog internal (service token): `GET /internal/email-lists` (notification-svc:
 | GET | `/files/{id}` | allowed viewers | Download (streamed by nginx via X-Accel-Redirect) |
 | DELETE | `/files/{id}` | staff | Soft delete with a reason (generated documents cannot be deleted) |
 | GET | `/requests/{id}/agreement-preview` | staff | The agreement a Send quote would email, from the saved draft, marked "Preview · not sent"; never stored or published (`no-store`); order-svc's 409/422 passed on |
+| GET | `/requests/{id}/invoice-draft?kind=` | staff | Lines the invoice builder starts from (every priced line, or CIMH stock only for `commercial_invoice`), admin fee, parcel shipping costs, recipient |
+| POST | `/requests/{id}/invoice-preview` | staff | Staff-built invoice / commercial invoice PDF (legacy SIA layout), marked as a preview, never stored |
+| POST | `/requests/{id}/invoices` | staff | Store it on the request; `document.generated` carries `notify` {customer, staff} and `number`; audited |
 | POST | `/internal/labels` | service (inventory) | Render a unit-label PDF (QR + text) for barcodes just allocated |
 
 Upload errors: 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE` (type read from the bytes, not the name), 422 `FILE_INFECTED` (ClamAV found malware; the file is quarantined, never stored), 409 `INVALID_STATE` (customer upload outside QUOTED), 503 when the scanner is down (fail closed).

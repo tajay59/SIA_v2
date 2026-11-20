@@ -197,6 +197,24 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin; agreement PDF priced from the draft, marked as a preview, never stored
+  GET /api/documents/v1/requests/{requestId}/invoice-draft:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; lines the invoice builder starts from
+  POST /api/documents/v1/requests/{requestId}/invoice-preview:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; marked preview, never stored
+  POST /api/documents/v1/requests/{requestId}/invoices:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; staff-built invoice / commercial invoice, stored + attached
   POST /api/documents/v1/internal/labels:
     roles:
     - service

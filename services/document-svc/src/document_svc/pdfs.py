@@ -18,7 +18,7 @@ from reportlab.graphics import renderPDF
 from reportlab.graphics.barcode.qr import QrCodeWidget
 from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, LETTER
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.lib.utils import simpleSplit
@@ -400,4 +400,170 @@ def labels(product_id: str, product_name: str | None, barcodes: list[str]) -> by
             ty -= 1.5 * mm
     c.showPage()
     c.save()
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------------- staff-built invoices (legacy SIA template)
+
+LEGACY_HEAD = (
+    "P.O. Box 130, Bridgetown, Barbados, W.I.",
+    "Tel: (246) 425-1362, 425-1363, 425-1365",
+    "Fax: (246) 424-4733",
+)
+BANKING = (
+    ("Payable to:", "C'bean Inst. for Met and Hydrology"),
+    ("Account Holder:", "C'bean Inst. for Met and Hydrology"),
+    ("Account Number:", "1334332"),
+    ("Name of Bank:", "First Caribbean International Bank"),
+    ("Address of Bank:", "Broad Street, Bridgetown, Barbados"),
+    ("Bank (Swift) code:", "FCIBBBBB"),
+)
+_T = ParagraphStyle("t", fontName="Times-Roman", fontSize=10, leading=12, textColor=colors.black)
+_T12 = ParagraphStyle("t12", parent=_T, fontSize=12, leading=15)
+_T8 = ParagraphStyle("t8", parent=_T, fontSize=8, leading=10)
+_TB = ParagraphStyle("tb", parent=_T, fontName="Times-Bold", fontSize=12, leading=15)
+_TB10 = ParagraphStyle("tb10", parent=_TB, fontSize=10, leading=13)
+_TBI = ParagraphStyle("tbi", parent=_T, fontName="Times-BoldItalic")
+_TI = ParagraphStyle("ti", parent=_T, fontName="Times-Italic")
+_TOTAL = ParagraphStyle("total", parent=_T, fontName="Times-Bold", fontSize=16, leading=22)
+_NOTE = ParagraphStyle("note", parent=_T, fontName="Times-Bold", fontSize=16, leading=20)
+_BANK = ParagraphStyle("bank", parent=_T, fontName="Times-BoldItalic", fontSize=16, leading=20)
+_CELL = ParagraphStyle("cell", parent=_T, fontName="Helvetica", fontSize=10, leading=12)
+_TITLE = ParagraphStyle("legacy-title", parent=_T, fontName="Helvetica-Bold", fontSize=16, leading=20, alignment=1)
+_TIGHT = [("LEFTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0),
+          ("BOTTOMPADDING", (0, 0), (-1, -1), 0), ("VALIGN", (0, 0), (-1, -1), "TOP")]  # fmt: skip
+
+
+def line_description(line: dict[str, Any]) -> str:
+    """Legacy wording: "<model number> - <name>" (the name alone when there is no model number)."""
+    prod = line.get("product") or {}
+    name = prod.get("name") or line.get("productId") or ""
+    return f"{prod['modelnumber']} - {name}" if prod.get("modelnumber") else str(name)
+
+
+def _recipient(req: dict[str, Any], kind: str) -> dict[str, Any] | None:
+    # An invoice goes to whoever pays (bill-to); a commercial invoice to the consignee (ship-to), for customs.
+    first, second = ("shipTo", "billTo") if kind == "commercial_invoice" else ("billTo", "shipTo")
+    return req.get(first) or req.get(second)
+
+
+def invoice_draft(req: dict[str, Any], kind: str) -> dict[str, Any]:
+    """What the invoice builder starts from: every priced line (invoice) or only the CIMH-stock lines (commercial
+    invoice; supplier items ship direct and are invoiced by the supplier). Pro Bono lines at 0.00. Plus the admin
+    fee (invoice) and the shipping costs recorded on the parcels."""
+    probono = req.get("type") == "PROBONO"
+    lines: list[dict[str, Any]] = []
+    if probono:
+        for ln in req.get("lines") or []:
+            lines.append({"lineId": ln.get("lineId"), "description": line_description(ln),
+                          "qty": ln.get("qty", 1), "unitPrice": "0.00"})  # fmt: skip
+    else:
+        for ln, _, unit, _, src in _priced(req):
+            if kind == "commercial_invoice" and src != "CIMH":
+                continue
+            price = f"{_money(unit):.2f}" if unit != "—" else "0.00"
+            lines.append({"lineId": ln.get("lineId"), "description": line_description(ln),
+                          "qty": ln.get("qty", 1), "unitPrice": price})  # fmt: skip
+    shipping = sum((_money(s.get("cost")) for s in req.get("shipments") or [] if s.get("cost")), Decimal("0"))
+    fees = _money(req.get("adminFee")) if kind == "invoice" and not probono else Decimal("0")
+    return {
+        "kind": kind,
+        "number": (req.get("invoice") or {}).get("number") if kind == "invoice" else None,
+        "lines": lines,
+        "fees": f"{fees:.2f}",
+        "discount": "0.00",
+        "shipping": f"{shipping:.2f}" if kind == "invoice" else "0.00",
+        "recipient": _address(_recipient(req, kind)),
+    }
+
+
+def _usd(value: Decimal) -> str:
+    return f"${value:,.2f}"
+
+
+def built_invoice(req: dict[str, Any], data: dict[str, Any], *, preview: bool = False) -> bytes:
+    """The staff-built invoice or commercial invoice, laid out as legacy SIA printed them (US Letter, Times,
+    centred title, coloured table head, totals at the right, banking information). `preview`: marked, not stored."""
+    commercial = data["kind"] == "commercial_invoice"
+    title = "Commercial Invoice" if commercial else "INVOICE"
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=LETTER, leftMargin=50, rightMargin=42, topMargin=40, bottomMargin=40,
+        title=f"{title} {data.get('number') or ''}".strip(), author="CIMH Stores", creator="CIMH Stores document-svc",
+    )  # fmt: skip
+    when = data["date"]
+    if isinstance(when, str):
+        when = datetime.fromisoformat(when)
+    date_text = when.strftime("%a, %b %d, %Y") if commercial else when.strftime("%B %d, %Y")
+    number = escape(str(data.get("number") or "—"), quote=False)
+    rid = escape(str(req.get("id", "")), quote=False)
+
+    body: list[Any] = [Paragraph("CARIBBEAN INSTITUTE FOR METEOROLOGY AND HYDROLOGY", _TB)]
+    body += [Paragraph(x, _TBI) for x in LEGACY_HEAD]
+    body += [Spacer(1, 34), Paragraph(title, _TITLE), Spacer(1, 6)]
+
+    if commercial:
+        right = [Paragraph("Order:", _TB), Paragraph(f"# {rid}", _T8),
+                 Paragraph(f"Commercial Invoice #: {number}", _TB10)]  # fmt: skip
+    else:
+        right = [Paragraph(f"Invoice#: {number}", _TB), Paragraph(f"# {rid}", _T8)]
+    meta = Table([[[Spacer(1, 15), Paragraph(f"Date: {date_text}", _T12)], right]], colWidths=[312, 200])
+    meta.setStyle(TableStyle(_TIGHT))
+    body += [meta, Spacer(1, 10)]
+
+    addr = [Paragraph(escape(x, quote=False), _T) for x in _address(_recipient(req, data["kind"]))]
+    label = Paragraph("To:" if commercial else "Billed to:", _TB10)
+    who = Table([[label, addr]], colWidths=[30 if commercial else 60, 452])
+    who.setStyle(TableStyle(_TIGHT))
+    body += [who, Spacer(1, 24)]
+
+    head = ("Item", "Description", "Quantity", "Price", "Amount (BBD)")
+    rows: list[list[Any]] = [list(head)]  # plain strings, as legacy drew them: a head cell never wraps
+    subtotal = Decimal("0")
+    for i, ln in enumerate(data["lines"], start=1):
+        unit, qty = _money(ln["unitPrice"]), int(ln["qty"])
+        amount = unit * qty
+        subtotal += amount
+        cells = [str(i), escape(str(ln["description"]), quote=False), str(qty), _usd(unit), _usd(amount)]
+        rows.append([c if j != 1 else Paragraph(c, _CELL) for j, c in enumerate(cells)])
+    table = Table(rows, colWidths=[50, 220, 50, 100, 100], hAlign="LEFT", repeatRows=1)
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgoldenrodyellow if commercial else colors.lightsteelblue),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.lightgrey),
+        ("GRID", (0, 0), (-1, -1), 1, colors.black),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
+    ]))  # fmt: skip
+    body += [table, Spacer(1, 10)]
+
+    fees, discount, shipping = (_money(data.get(k)) for k in ("fees", "discount", "shipping"))
+    total = subtotal + fees + shipping - discount
+    figures = [("Sub-Total", subtotal), ("Discount", discount), ("Fees", fees), ("Shipping", shipping)]
+    tot = [[Paragraph(k, _T), Paragraph(f": {_usd(v)}", _T)] for k, v in figures]
+    tot.append([Paragraph(f"Total: {_usd(total)}", _TOTAL), ""])
+    totals = Table(tot, colWidths=[50, 110], hAlign="RIGHT")
+    totals.setStyle(TableStyle([*_TIGHT, ("SPAN", (0, -1), (1, -1))]))
+    body += [totals, Spacer(1, 60)]
+
+    if commercial:
+        body += [Paragraph("*** Note: The cost does not cover shipping fees.", _NOTE), Spacer(1, 10)]
+    body.append(Paragraph("<u>Banking Information:</u>", _BANK))
+    bank = Table([[Paragraph(k, _TI), Paragraph(v, _TI)] for k, v in BANKING], colWidths=[100, 300], hAlign="LEFT")
+    bank.setStyle(TableStyle(_TIGHT))
+    body += [Spacer(1, 12), bank]
+
+    def frame(c: Canvas, d: Any) -> None:
+        if not preview:
+            return
+        c.saveState()
+        c.setFillColor(PREVIEW_MARK)
+        c.setFont("Helvetica-Bold", 54)
+        c.translate(LETTER[0] / 2, LETTER[1] / 2)
+        c.rotate(35)
+        c.drawCentredString(0, 0, "PREVIEW · NOT SENT")
+        c.restoreState()
+
+    doc.build(body, onFirstPage=frame, onLaterPages=frame)
     return buf.getvalue()
