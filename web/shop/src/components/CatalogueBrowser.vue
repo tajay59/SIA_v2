@@ -115,9 +115,6 @@ const filtered = computed(() => !!(tabValue.value || extra.value || inStock.valu
             persistent-placeholder
             hide-details
             clearable
-            variant="solo"
-            flat
-            rounded="lg"
             class="search-field"
             @click:clear="text = ''"
           />

@@ -80,16 +80,17 @@ export function componentDefaults(app: App): Record<string, Record<string, unkno
   return {
     global: { density },
     VBtn: { rounded: 'md', variant: 'flat' },
-    // Every input is solo-inverted (owner, 2026-11-12), flat to match the panel look. At rest the field has the
-    // card's own colour, so base.css draws a 1 px `field-outline` edge around it.
-    VTextField: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VSelect: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VAutocomplete: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VCombobox: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VTextarea: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VFileInput: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VNumberInput: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
-    VDateInput: { variant: 'solo-inverted', flat: true, rounded: 'md', density },
+    // Every input is solo-inverted (owner, 2026-11-12), flat to match the panel look, and pill-shaped (owner,
+    // 2026-11-20; a textarea grows, so it gets 24 px corners instead). At rest the field has the card's own
+    // colour, so base.css draws a thin 1 px `field-outline` edge around it.
+    VTextField: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VSelect: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VAutocomplete: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VCombobox: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VTextarea: { variant: 'solo-inverted', flat: true, rounded: 'xl', density },
+    VFileInput: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VNumberInput: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
+    VDateInput: { variant: 'solo-inverted', flat: true, rounded: 'pill', density },
     VOtpInput: { variant: 'solo-inverted' },
     VCard: { rounded: 'lg', variant: 'outlined' },
     VChip: { rounded: 'sm', size: 'small' },
@@ -148,12 +149,12 @@ export function vuetifyOptions(app: App, defaultTheme: 'cimhLight' | 'cimhDark' 
   const themes = app === 'sia' ? { cimhLight: siaLight, cimhDark: siaDark } : { cimhLight, cimhDark }
   const defaults = componentDefaults(app)
   if (app === 'sia') {
-    // Graphite Console: flatter, tighter corners; panels are cut by seams, not floated cards.
+    // Graphite Console: flatter, tighter corners on panels, cut by seams, not floated cards. Fields stay pills
+    // like everywhere else (owner, 2026-11-20).
     // Every button except tabs is Material 3 (owner, 2026-11-16): pill + class m3 (rules in web/sia/src/console.css).
     defaults.VBtn = { rounded: 'pill', variant: 'flat', class: 'm3' }
     defaults.VTab = { rounded: 0, class: '' }
     defaults.VCard = { rounded: 'sm', variant: 'outlined' }
-    for (const k of ['VTextField', 'VSelect', 'VAutocomplete', 'VCombobox', 'VTextarea', 'VFileInput', 'VNumberInput', 'VDateInput']) defaults[k] = { ...defaults[k], rounded: 'sm' }
   } else {
     // SHOP: every button is a Material 3 button (owner, 2026-11-16): full pill, 40 px; tabs keep their square ink.
     defaults.VBtn = { rounded: 'pill', variant: 'flat', class: 'm3' }

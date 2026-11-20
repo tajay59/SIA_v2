@@ -4372,7 +4372,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests</code></td>
 <td>Request desk (queue)</td>
 <td>staff</td>
-<td>Stage tabs with counts (Open, New, Quoting, Waiting for signature, Signature to check, Pick &amp; purchase, Shipped, Closed, All); search; More filters: statuses (multi), type, year, organisation, sort (default <strong>newest first</strong> by date sent, owner 2026-11-16; also waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
+<td>Stage tabs with counts (Open, New, Quoting, Waiting for signature, Signature to check, Pick &amp; purchase, Shipped, Closed, All); search; More filters (one console panel: statuses as toggle chips in Open and Closed groups with "Only open/closed"; type, year sent (last 3 years + Earlier) and order as segmented buttons; organisation picker; Clear in the head) for statuses, type, year, organisation, sort (default <strong>newest first</strong> by date sent, owner 2026-11-16; also waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
 <td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03</td>
 </tr>
 <tr>
@@ -5610,7 +5610,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <p>States: hover → <code>primary-hover</code>; press → <code>primary-press</code>; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.</p>
 <h3 id="82-inputs-and-forms">8.2 Inputs and forms</h3>
 <ul>
-<li>Fields are Vuetify <code>solo-inverted</code>, flat (owner, 2026-11-12), <code>r-md</code>: at rest the field has the colour of its card plus a 1 px <code>field-outline</code> edge → raised fill and a 2 px <code>primary</code> edge on focus; the edge turns <code>error</code> on an error. A 6-digit code is always six boxes (<code>v-otp-input</code>). Label above the field, never only a placeholder. Helper/error text below in <code>caption</code>; errors in <code>error</code> with an icon.</li>
+<li>Fields are Vuetify components only, <code>solo-inverted</code>, flat (owner, 2026-11-12), <strong>pill-shaped</strong> (owner, 2026-11-20; a textarea, which grows, gets 24 px corners): at rest the field has the colour of its card plus a 1 px <code>field-outline</code> edge → raised fill and a 2 px <code>primary</code> edge on focus; the edge turns <code>error</code> on an error. A 6-digit code is always six boxes (<code>v-otp-input</code>). Label above the field, never only a placeholder. Helper/error text below in <code>caption</code>; errors in <code>error</code> with an icon.</li>
 <li>Required fields marked "(required)" in the label, not with a bare asterisk.</li>
 <li><strong>Money input</strong>: currency code prefix, <code>tnum</code>, right-aligned. <strong>Exchange rate</strong>: mono, with a "BBD per 1 USD" suffix.</li>
 <li><strong>Scan input</strong> (SIA/Mobile): large, autofocused, mono, with a barcode icon. It clears after each scan, and the result chip appears beside it.</li>
@@ -5876,7 +5876,7 @@ export const cimhDark = {
   variables: { 'border-color': '#3A4552', 'border-opacity': 1, 'medium-emphasis-opacity': 0.72 },
 }
 // both themes also carry 'field-outline' and 'photo-ground' (§3 table), read by base.css and ProductImage.
-// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'md' },
+// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'pill' } (VTextarea: 'xl'),
 // VCard { rounded: 'lg', variant: 'outlined' }, VChip { rounded: 'sm', size: 'small' }
 // SHOP density 'default'; SIA density 'compact'.
 </code></pre>

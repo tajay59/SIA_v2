@@ -186,7 +186,7 @@ All components live in `packages/web-ui` (Vue, built on Vuetify 4) with matching
 States: hover → `primary-hover`; press → `primary-press`; disabled → 38% opacity, no pointer. While busy, a spinner replaces the label and the button keeps its width.
 
 ### 8.2 Inputs and forms
-- Fields are Vuetify `solo-inverted`, flat (owner, 2026-11-12), `r-md`: at rest the field has the colour of its card plus a 1 px `field-outline` edge → raised fill and a 2 px `primary` edge on focus; the edge turns `error` on an error. A 6-digit code is always six boxes (`v-otp-input`). Label above the field, never only a placeholder. Helper/error text below in `caption`; errors in `error` with an icon.
+- Fields are Vuetify components only, `solo-inverted`, flat (owner, 2026-11-12), **pill-shaped** (owner, 2026-11-20; a textarea, which grows, gets 24 px corners): at rest the field has the colour of its card plus a 1 px `field-outline` edge → raised fill and a 2 px `primary` edge on focus; the edge turns `error` on an error. A 6-digit code is always six boxes (`v-otp-input`). Label above the field, never only a placeholder. Helper/error text below in `caption`; errors in `error` with an icon.
 - Required fields marked "(required)" in the label, not with a bare asterisk.
 - **Money input**: currency code prefix, `tnum`, right-aligned. **Exchange rate**: mono, with a "BBD per 1 USD" suffix.
 - **Scan input** (SIA/Mobile): large, autofocused, mono, with a barcode icon. It clears after each scan, and the result chip appears beside it.
@@ -313,7 +313,7 @@ export const cimhDark = {
   variables: { 'border-color': '#3A4552', 'border-opacity': 1, 'medium-emphasis-opacity': 0.72 },
 }
 // both themes also carry 'field-outline' and 'photo-ground' (§3 table), read by base.css and ProductImage.
-// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'md' },
+// defaults: VBtn { rounded: 'md', variant: 'flat' }, every input { variant: 'solo-inverted', flat: true, rounded: 'pill' } (VTextarea: 'xl'),
 // VCard { rounded: 'lg', variant: 'outlined' }, VChip { rounded: 'sm', size: 'small' }
 // SHOP density 'default'; SIA density 'compact'.
 ```
