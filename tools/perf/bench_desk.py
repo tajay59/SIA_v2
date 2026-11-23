@@ -1,3 +1,4 @@
+# ruff: noqa: E501
 """Time the SIA request desk on the DEV stack: each tab's first page, the tab counts, and what Mongo does.
 
 Run inside the dev network (needs a staff token from staff_token.py):
@@ -75,7 +76,9 @@ def main() -> int:
     print(f"requests in DB: {o.count_documents({'status': {'$ne': 'CART'}})}, runs per case: {a.n}\n")
 
     print("## 1. Desk page (50 rows, sort=recent) over HTTP")
-    print(f"{'tab':24} {'median ms':>9} {'p95 ms':>7} {'KB':>6} | mongo: {'examined':>8} {'keys':>6} {'index':>30} | {'full KB':>7} {'proj KB':>7}")
+    print(
+        f"{'tab':24} {'median ms':>9} {'p95 ms':>7} {'KB':>6} | mongo: {'examined':>8} {'keys':>6} {'index':>30} | {'full KB':>7} {'proj KB':>7}"
+    )
     for name, (st, pay) in TABS.items():
         q = {"scope": "all", "status": ",".join(st), "sort": "recent", "limit": 50} | ({"payment": pay} if pay else {})
         size = len(c.get("/requests", params=q).content)
@@ -86,24 +89,32 @@ def main() -> int:
         idx = str(plan).split("'indexName': '")[1].split("'")[0] if "indexName" in str(plan) else "COLLSCAN"
         sort_mem = " +SORT" if "'stage': 'SORT'" in str(plan) else ""
         full = sum(len(bson.encode(d)) for d in o.find(filt).sort("statusAt", -1).limit(51))
-        proj = sum(len(bson.encode(d)) for d in o.find(filt, {k: 1 for k in SUMMARY_FIELDS}).sort("statusAt", -1).limit(51))
+        proj = sum(
+            len(bson.encode(d)) for d in o.find(filt, {k: 1 for k in SUMMARY_FIELDS}).sort("statusAt", -1).limit(51)
+        )
         print(f"{name:24} {med:9.1f} {p95:7.1f} {size / 1024:6.1f} | {ex['totalDocsExamined']:>16} {ex['totalKeysExamined']:>6} "
               f"{(idx + sort_mem)[:30]:>30} | {full / 1024:7.1f} {proj / 1024:7.1f}")  # fmt: skip
 
     print("\n## 2. Tab counts as today (6 list calls of up to 100 summaries)")
+
     def counts_now() -> None:
         for s in COUNTS:
             c.get("/requests", params={"scope": "all", "status": s, "limit": 100}).raise_for_status()
-        c.get("/requests", params={"scope": "all", "status": "DELIVERED", "payment": "unpaid", "limit": 100}).raise_for_status()
+        c.get(
+            "/requests", params={"scope": "all", "status": "DELIVERED", "payment": "unpaid", "limit": 100}
+        ).raise_for_status()
+
     kb = sum(len(c.get("/requests", params={"scope": "all", "status": s, "limit": 100}).content) for s in COUNTS) / 1024
     med, p95 = ms(counts_now, a.n)
     print(f"6 calls, {kb:.0f}+ KB: median {med:.1f} ms, p95 {p95:.1f} ms (capped at 100: shows 100+)")
 
     print("\n## 3. Same counts done in Mongo directly (what one /requests/counts call would run)")
+
     def counts_db() -> None:
         for s in COUNTS:
             o.count_documents({"status": {"$in": s.split(",")}})
         o.count_documents(mongo_filter(["DELIVERED"], "unpaid"))
+
     med, p95 = ms(counts_db, a.n)
     print(f"exact counts: median {med:.1f} ms, p95 {p95:.1f} ms")
 
@@ -116,7 +127,9 @@ def main() -> int:
         f = {"status": {"$ne": "CART"}, "$or": [{"id": {"$regex": f"^{text}"}}, {"nameKeys": {"$regex": f"^{text}"}}]}
         ex = o.find(f).sort("statusAt", -1).limit(51).explain()["executionStats"]
         med, p95 = ms(lambda t=text: c.get("/requests", params={"scope": "all", "status": ",".join(OPEN + CLOSED), "q": t, "sort": "recent", "limit": 50}).raise_for_status(), a.n)  # fmt: skip
-        print(f"'{text}': median {med:.1f} ms, p95 {p95:.1f} ms; docs examined {ex['totalDocsExamined']} for {ex['nReturned']} returned")
+        print(
+            f"'{text}': median {med:.1f} ms, p95 {p95:.1f} ms; docs examined {ex['totalDocsExamined']} for {ex['nReturned']} returned"
+        )
     return 0
 
 

@@ -33,7 +33,7 @@ def main() -> int:
         print("deleted", o.delete_many({"id": {"$regex": f"^{PREFIX}"}}).deleted_count)
         return 0
     base = list(o.find({"status": {"$ne": "CART"}, "id": {"$not": {"$regex": f"^{PREFIX}"}}}, {"_id": 0, "outbox": 0}))
-    rnd, now = random.Random(7), datetime.now(UTC)
+    rnd, now = random.Random(7), datetime.now(UTC)  # noqa: S311 - synthetic data
     for n in range(a.copies):
         batch = []
         for d in base:

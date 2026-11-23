@@ -751,7 +751,8 @@ def test_work_counts_and_name_search(ctx: Ctx) -> None:
     ctx.force(b, status="DELIVERED")
     r = ctx.client.get(ctx.url("/requests/counts"), headers=STAFF)
     assert r.status_code == 200, r.text
-    assert r.json()["new"] >= 1 and r.json()["paymentDue"] >= 1
+    assert r.json()["new"] >= 1
+    assert r.json()["paymentDue"] >= 1
     assert ctx.client.get(ctx.url("/requests/counts"), headers=USER).status_code == 403
     name = ctx.get(a)["customerName"]
 
@@ -760,6 +761,7 @@ def test_work_counts_and_name_search(ctx: Ctx) -> None:
         assert r.status_code == 200, r.text
         return {x["id"] for x in r.json()["items"]}
 
-    assert a in found(name[:3].upper()) and a in found(name[:3].lower())
+    assert a in found(name[:3].upper())
+    assert a in found(name[:3].lower())
     assert a in found(a[:10].upper())  # an id typed in capitals
     assert found("zzqx-nobody") == set()

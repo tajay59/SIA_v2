@@ -9,7 +9,6 @@ stock.* events (consumer.py); picks go through inventory's internal pick endpoin
 from __future__ import annotations
 
 import asyncio
-
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -569,9 +568,7 @@ class OrderService:
             "newest": ("submittedAt", True),
             "oldest": ("submittedAt", False),
             "recent": ("statusAt", True),  # latest status change first (SIA desk)
-        }.get(
-            sort, ("statusAt", False)
-        )
+        }.get(sort, ("statusAt", False))
         if cursor:
             value, cid_ = decode_cursor(cursor)
             if isinstance(value, str) and value and field_ != "id":
@@ -580,7 +577,12 @@ class OrderService:
             after = {"$or": [{field_: {op: value}}, {field_: value, "id": {op: cid_}}]}
             filt = {"$and": [filt, after]}
         direction = -1 if desc else 1
-        docs = await self.store.orders.find(filt, SUMMARY_PROJECTION).sort([(field_, direction), ("id", direction)]).limit(n + 1).to_list()
+        docs = (
+            await self.store.orders.find(filt, SUMMARY_PROJECTION)
+            .sort([(field_, direction), ("id", direction)])
+            .limit(n + 1)
+            .to_list()
+        )
         nxt = None
         if len(docs) > n:
             docs = docs[:n]

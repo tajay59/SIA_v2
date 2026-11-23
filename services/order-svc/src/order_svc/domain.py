@@ -16,6 +16,7 @@ def name_keys(*names: str | None) -> list[str]:
     """Lower-cased customer/organisation names for the staff desk's indexed prefix search (`nameKeys`)."""
     return sorted({n.strip().lower() for n in names if n and n.strip()})
 
+
 PAID, PROBONO = "PAID", "PROBONO"
 CART = "CART"
 CIMH, SUPPLIER = "CIMH", "SUPPLIER"
