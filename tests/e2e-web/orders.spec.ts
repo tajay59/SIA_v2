@@ -413,7 +413,8 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
   test('J-04 customer sees the request delivered', async ({ page }) => {
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/requests/${paidRequest}`)
-    await expect(page.getByRole('region', { name: 'Where it stands' }).getByText('Delivered', { exact: true })).toBeVisible()
+    // A delivered paid request waits for payment: the well asks for the proof.
+    await expect(page.getByRole('region', { name: 'Where it stands' }).getByText(/^Payment required/)).toBeVisible()
     // One row per parcel: CIMH's stock items (hand delivered) and the supplier's direct shipment with its Track link.
     const parcels = page.getByRole('list', { name: 'Shipments' })
     await expect(parcels.getByRole('listitem')).toHaveCount(2)
