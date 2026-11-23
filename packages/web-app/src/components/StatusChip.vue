@@ -4,7 +4,7 @@
  * Material 3 chip anatomy: 8 px corners, 18 px leading icon, label-large type (500, +0.1 px tracking),
  * 8/12 px padding, tonal container with a 1 px outline in the same hue. Neutral uses outline only (M3 assist
  * chip), so "nothing to do yet" reads quieter than states that need attention. Status is not interactive:
- * no hover/ripple, it is a label, not a button. `iconOnly` = the icon alone, its label in a tooltip (and the
+ * no hover/ripple, it is a label, not a button. `iconOnly` = the icon alone, its label as the title (and the
  * accessible name). `label`/`tone`/`icon` override the status words (e.g. "Payment required").
  */
 import { mdiAlertCircle, mdiCashClock, mdiCheckCircle, mdiCircleOutline, mdiCloseCircle, mdiProgressClock } from '@mdi/js'
@@ -26,21 +26,17 @@ const ICONS = {
 </script>
 
 <template>
-  <v-tooltip v-if="iconOnly" :text="label" location="top">
-    <template #activator="{ props: tip }">
-      <span
-        v-bind="tip"
-        class="m3-status icon-only"
-        :class="`tone-${tone}`"
-        :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }"
-        role="img"
-        :aria-label="label"
-        tabindex="0"
-      >
-        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="path" /></svg>
-      </span>
-    </template>
-  </v-tooltip>
+  <span
+    v-if="iconOnly"
+    class="m3-status icon-only"
+    :class="`tone-${tone}`"
+    :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }"
+    role="img"
+    :aria-label="label"
+    :title="label"
+  >
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="path" /></svg>
+  </span>
   <span v-else class="m3-status" :class="`tone-${tone}`" :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }" :title="label">
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="path" /></svg>
     <span class="label">{{ label }}</span>
