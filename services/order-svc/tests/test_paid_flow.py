@@ -676,3 +676,90 @@ def test_upgrade_names_survive_identity_being_down(ctx: Ctx) -> None:
     assert ctx.run(upgrade.customer_names(ctx.db["orders"], ctx.deps)) == 1  # name from the snapshot still filled
     body = ctx.get(rid)
     assert (body["customerName"], body["organisationName"]) == ("Una User", None)
+
+
+def test_delivered_paid_request_needs_payment_until_a_proof_is_sent(ctx: Ctx) -> None:
+    """Owner, 2026-11-23: a delivered paid request shows Payment required; the customer sends a proof of payment."""
+    due = ctx.paid_request("MET1", qty=1)
+    ctx.force(due, status="DELIVERED")
+    other = ctx.paid_request("MET1", qty=1)  # still open: no payment yet
+    assert ctx.get(due, USER)["paymentStatus"] == "DUE"
+    assert ctx.get(due, USER)["amountDue"] is None  # no agreement or legacy total on record
+    ctx.force(due, total="752.00")  # a migrated request's legacy total
+    assert ctx.get(due, USER)["amountDue"] == "752.00"
+    assert ctx.get(other, USER)["paymentStatus"] is None
+
+    def due_ids() -> list[str]:
+        r = ctx.client.get(ctx.url("/requests"), headers=USER, params={"payment": "due"})
+        assert r.status_code == 200, r.text
+        return [x["id"] for x in r.json()["items"]]
+
+    assert due_ids() == [due]
+    fid = ctx.attach(due, "payment_proof")
+    assert ctx.get(due, USER)["paymentStatus"] == "PROOF_SENT"
+    assert due_ids() == []
+    ctx.run(ctx.svc.file_deleted(due, fid, "wrong file"))  # a deleted proof does not count
+    assert due_ids() == [due]
+
+
+def test_staff_mark_a_delivered_request_paid(ctx: Ctx) -> None:
+    rid = ctx.paid_request("MET1", qty=1)
+    assert "mark-paid" not in ctx.get(rid)["allowedActions"]  # not delivered yet
+    assert ctx.act(rid, "mark-paid", {}).status_code == 409
+    ctx.force(rid, status="DELIVERED")
+    assert "mark-paid" in ctx.get(rid)["allowedActions"]
+    assert "mark-paid" not in ctx.get(rid, USER)["allowedActions"]
+    assert ctx.act(rid, "mark-paid", {}, USER).status_code == 403  # customers never mark their own payment
+    out = ctx.ok(rid, "mark-paid", {"note": "Transfer seen on statement"})
+    assert out["paymentStatus"] == "PAID"
+    assert out["paidAt"]
+    assert out["status"] == "DELIVERED"
+    assert "mark-paid" not in out["allowedActions"]
+    r = ctx.client.get(ctx.url("/requests"), headers=USER, params={"payment": "due"})
+    assert r.json()["items"] == []
+    again = ctx.act(rid, "mark-paid", {})
+    assert again.status_code == 409
+    assert again.json()["code"] == "ALREADY_PAID"
+
+
+def test_staff_desk_tabs_follow_payment(ctx: Ctx) -> None:
+    """Owner, 2026-11-23: an unpaid delivery stays in Open and Payment due; Closed only once it is paid."""
+    open_ = ctx.paid_request("MET1", qty=1)
+    unpaid = ctx.paid_request("MET1", qty=1)
+    ctx.force(unpaid, status="DELIVERED")
+    paid = ctx.paid_request("MET1", qty=1)
+    ctx.force(paid, status="DELIVERED")
+    ctx.ok(paid, "mark-paid", {})
+
+    def ids(status: str, payment: str) -> set[str]:
+        r = ctx.client.get(ctx.url("/requests"), headers=STAFF,
+                           params={"scope": "all", "status": status, "payment": payment})  # fmt: skip
+        assert r.status_code == 200, r.text
+        return {x["id"] for x in r.json()["items"]}
+
+    assert ids("SUBMITTED,QUOTING,QUOTED", "outstanding") >= {open_, unpaid}
+    assert paid not in ids("SUBMITTED,QUOTING,QUOTED", "outstanding")
+    assert ids("DELIVERED,CANCELLED", "settled") & {open_, unpaid, paid} == {paid}
+    ctx.attach(unpaid, "payment_proof")  # a proof to check is still payment due for staff
+    assert ids("DELIVERED", "unpaid") & {unpaid, paid} == {unpaid}
+
+
+def test_work_counts_and_name_search(ctx: Ctx) -> None:
+    """2026-11-23: exact desk counts in one call; names found by an indexed, case-blind prefix."""
+    a = ctx.paid_request("MET1", qty=1)
+    b = ctx.paid_request("MET1", qty=1)
+    ctx.force(b, status="DELIVERED")
+    r = ctx.client.get(ctx.url("/requests/counts"), headers=STAFF)
+    assert r.status_code == 200, r.text
+    assert r.json()["new"] >= 1 and r.json()["paymentDue"] >= 1
+    assert ctx.client.get(ctx.url("/requests/counts"), headers=USER).status_code == 403
+    name = ctx.get(a)["customerName"]
+
+    def found(text: str) -> set[str]:
+        r = ctx.client.get(ctx.url("/requests"), headers=STAFF, params={"scope": "all", "q": text})
+        assert r.status_code == 200, r.text
+        return {x["id"] for x in r.json()["items"]}
+
+    assert a in found(name[:3].upper()) and a in found(name[:3].lower())
+    assert a in found(a[:10].upper())  # an id typed in capitals
+    assert found("zzqx-nobody") == set()

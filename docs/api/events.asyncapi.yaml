@@ -618,7 +618,7 @@ components:
                     type: object
                     description: 'Staff-built invoice / commercial invoice only: who notification-svc emails'
                     properties: { customer: { type: boolean }, staff: { type: boolean } }
-                  kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
+                  kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, payment_proof, upload, labels] }
                   quoteVersion: { type: [integer, 'null'], description: 'Quote version of a generated agreement / CIMH quote, or of the quote a signed agreement was uploaded for' }
                   name: { type: string }
                   mime: { type: string }

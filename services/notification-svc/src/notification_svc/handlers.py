@@ -451,6 +451,16 @@ class Notifier:
                 link=self.sia(f"/requests/{rid}"),
                 button="Check the signature",
             )
+        if e.type == "document.uploaded" and kind == "payment_proof":
+            return await self.staff(
+                "order",
+                subject=f"Proof of payment received: {rid}",
+                heading="A customer sent a proof of payment",
+                paragraphs=["Check the payment against the invoice."],
+                request_id=rid,
+                link=self.sia(f"/requests/{rid}"),
+                button="Open the request",
+            )
         notify = p.get("notify")
         if e.type == "document.generated" and isinstance(notify, dict) and kind in ("invoice", "commercial_invoice"):
             # Built by staff in SIA (invoice builder): each tick decides who is mailed.

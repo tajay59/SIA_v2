@@ -26,6 +26,7 @@ import {
 import { computed, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
+import OutstandingPaymentsDialog from './components/OutstandingPaymentsDialog.vue'
 import ShopFooter from './components/ShopFooter.vue'
 
 const session = useSession()
@@ -106,6 +107,7 @@ async function logout() {
 
     <v-main id="main">
       <AppNotifier />
+      <OutstandingPaymentsDialog />
       <router-view v-slot="{ Component, route: r }">
         <!-- Sign-in pages have their own transition (AuthCard); a fade here kept the old form on screen while the next page arrived. -->
         <Transition :name="r.meta.layout === 'bare' ? 'page-none' : `page-${shopDir}`" mode="out-in">

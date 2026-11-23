@@ -76,6 +76,7 @@
                 "invoice",
                 "commercial_invoice",
                 "probono_invoice",
+                "payment_proof",
                 "upload",
                 "labels"
               ]

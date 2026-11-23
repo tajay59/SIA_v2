@@ -25,7 +25,7 @@ const router = useRouter()
 const { counts, refresh: refreshCounts } = useWorkCounts()
 
 // ---- filters <-> URL (validated; unknown values are dropped, never sent)
-type Sort = 'waiting' | 'newest' | 'oldest'
+type Sort = 'recent' | 'waiting' | 'newest' | 'oldest'
 type Filters = {
   status: RequestStatus[]
   type: 'PAID' | 'PROBONO' | null
@@ -34,6 +34,7 @@ type Filters = {
   orgName: string
   q: string
   sort: Sort
+  payment: 'unpaid' | 'settled' | 'outstanding' | null
 }
 const thisYear = new Date().getFullYear()
 const years = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
@@ -52,7 +53,9 @@ function parse(q: LocationQuery): Filters {
     org: str(q, 'org') || null,
     orgName: str(q, 'orgName'),
     q: str(q, 'q').slice(0, 100),
-    sort: sort === 'waiting' || sort === 'oldest' ? sort : 'newest',
+    sort: sort === 'waiting' || sort === 'oldest' || sort === 'newest' ? sort : 'recent',
+    // No status and no payment in the URL = the Open tab (open statuses + unpaid deliveries).
+    payment: (['unpaid', 'settled', 'outstanding'] as const).find((v) => v === str(q, 'payment')) ?? (raw ? null : 'outstanding'),
   }
 }
 const same = (a: RequestStatus[], b: RequestStatus[]) => a.length === b.length && a.every((s) => b.includes(s))
@@ -67,7 +70,8 @@ function serialize(f: Filters): Record<string, string> {
     if (f.orgName) out.orgName = f.orgName
   }
   if (f.q.trim()) out.q = f.q.trim()
-  if (f.sort !== 'newest') out.sort = f.sort
+  if (f.sort !== 'recent') out.sort = f.sort
+  if (f.payment && !(f.payment === 'outstanding' && same(f.status, OPEN_STATUS))) out.payment = f.payment
   return out
 }
 const onDesk = () => route.path === '/requests' || route.path === '/requests/'
@@ -77,19 +81,26 @@ const keepOpen = (q: Record<string, string>) => (str(route.query, 'open') ? { ..
 const update = (patch: Partial<Filters>) => void router.replace({ query: keepOpen(serialize({ ...filters.value, ...patch })) })
 
 // ---- stage tabs: the dashboard's stages + Shipped, Closed, All
-const TABS: { key: string; title: string; status: RequestStatus[]; count?: CountKey }[] = [
-  { key: 'open', title: 'Open', status: OPEN_STATUS },
+const TABS: { key: string; title: string; status: RequestStatus[]; payment?: 'unpaid' | 'settled' | 'outstanding'; count?: CountKey }[] = [
+  // Open = not finished: open statuses + delivered paid requests not yet paid (owner 2026-11-23).
+  { key: 'open', title: 'Open', status: OPEN_STATUS, payment: 'outstanding' },
   { key: 'new', title: 'New', status: ['SUBMITTED'], count: 'new' },
   { key: 'quoting', title: 'Quoting', status: ['QUOTING'], count: 'quoting' },
   { key: 'quoted', title: 'Waiting for signature', status: ['QUOTED'], count: 'quoted' },
   { key: 'verify', title: 'Signature to check', status: ['ACCEPTED'], count: 'verify' },
   { key: 'fulfil', title: 'Pick & purchase', status: ['APPROVED', 'PICKING', 'PURCHASING'], count: 'fulfil' },
   { key: 'shipped', title: 'Shipped', status: ['SHIPPED'] },
-  { key: 'closed', title: 'Closed', status: CLOSED_STATUS },
+  { key: 'payment', title: 'Payment due', status: ['DELIVERED'], payment: 'unpaid', count: 'payment' },
+  // Closed = finished and, for a delivered paid request, paid (owner 2026-11-23); unpaid ones sit in Payment due.
+  { key: 'closed', title: 'Closed', status: CLOSED_STATUS, payment: 'settled' },
   { key: 'all', title: 'All', status: ALL_STATUS },
 ]
-const activeTab = computed(() => TABS.find((t) => same(t.status, filters.value.status))?.key ?? null)
-const tabTo = (t: (typeof TABS)[number]) => ({ query: keepOpen(serialize({ ...filters.value, status: t.status })) })
+const activeTab = computed(
+  () => TABS.find((t) => same(t.status, filters.value.status) && (t.payment ?? null) === filters.value.payment)?.key ?? null,
+)
+const tabTo = (t: (typeof TABS)[number]) => ({
+  query: keepOpen(serialize({ ...filters.value, status: t.status, payment: t.payment ?? null })),
+})
 
 // ---- search (debounced into the URL; follows the URL when it changes elsewhere)
 const search = ref(filters.value.q)
@@ -113,7 +124,7 @@ watch(
 const moreOpen = ref(false)
 const extraCount = computed(
   () =>
-    [filters.value.type, filters.value.year, filters.value.org, filters.value.sort !== 'newest' || null, activeTab.value ? null : 1].filter(
+    [filters.value.type, filters.value.year, filters.value.org, filters.value.sort !== 'recent' || null, activeTab.value ? null : 1].filter(
       Boolean,
     ).length,
 )
@@ -183,6 +194,7 @@ const list = useCursorList<RequestSummary>((cursor) =>
           organisationId: filters.value.org ?? undefined,
           q: filters.value.q.trim() || undefined,
           sort: filters.value.sort,
+          payment: filters.value.payment ?? undefined,
           cursor,
           limit: 50,
         } as never,
@@ -191,17 +203,31 @@ const list = useCursorList<RequestSummary>((cursor) =>
   ) as Promise<{ items: RequestSummary[]; nextCursor: string | null }>,
 )
 const loadedAt = ref<Date | null>(null)
+// Tabs seen in this visit (2026-11-23): going back to one shows its last list at once while it refreshes behind.
+// Keyed by the filters; the newest 12 are kept. A tab never seen shows the skeleton, never another tab's rows.
+const seen = new Map<string, { items: RequestSummary[]; nextCursor: string | null }>()
+const filterKey = () => JSON.stringify(serialize(filters.value))
 async function reload() {
+  const key = filterKey()
   await list.reload()
   loadedAt.value = new Date()
+  if (key !== filterKey() || list.failed.value) return
+  seen.delete(key)
+  seen.set(key, { items: list.items.value, nextCursor: list.nextCursor.value })
+  if (seen.size > 12) seen.delete(seen.keys().next().value!)
+}
+function showSeen() {
+  const hit = seen.get(filterKey())
+  list.items.value = hit?.items ?? []
+  list.nextCursor.value = hit?.nextCursor ?? null
+  list.loaded.value = !!hit
 }
 onMounted(reload)
-watch(
-  () => JSON.stringify(serialize(filters.value)),
-  () => {
-    if (onDesk()) void reload()
-  },
-)
+watch(filterKey, () => {
+  if (!onDesk()) return
+  showSeen()
+  void reload()
+})
 function refreshAll() {
   void reload()
   void refreshCounts()
@@ -239,7 +265,7 @@ function closeOpen() {
   void router.replace({ query: q })
 }
 
-const SORT_WORDS: Record<Sort, string> = { waiting: 'longest wait first', newest: 'newest first', oldest: 'oldest first' }
+const SORT_WORDS: Record<Sort, string> = { recent: 'latest first', waiting: 'longest wait first', newest: 'newest first', oldest: 'oldest first' }
 const caption = computed(() => {
   if (!items.value) return ''
   const n = `${items.value.length}${list.nextCursor.value ? '+' : ''}`
@@ -339,7 +365,7 @@ const time = computed(() =>
               :model-value="filters.sort"
               name="f-sort"
               label="Order"
-              :options="[{ title: 'Newest', value: 'newest' }, { title: 'Waiting longest', value: 'waiting' }, { title: 'Oldest', value: 'oldest' }]"
+              :options="[{ title: 'Latest change', value: 'recent' }, { title: 'Newest sent', value: 'newest' }, { title: 'Waiting longest', value: 'waiting' }, { title: 'Oldest', value: 'oldest' }]"
               @update:model-value="(v) => update({ sort: v as Sort })"
             />
           </div>

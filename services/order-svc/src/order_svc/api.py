@@ -171,6 +171,7 @@ class FileIn(Strict):
         "invoice",
         "commercial_invoice",
         "probono_invoice",
+        "payment_proof",
         "upload",
     ]
     name: str = Field(min_length=1, max_length=255)
@@ -278,10 +279,11 @@ async def list_requests(
     status: Annotated[str | None, Query()] = None,
     type: Literal["PAID", "PROBONO"] | None = None,
     year: Annotated[int | None, Query(ge=2000, le=2100)] = None,
+    payment: Literal["due", "unpaid", "settled", "outstanding"] | None = None,
     customer: Annotated[str | None, Query(max_length=64)] = None,
     organisationId: Annotated[str | None, Query(max_length=64)] = None,
     q: Annotated[str | None, Query(max_length=100)] = None,
-    sort: Literal["newest", "oldest", "waiting"] = "newest",
+    sort: Literal["newest", "oldest", "waiting", "recent"] = "newest",
     cursor: Annotated[str | None, Query(max_length=500)] = None,
     limit: Annotated[int | None, Query(ge=1, le=100)] = None,
     me: Principal = Depends(require_any),
@@ -291,10 +293,16 @@ async def list_requests(
     bad = [s for s in statuses if s not in allowed]
     if bad:
         raise ProblemError(422, "VALIDATION_FAILED", errors=[{"field": "status", "message": f"unknown {bad[0]}"}])
-    filters = {"scope": scope, "status": statuses, "type": type, "year": year, "customer": customer}
+    filters = {"scope": scope, "status": statuses, "type": type, "year": year, "customer": customer, "payment": payment}
     filters |= {"organisationId": organisationId, "q": q, "sort": sort}
     items, nxt = await svc(request).list_requests(me, filters, cursor, limit)
     return {"items": items, "nextCursor": nxt}
+
+
+@router.get("/requests/counts", tags=["requests"])
+async def work_counts(request: Request, me: Principal = Depends(require_staff)) -> dict[str, int]:
+    """Staff desk tab counts, exact (SIA drawer, dashboard, desk tabs)."""
+    return await svc(request).work_counts(me)
 
 
 @router.get("/requests/{requestId}", tags=["requests"])
@@ -430,6 +438,25 @@ async def update_shipment(
         data["date"] = body.date.isoformat()
     out = await svc(request).update_shipment(me, requestId, shipmentId, if_match(v), data, cid(request))
     return with_etag(out)
+
+
+class MarkPaidIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paidAt: datetime | None = None
+    note: str | None = Field(default=None, max_length=500)
+
+
+@router.post("/requests/{requestId}/mark-paid", tags=["staff-actions"])
+async def mark_paid(
+    requestId: str,
+    request: Request,
+    body: MarkPaidIn | None = None,
+    v: IfMatch = None,
+    me: Principal = Depends(require_staff),
+) -> JSONResponse:
+    data = (body or MarkPaidIn()).model_dump(exclude_none=True)
+    return with_etag(await svc(request).mark_paid(me, requestId, if_match(v), data))
 
 
 @router.post("/requests/{requestId}/deliver", tags=["staff-actions"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 from contextlib import asynccontextmanager
 from typing import Any
@@ -86,8 +87,14 @@ def build_app(
         await store.ensure_indexes()
         await upgrade.view_and_sign(store.orders)  # idempotent one-off (2026-11-17); remove after cut-over
         await upgrade.shipments(store.orders)  # idempotent one-off (2026-11-19); remove after cut-over
-        await upgrade.customer_names(store.orders, deps)  # idempotent one-off (2026-11-20); remove after cut-over
+        # idempotent one-off (2026-11-20); remove after cut-over. In the background: it asks identity once per
+        # customer, and requests whose organisation has no name are asked again at every start, which held start-up
+        # past gunicorn's boot timeout on the dev stack (hundreds of test accounts; the worker was killed).
+        names = asyncio.create_task(upgrade.customer_names(store.orders, deps))
+        keys = asyncio.create_task(upgrade.name_keys(store.orders))  # idempotent one-off (2026-11-23), background
         yield
+        names.cancel()
+        keys.cancel()
 
     app.router.lifespan_context = lifespan
     app.state.metrics.scrape_hooks.append(outbox_backlog_hook(app.state.metrics, {"orders": db["orders"]}))

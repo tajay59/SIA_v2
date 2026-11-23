@@ -34,6 +34,9 @@ class Store:
         await o.create_index([("status", 1), ("updatedAt", 1), ("id", 1)])
         await o.create_index([("type", 1), ("status", 1), ("submittedAt", -1)])
         await o.create_index([("submittedAt", -1), ("id", -1)])
+        await o.create_index([("status", 1), ("statusAt", -1), ("id", -1)])  # desk: latest status change first
+        await o.create_index([("type", 1), ("status", 1), ("payment.paidAt", 1)])  # desk: unpaid deliveries count
+        await o.create_index([("nameKeys", 1), ("statusAt", -1)])  # desk: customer/organisation prefix search
         await o.create_index([("quoteExpiresAt", 1)], partialFilterExpression={"status": "QUOTED"})
         await o.create_index([("lines.productId", 1)])
         await o.create_index([("outbox.0", 1)], sparse=True)

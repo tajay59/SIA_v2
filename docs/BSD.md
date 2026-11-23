@@ -457,6 +457,8 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `blocked` | bool? | | ✚ | Carts only: `true` while the customer is suspended (set/cleared from `user.suspended`/`user.reactivated`); cart endpoints answer 403 `ACCOUNT_SUSPENDED` |
 | `splitFrom` | Id? | | ✚ | The sibling request when a mixed cart was split |
 | `statusAt` | Timestamp | | ✚ | When the current status began (staff queue "waiting" sort) |
+| `nameKeys` | [string] | | ✚ | Lower-cased customer + organisation names (staff prefix search; filled at submit, erasure, start-up upgrade) |
+| `namesChecked` | bool | | ✚ | Start-up upgrade `customer_names` has looked at this request (not asked again) |
 | `lines` | Line[] | R | ⟲ (`cart`, `ncicart`) | See below |
 | `currency` | Currency? | | ✚ | `BBD` for every new paid request (set by the server since 2026-11-16); legacy requests may be `USD`; `null` for Pro Bono and carts |
 | `shipTo` | Address & `{ firstname, lastname, email, tel }` | | ⟲ (`shipto`) | PII |
@@ -531,7 +533,7 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `rejection` | `{ by, at, reason }`? | ✚ | Pro Bono reject |
 | `shipments[]` | `{ id: "SHP…", source: "CIMH"\|"SUPPLIER"\|null, supplier?, lineIds[], carrier: "FEDEX"\|"DHL"\|"UPS"\|"HAND"\|"OTHER", carrierName?, tracking?, trackingLink?, date, cost?: Money, note?, by, at, updatedBy?, updatedAt? }` | ⟲ | One per parcel (2026-11-19, replaces the single `shipping`): CIMH stock (Pro Bono counts as CIMH) or one supplier shipping direct; a line is in one shipment. `tracking` required unless `HAND`; `OTHER` needs `carrierName` + an https `trackingLink`. Customers and same-org users see everything except `cost`, `trackingLink` (they get the Track URL) and `by`. Legacy `method` → `carrier`; legacy/pre-2026-11-19 `shipping` → `shipments[0]` covering every line (order-svc start-up upgrade) |
 | `invoice` | `{ number, number1?, number3?, number4?, date }` | ⟲ | Legacy invoice numbering kept |
-| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, quoteVersion?, deleted? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice`. `quoteVersion`: the quote a generated agreement / CIMH quote was made for, or the one a signed agreement was uploaded for |
+| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, quoteVersion?, deleted? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice`, `payment_proof` (customer upload on a delivered PAID request, 2026-11-23). `quoteVersion`: the quote a generated agreement / CIMH quote was made for, or the one a signed agreement was uploaded for |
 | `cancellation` | `{ by, at, reason, auto: bool }`? | ✚ | `auto: true` for quote expiry |
 | `legacy` | `{ total?, shippingEstimate?, shippingCost1? }`? | ⟲ | Read-only values from migrated orders; never written by v2 |
 
@@ -545,6 +547,9 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `{ organisationId: 1, submittedAt: -1 }` | Organisation requests |
 | `{ status: 1, updatedAt: 1 }` | Staff queue, waiting time |
 | `{ type: 1, status: 1, submittedAt: -1 }` | Staff filters |
+| `{ status: 1, statusAt: -1, id: -1 }` | Staff desk, latest status change first (`sort=recent`) |
+| `{ type: 1, status: 1, "payment.paidAt": 1 }` | Unpaid deliveries count + Payment due tab |
+| `{ nameKeys: 1, statusAt: -1 }` | Staff search: lower-cased customer/organisation names, indexed prefix |
 | `{ quoteExpiresAt: 1 }` partial `{ status: "QUOTED" }` | Expiry and reminder jobs |
 | `{ "shipTo.organization": 1 }` collation strength 2 | Staff search (prefix) |
 | `{ "lines.productId": 1 }` | Replaces legacy `cart.id` |

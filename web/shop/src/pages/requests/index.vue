@@ -13,6 +13,7 @@ import {
   expiryNote,
   isClosed,
   orders,
+  paymentDue,
   type OrderRequest,
   type RequestStatus,
   type RequestSummary,
@@ -40,17 +41,29 @@ const thisYear = new Date().getFullYear()
 const years = Array.from({ length: thisYear - 2019 }, (_, i) => thisYear - i)
 const year = ref<number | null>(null)
 const WAITING: RequestStatus[] = ['QUOTED'] // view and sign, or cancel
-const STATUS_GROUPS: { title: string; value: RequestStatus[] | null }[] = [
-  { title: 'All statuses', value: null },
-  { title: 'Waiting for me', value: WAITING },
-  { title: 'In progress', value: ['SUBMITTED', 'QUOTING', 'ACCEPTED', 'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED'] },
-  { title: 'Delivered', value: ['DELIVERED'] },
-  { title: 'Closed', value: ['CANCELLED', 'REJECTED', 'DECLINED'] },
+/** Option values are plain keys: an array value makes v-select treat it as several selections. */
+const STATUS_GROUPS: { title: string; value: string; statuses: RequestStatus[] | null; payment?: true }[] = [
+  { title: 'All statuses', value: 'all', statuses: null },
+  { title: 'Waiting for me', value: 'waiting', statuses: WAITING },
+  { title: 'Payment required', value: 'payment', statuses: null, payment: true },
+  { title: 'In progress', value: 'progress', statuses: ['SUBMITTED', 'QUOTING', 'ACCEPTED', 'PURCHASING', 'APPROVED', 'PICKING', 'SHIPPED'] },
+  { title: 'Delivered', value: 'delivered', statuses: ['DELIVERED'] },
+  { title: 'Closed', value: 'closed', statuses: ['CANCELLED', 'REJECTED', 'DECLINED'] },
 ]
-const status = ref<RequestStatus[] | null>(null)
-const filtered = computed(() => !!status.value || !!year.value)
+// `?status=payment` (the sign-in payments dialog) opens the list on that filter.
+const statusKey = ref(STATUS_GROUPS.some((g) => g.value === route.query.status) ? String(route.query.status) : 'all')
+watch(
+  () => route.query.status,
+  (q) => {
+    if (typeof q === 'string' && STATUS_GROUPS.some((g) => g.value === q)) statusKey.value = q
+  },
+)
+const status = computed(() => STATUS_GROUPS.find((g) => g.value === statusKey.value)?.statuses ?? null)
+/** Delivered paid requests with no proof of payment yet (server filter `payment=due`). */
+const paymentFilter = computed(() => statusKey.value === 'payment')
+const filtered = computed(() => !!status.value || paymentFilter.value || !!year.value)
 function clearFilters() {
-  status.value = null
+  statusKey.value = 'all'
   year.value = null
 }
 
@@ -62,9 +75,10 @@ const list = useCursorList<RequestSummary>(async (cursor) => {
   if (cursor) query.cursor = cursor
   if (year.value) query.year = year.value
   if (status.value) query.status = status.value.join(',')
+  if (paymentFilter.value) query.payment = 'due'
   return (await call(() => orders.GET('/requests', { params: { query: query as any } }))) as Page
 })
-watch([scope, year, status], () => void list.reload(), { immediate: true })
+watch([scope, year, statusKey], () => void list.reload(), { immediate: true })
 
 const waiting = ref<RequestSummary[]>([])
 async function loadWaiting() {
@@ -91,7 +105,8 @@ const groups = computed(() => {
     { key: 'done', title: 'Done', rows: [] as RequestSummary[] },
   ]
   for (const r of rows.value) {
-    if (r.status === 'DELIVERED' || isClosed(r.status)) out[3]!.rows.push(r)
+    if (paymentDue(r)) out[1]!.rows.push(r)
+    else if (r.status === 'DELIVERED' || isClosed(r.status)) out[3]!.rows.push(r)
     else if (r.status === 'SHIPPED') out[2]!.rows.push(r)
     else if (WAITING.includes(r.status)) out[1]!.rows.push(r)
     else out[0]!.rows.push(r)
@@ -114,7 +129,8 @@ const STATE: Partial<Record<RequestStatus, string>> = {
   DECLINED: 'Quote declined',
   REJECTED: 'Not approved',
 }
-const stateText = (r: RequestSummary) => STATE[r.status] ?? r.status
+const stateText = (r: RequestSummary) =>
+  paymentDue(r) ? 'Delivered · payment required' : r.paymentStatus === 'PROOF_SENT' ? 'Delivered · proof of payment sent' : r.paymentStatus === 'PAID' ? 'Delivered · paid' : (STATE[r.status] ?? r.status)
 
 // The open request (wide screens): ?open=<id>, else the first that waits for the customer, else the newest.
 const openId = computed<string | null>(() => {
@@ -186,7 +202,8 @@ function onChanged(r: OrderRequest) {
     <div class="docket" :class="{ wide }">
       <nav class="list" aria-label="Orders">
         <div v-if="canFilter" class="filters">
-          <v-select v-model="status" :items="STATUS_GROUPS" label="Status" density="compact" hide-details class="filter" />
+          
+          <v-select v-model="statusKey" :items="STATUS_GROUPS" label="Status" density="compact" hide-details class="filter" />
           <v-select
             v-model="year"
             :items="[{ title: 'Any year', value: null }, ...years.map((y) => ({ title: String(y), value: y }))]"
@@ -226,7 +243,7 @@ function onChanged(r: OrderRequest) {
         <template v-else-if="list.loaded.value && !rows.length">
           <div v-if="filtered" class="empty">
             <h2 class="t-h3">No requests match these filters</h2>
-            <p class="muted">Try another status or year.</p>
+            <p class="muted">{{ paymentFilter ? 'No delivered request is waiting for a payment.' : 'Try another status or year.' }}</p>
             <v-btn variant="outlined" @click="clearFilters">Clear filters</v-btn>
           </div>
           <p v-else-if="showWaiting" class="muted none">No other requests.</p>
@@ -251,6 +268,7 @@ function onChanged(r: OrderRequest) {
                     <span class="row-title">
                       {{ title(r) }}
                       <span v-if="r.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
+                      <span v-if="paymentDue(r)" class="pay-badge">Payment required</span>
                     </span>
                     <span class="row-meta">
                       {{ stateText(r) }} · sent {{ formatDate(r.submittedAt) }}
@@ -485,6 +503,20 @@ function onChanged(r: OrderRequest) {
   line-height: 22px;
   font-weight: 600;
   overflow-wrap: anywhere;
+}
+.pay-badge {
+  display: inline-block;
+  margin-left: var(--sp-1);
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 600;
+  vertical-align: 1px;
+  white-space: nowrap;
+  background: rgba(var(--v-theme-warning), 0.16);
+  color: rgb(var(--v-theme-on-surface));
+  border: 1px solid rgba(var(--v-theme-warning), 0.6);
 }
 .row-title .probono-badge {
   margin-left: var(--sp-1);

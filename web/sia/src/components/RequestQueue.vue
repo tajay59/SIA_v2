@@ -39,6 +39,8 @@ function pick(id: string) {
   else selected.value = id
 }
 const target = (id: string): RouteLocationRaw => props.linkTo?.(id) ?? `/requests/${id}`
+// Delivered but not paid (no proof yet, or a proof to check): Delivered shrinks to its icon beside a red chip.
+const unpaid = (r: RequestSummary) => r.paymentStatus === 'DUE' || r.paymentStatus === 'PROOF_SENT'
 const overdue = (r: RequestSummary) => props.overdueDays > 0 && (r.waitingDays ?? 0) > props.overdueDays
 
 function onRowKey(e: KeyboardEvent, i: number) {
@@ -105,7 +107,13 @@ function onRowKey(e: KeyboardEvent, i: number) {
           <span class="why">
             <span class="pill" :class="why(r).tone"><v-icon :icon="TONE_ICON[why(r).tone]" size="14" /><span>{{ why(r).text }}</span></span>
           </span>
-          <span v-if="showStatus" class="status"><StatusChip :status="r.status" /></span>
+          <span v-if="showStatus" class="status">
+            <template v-if="unpaid(r)">
+              <StatusChip :status="r.status" icon-only />
+              <StatusChip :status="r.status" label="Payment required" tone="error" icon="cash" />
+            </template>
+            <StatusChip v-else :status="r.status" />
+          </span>
           <span class="wait tnum" :class="{ overdue: overdue(r) }">
             <v-icon v-if="overdue(r)" :icon="IOverdue" size="14" />
             {{ waited(r) }}<span v-if="overdue(r)" class="overdue-word"> · overdue</span>
@@ -147,7 +155,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row.with-status {
   /* The reason is why the queue exists: it gets the widest column (critique: cut to "Approve or re" at 1440 px). */
-  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1.5fr) minmax(0, 1fr) 168px 96px;
+  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1.5fr) minmax(0, 1fr) 200px 96px;
 }
 .row:hover {
   background: rgb(var(--v-theme-surface-variant));
@@ -321,6 +329,11 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row.compact .wait {
   grid-area: wait;
+}
+.row .status {
+  display: inline-flex;
+  gap: 6px;
+  min-width: 0;
 }
 .row.compact .status,
 .row.compact .overdue-word {
