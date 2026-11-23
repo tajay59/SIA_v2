@@ -1,350 +1,3 @@
-<script setup lang="ts">
-/**
- * One request as the customer sees it (S-11), shared by the docket on /requests (beside the list) and the
- * request's own page. Reading order: reference + title, the request path (one rule, a node per stage, filled
- * to where it stands), the "whose move" well (the customer's turn in the primary tone with its action; CIMH's
- * turn neutral; amber only when a quote expires within a week), then Quote (first while it waits for the
- * customer), Status, Items, Delivery and the actions the server allows. "View and sign" (2026-11-17):
- * while QUOTED the customer's move is View and sign, or Cancel request (the server's `decline`).
- * Same-organisation users see it read-only (the server sends no actions for them).
- * No Files section and no document preview (owner, 2026-11-18): the quote files and the agreement are read on
- * View and sign (S-12).
- * One of each (critique fix, 2026-11-18): one progress model (the path; dated changes fold into History at the end,
- * in the same words), the total once, and while the requester's quote waits the page is a hand-off: the well says
- * what the agreement is and leads to View and sign, which holds the priced quote (S-11 shows no prices then).
- */
-import {
-  act,
-  ApiError,
-  carrierLabel,
-  countryName,
-  currentAgreement,
-  DocumentThumb,
-  expiryNote,
-  FILE_KIND_LABELS,
-  getRequest,
-  isClosed,
-  openSources,
-  type OrderRequest,
-  pricedQuote,
-  QuoteTable,
-  ReasonDialog,
-  requestTitle,
-  shipmentSender,
-  ShortRef,
-  StatusChip,
-  useNotify,
-  useSession,
-} from '@cimh/web-app'
-import { formatDate, formatDateTime, formatMoney, statusLabel } from '@cimh/web-ui'
-import { mdiArrowRight, mdiCheck, mdiChevronDown, mdiClockAlertOutline, mdiOpenInNew, mdiPackageVariantClosed } from '@mdi/js'
-import { computed, nextTick, ref, watch } from 'vue'
-import DocumentReader from './DocumentReader.vue'
-
-const props = withDefaults(defineProps<{ id: string; level?: 1 | 2; setTitle?: boolean; dir?: 1 | -1 }>(), { level: 1, setTitle: false, dir: 1 })
-const emit = defineEmits<{ changed: [OrderRequest] }>()
-
-// ---- Delivery: one row per shipment, and the items that have not left yet
-const lineLabel = (lineId: string) => {
-  const ln = request.value?.lines.find((l) => l.lineId === lineId)
-  return ln ? `${ln.product.name} × ${ln.qty}` : lineId
-}
-const shipStarted = computed(() => ['PURCHASING', 'PICKING', 'SHIPPED'].includes(request.value?.status ?? '') && !!request.value?.shipments?.length)
-const toShip = computed(() =>
-  request.value ? openSources(request.value).flatMap((s) => s.lines.map((l) => lineLabel(l.lineId))) : [],
-)
-const session = useSession()
-const notify = useNotify()
-const request = ref<OrderRequest | null>(null)
-const missing = ref(false)
-const heading = ref<HTMLElement | null>(null)
-
-const title = computed(() => {
-  const r = request.value
-  return r ? requestTitle(r.lines[0]?.product.name, r.lines.length, r.type) : ''
-})
-
-async function load(focus = false) {
-  missing.value = false
-  try {
-    const r = await getRequest(props.id)
-    if (r.id !== props.id) return
-    request.value = r
-    if (props.setTitle) document.title = `${title.value} · CIMH Stores`
-    if (focus) {
-      await nextTick()
-      heading.value?.focus({ preventScroll: true })
-    }
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 404) missing.value = true
-    else notify.report(e, { retry: () => void load() })
-  }
-}
-watch(
-  () => props.id,
-  (id, old) => {
-    // Keep the previous request on screen (dimmed) while the next loads: no skeleton flash between rows.
-    if (!request.value || request.value.id !== id) void load(!!old)
-  },
-  { immediate: true },
-)
-const switching = computed(() => !!request.value && request.value.id !== props.id)
-
-const can = (a: string) => request.value?.allowedActions?.includes(a as never) ?? false
-const mine = computed(() => request.value?.customer === session.account?.id)
-const showQuote = computed(() => !!(request.value?.quotes?.length || request.value?.cimhQuote) && request.value?.type === 'PAID')
-const quoteLive = computed(() => request.value?.status === 'QUOTED')
-const expiry = computed(() => (quoteLive.value ? expiryNote(request.value?.quoteExpiresAt) : null))
-/** The requester's quote waits and View and sign is open to them: the priced quote is read there, not here. */
-const handoff = computed(() => quoteLive.value && can('accept') && !!request.value && !!currentAgreement(request.value))
-/** Staff turned the signed copy down (ACCEPTED → QUOTED): the move is to send a new copy, not to start again. */
-const resend = computed(() => {
-  const last = request.value?.history?.at(-1)
-  return handoff.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED'
-})
-/** Section headings sit one level under the title (h2 on the page, h3 beside the list). */
-const secTag = computed(() => `h${props.level + 1}`)
-
-/**
- * View and sign calls for attention (owner, 2026-11-18): a soft halo and a pulse until the customer first presses it
- * for this quote version (a revised quote calls again). Remembered in this browser; a private window forgets.
- */
-const ctaKey = computed(() => (request.value ? `cimh.cta.${request.value.id}.v${pricedQuote(request.value).version}` : ''))
-const ctaSeen = ref(true)
-watch(
-  ctaKey,
-  (k) => {
-    try {
-      ctaSeen.value = !k || localStorage.getItem(k) === '1'
-    } catch {
-      ctaSeen.value = false
-    }
-  },
-  { immediate: true },
-)
-function ctaPressed() {
-  ctaSeen.value = true
-  try {
-    localStorage.setItem(ctaKey.value, '1')
-  } catch {
-    /* private window: it calls again next visit */
-  }
-}
-
-/** The request path the customer reads: fewer, plainer stages than the status list (stages group statuses). */
-const STAGES = {
-  PAID: [
-    { label: 'Sent', statuses: ['SUBMITTED'] },
-    { label: 'Quote', statuses: ['QUOTING', 'QUOTED'] },
-    { label: 'Signed', statuses: ['ACCEPTED'] },
-    { label: 'Ordered', statuses: ['PURCHASING'] },
-    { label: 'Shipped', statuses: ['SHIPPED'] },
-    { label: 'Delivered', statuses: ['DELIVERED'] },
-  ],
-  PROBONO: [
-    { label: 'Sent', statuses: ['SUBMITTED'] },
-    { label: 'Approved', statuses: ['APPROVED'] },
-    { label: 'Picking', statuses: ['PICKING'] },
-    { label: 'Shipped', statuses: ['SHIPPED'] },
-    { label: 'Delivered', statuses: ['DELIVERED'] },
-  ],
-} as const
-const stages = computed(() => (request.value ? STAGES[request.value.type === 'PROBONO' ? 'PROBONO' : 'PAID'] : []))
-const stageAt = computed(() => {
-  const s = request.value?.status
-  return stages.value.findIndex((st) => (st.statuses as readonly string[]).includes(s ?? ''))
-})
-const closed = computed(() => !!request.value && isClosed(request.value.status))
-const finished = computed(() => request.value?.status === 'DELIVERED')
-
-/** Where the request stands and who acts next. */
-type Tone = 'turn' | 'warn' | 'cimh' | 'done' | 'stop'
-const well = computed<{ tone: Tone; title: string; text: string } | null>(() => {
-  const r = request.value
-  if (!r) return null
-  const who = mine.value ? 'you' : r.customerName
-  const turn: Tone = expiry.value?.soon ? 'warn' : 'turn'
-  switch (r.status) {
-    case 'SUBMITTED':
-      return r.type === 'PROBONO'
-        ? { tone: 'cimh', title: 'With CIMH for review', text: `Staff review Pro Bono requests and email ${who} the decision.` }
-        : { tone: 'cimh', title: 'With CIMH for a quote', text: `CIMH is preparing the quote and emails ${who} when it is ready. Nothing is needed until then.` }
-    case 'QUOTING':
-      return { tone: 'cimh', title: 'CIMH is preparing the quote', text: `CIMH emails ${who} when it is ready. Nothing is needed until then.` }
-    case 'QUOTED': {
-      const total = formatMoney(pricedQuote(r).total, r.currency ?? 'BBD')
-      if (!currentAgreement(r))  // a quote sent before 2026-11-17: staff re-send it with its agreement
-        return { tone: 'cimh', title: 'CIMH is updating the quote', text: `CIMH emails ${who} when the quote and its agreement are ready to sign.` }
-      const last = r.history?.at(-1)
-      if (mine.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED')  // staff rejected the signed copy
-        return { tone: turn, title: 'Upload the signed agreement again', text: `CIMH could not accept the signed copy (${last.reason ?? 'no reason given'}). Your quote still stands: sign the agreement again and upload it.` }
-      return mine.value
-        ? {
-            tone: turn,
-            title: `Your quote is ready: ${total}`,
-            text: 'The agreement lists every item, where it comes from and its price. Someone who can commit your organisation signs it, and you send the signed copy back here. If you no longer need the items, cancel the request.',
-          }
-        : { tone: 'cimh', title: `The quote is ready: ${total}`, text: `${r.customerName} signs the agreement or cancels the request.` }
-    }
-    case 'ACCEPTED': {
-      const next = [
-        sources.value.supplier && 'order the supplier items (shipped straight to you)',
-        sources.value.cimh && 'prepare the items from CIMH stock',
-      ].filter(Boolean)
-      return {
-        tone: 'done',
-        title: 'Signed agreement received',
-        text: `CIMH staff check the signature${next.length ? `, then ${next.join(' and ')}` : ''}. CIMH emails every step.`,
-      }
-    }
-    case 'PURCHASING': {
-      const doing = [sources.value.supplier && 'ordering the supplier items', sources.value.cimh && 'picking the items from its stock'].filter(Boolean)
-      return {
-        tone: 'cimh',
-        title: 'Signature verified',
-        text: `CIMH is ${doing.join(' and ') || 'preparing the items'}.${sources.value.supplier ? ' Supplier items are shipped straight to the delivery address.' : ''}`,
-      }
-    }
-    case 'APPROVED':
-    case 'PICKING':
-      return { tone: 'cimh', title: 'Approved', text: 'CIMH is picking the items. An email follows when they are shipped.' }
-    case 'SHIPPED':
-      return { tone: 'cimh', title: 'On its way', text: 'Each parcel and its tracking link is under Delivery.' }
-    case 'DELIVERED':
-      return {
-        tone: 'done',
-        title: 'Delivered',
-        text: r.type === 'PROBONO'
-          ? 'Everything on this request has been delivered. The delivery note is under Papers.'
-          : 'Everything on this request has been delivered. The invoice for the agreed total is under Papers.',
-      }
-    case 'REJECTED':
-      return { tone: 'stop', title: 'Not approved', text: closingReason.value ? `CIMH did not approve it: ${closingReason.value}.` : 'This request was not approved.' }
-    default:
-      return isClosed(r.status)
-        ? { tone: 'stop', title: 'Cancelled', text: `Nothing will be ordered for this request.${closingReason.value ? ` Reason: ${closingReason.value}.` : ''}` }
-        : null
-  }
-})
-const closingReason = computed(() => {
-  const r = request.value
-  return (r?.cancellation as { reason?: string } | null)?.reason ?? (r?.rejection as { reason?: string } | null)?.reason ?? null
-})
-/** Where the items come from, for the words after signing (no supplier sentence on an all-stock request). */
-const sources = computed(() => ({
-  cimh: !!request.value?.lines.some((l) => l.source === 'CIMH'),
-  supplier: !!request.value?.lines.some((l) => l.source === 'SUPPLIER'),
-}))
-
-/** What happened when, in the path's words (one progress model; the path shows where it stands). */
-function changeText(h: NonNullable<OrderRequest['history']>[number]): string {
-  switch (h.to) {
-    case 'SUBMITTED':
-      return 'Sent to CIMH'
-    case 'QUOTING':
-      return 'CIMH started the quote'
-    case 'QUOTED':
-      return h.from === 'ACCEPTED' ? 'Signed copy not accepted' : h.from === 'QUOTED' ? 'Quote revised' : 'Quote sent'
-    case 'ACCEPTED':
-      return 'Signed agreement received'
-    case 'PURCHASING':
-      return 'Signature verified, items ordered'
-    case 'APPROVED':
-      return 'Approved'
-    case 'PICKING':
-      return 'Picking started'
-    case 'SHIPPED':
-      return 'Shipped'
-    case 'DELIVERED':
-      return 'Delivered'
-    case 'REJECTED':
-      return 'Not approved'
-    case 'CANCELLED':
-    case 'DECLINED':
-      return 'Cancelled'
-    default:
-      return statusLabel(h.to)
-  }
-}
-const changes = computed(() => [...(request.value?.history ?? [])].reverse())
-
-/**
- * The papers after signing (critique fix 4, owner chose "page tiles"): what was signed and what CIMH sent, page 1 as a
- * small sheet each, opening the full-size reader. Signed copy, invoices, the agreement as sent, then the quotes behind
- * the prices (the agreed version's). An invoice still to come is a dashed sheet until delivery. Before signing the
- * papers live on View and sign; a Pro Bono request shows its papers once CIMH has made any.
- */
-type Paper = { key: string; id?: string; mime: string; label: string; kind: string }
-const SIGNED = ['ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED']
-const INVOICES = ['invoice', 'commercial_invoice', 'probono_invoice']
-/** Captions stay one short line under a sheet: the file type only when it is not a PDF (a phone photo, say). */
-const typeNote = (mime: string) => (mime === 'application/pdf' ? '' : mime === 'image/png' ? ' · PNG' : mime === 'image/jpeg' ? ' · JPG' : '')
-const papers = computed<Paper[]>(() => {
-  const r = request.value
-  if (!r) return []
-  const files = r.files ?? []
-  const byId = (id: string | null | undefined) => (id ? files.find((f) => f.id === id) : undefined)
-  const out: Paper[] = []
-  const ag = r.agreement
-  const signedState = r.type === 'PAID' && SIGNED.includes(r.status) && !!ag
-  const signed = signedState ? byId(ag?.signedFileId) : undefined
-  if (signed) out.push({ key: signed.id, id: signed.id, mime: signed.mime, label: 'Signed agreement', kind: `Yours${signed.uploadedAt ? `, sent ${formatDate(signed.uploadedAt)}` : ''}${typeNote(signed.mime)}` })
-  const invoices = files.filter((f) => INVOICES.includes(f.kind))
-  for (const f of invoices) out.push({ key: f.id, id: f.id, mime: f.mime, label: FILE_KIND_LABELS[f.kind], kind: `From CIMH${typeNote(f.mime)}` })
-  if (signedState && !invoices.some((f) => f.kind === 'invoice') && r.status !== 'DELIVERED')
-    out.push({ key: 'invoice-to-come', mime: '', label: 'Invoice', kind: 'Comes when the items are delivered' })
-  if (!signedState) return invoices.length ? out : []
-  const v = ag!.quoteVersion
-  const agreementFile = byId(ag!.fileId)
-  if (agreementFile) out.push({ key: agreementFile.id, id: agreementFile.id, mime: agreementFile.mime, label: 'Agreement', kind: `As sent, version ${v}` })
-  for (const f of files.filter((f) => f.kind === 'cimh_quote' && f.quoteVersion === v))
-    out.push({ key: f.id, id: f.id, mime: f.mime, label: 'CIMH quote', kind: 'CIMH stock' })
-  for (const q of r.quotes ?? []) {
-    if (q.version !== v) continue
-    for (const id of q.fileIds ?? []) {
-      const f = byId(id)
-      if (f) out.push({ key: f.id, id: f.id, mime: f.mime, label: q.supplier ?? 'Supplier quote', kind: `Supplier quote${typeNote(f.mime)}` })
-    }
-  }
-  return out
-})
-
-const paidLines = computed(() => request.value?.lines.filter((l) => !l.product.probono) ?? [])
-const probonoLines = computed(() => request.value?.lines.filter((l) => l.product.probono) ?? [])
-/** Where each line comes from, for the Items list once the quote has been sent. */
-const sourceOf = (l: OrderRequest['lines'][number]) =>
-  l.source === 'CIMH' ? 'From CIMH stock' : l.source === 'SUPPLIER' ? `From ${l.supplier ?? 'a supplier'}, shipped directly` : ''
-// The hand-off shows no prices (View and sign has them). A live quote someone else signs (or one waiting for its
-// agreement) still leads; later the quote is a record after the items.
-const order = computed(() => (handoff.value ? ['items'] : quoteLive.value ? ['quote', 'items'] : ['items', 'quote']))
-/** Once signed (or closed) the quote is a record: folded under the items, its total named in the summary. */
-const quoteRecord = computed(() => {
-  const r = request.value
-  if (!r || quoteLive.value || !showQuote.value) return null
-  const total = pricedQuote(r).total
-  const word = SIGNED.includes(r.status) ? 'Agreed total' : 'Quoted total'
-  return total ? `${word} ${formatMoney(total, r.currency ?? 'BBD')}` : word
-})
-
-const dialog = ref<null | 'decline' | 'cancel'>(null)
-const busy = ref(false)
-async function run(kind: 'decline' | 'cancel', reason: string) {
-  if (!request.value) return
-  busy.value = true
-  try {
-    request.value = await act(request.value, `/requests/{requestId}/${kind}`, { reason })
-    notify.toast('Request cancelled', 'success')
-    dialog.value = null
-    emit('changed', request.value)
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 409) await load()
-    notify.report(e)
-  } finally {
-    busy.value = false
-  }
-}
-</script>
-
 <template>
   <div class="sheet" :class="{ switching }" :style="{ '--dir': dir }" :inert="switching || undefined" :aria-busy="switching || undefined">
     <div v-if="missing" class="missing">
@@ -368,7 +21,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
       <ol
         v-if="!closed"
         class="path"
-        :class="{ 'your-turn': well?.tone === 'turn' || well?.tone === 'warn' }"
+        :class="{ 'your-turn': well?.tone === 'turn' || well?.tone === 'warn' || well?.tone === 'due' }"
         :style="{ '--n': stages.length, '--fill': Math.max(0, stageAt) / (stages.length - 1) }"
         aria-label="Request progress"
       >
@@ -393,8 +46,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
             <v-icon v-if="expiry.soon" :icon="mdiClockAlertOutline" size="16" />
             Quote valid until {{ formatDate(request.quoteExpiresAt) }} ({{ expiry.text }})
           </p>
-          <!-- The person who comes back (often another day, often someone else) with the signed copy goes straight
-               to sending it; View and sign opens on checking the quote. -->
+          <!-- The person who comes back (often another day, often someone else) with the signed copy goes straight to sending it; View and sign opens on checking the quote. -->
           <p v-if="handoff && !resend" class="well-return">
             Already signed?
             <router-link :to="`/requests/${request.id}/agreement?task=send`" class="well-link">
@@ -402,6 +54,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
             </router-link>
           </p>
         </div>
+        
         <div v-if="can('accept') && currentAgreement(request)" class="well-acts">
           <v-btn
             :to="`/requests/${request.id}/agreement${resend ? '?task=send' : ''}`"
@@ -416,7 +69,20 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
           </v-btn>
           <v-btn v-if="can('decline')" variant="text" class="well-act" @click="dialog = 'decline'">Cancel request</v-btn>
         </div>
+        <div v-else-if="payable && request.paymentStatus !== 'PAID'" class="well-acts">
+          <v-btn
+            :color="request.paymentStatus === 'DUE' ? 'error' : undefined"
+            :variant="request.paymentStatus === 'DUE' ? 'flat' : 'outlined'"
+            :size="request.paymentStatus === 'DUE' ? 'large' : undefined"
+            class="well-act"
+            @click="payOpen = true"
+          >
+            {{ request.paymentStatus === 'DUE' ? 'Send proof of payment' : 'Send another proof' }}
+          </v-btn>
+        </div>
       </section>
+      <PaymentProofDialog v-if="payable" v-model="payOpen" :request="request" @sent="onProofSent" />
+      
       <p v-if="!mine" class="t-body muted readonly">Requested by {{ request.customerName }} (same organisation). You can view it; only they can act on it.</p>
 
       <!-- The papers after signing: page 1 of each as a small sheet; a tile opens it full size. -->
@@ -569,6 +235,383 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
     </div>
   </div>
 </template>
+
+<script setup lang="ts">
+/**
+ * One request as the customer sees it (S-11), shared by the docket on /requests (beside the list) and the
+ * request's own page. Reading order: reference + title, the request path (one rule, a node per stage, filled
+ * to where it stands), the "whose move" well (the customer's turn in the primary tone with its action; CIMH's
+ * turn neutral; amber only when a quote expires within a week), then Quote (first while it waits for the
+ * customer), Status, Items, Delivery and the actions the server allows. "View and sign" (2026-11-17):
+ * while QUOTED the customer's move is View and sign, or Cancel request (the server's `decline`).
+ * Same-organisation users see it read-only (the server sends no actions for them).
+ * No Files section and no document preview (owner, 2026-11-18): the quote files and the agreement are read on
+ * View and sign (S-12).
+ * One of each (critique fix, 2026-11-18): one progress model (the path; dated changes fold into History at the end,
+ * in the same words), the total once, and while the requester's quote waits the page is a hand-off: the well says
+ * what the agreement is and leads to View and sign, which holds the priced quote (S-11 shows no prices then).
+ */
+import {
+  act,
+  ApiError,
+  carrierLabel,
+  countryName,
+  currentAgreement,
+  DocumentThumb,
+  expiryNote,
+  FILE_KIND_LABELS,
+  getRequest,
+  isClosed,
+  openSources,
+  type OrderRequest,
+  pricedQuote,
+  QuoteTable,
+  ReasonDialog,
+  requestTitle,
+  shipmentSender,
+  ShortRef,
+  StatusChip,
+  useNotify,
+  useSession,
+} from '@cimh/web-app'
+import { formatDate, formatDateTime, formatMoney, statusLabel } from '@cimh/web-ui'
+import { mdiArrowRight, mdiCheck, mdiChevronDown, mdiClockAlertOutline, mdiOpenInNew, mdiPackageVariantClosed } from '@mdi/js'
+import { computed, nextTick, ref, watch } from 'vue'
+import DocumentReader from './DocumentReader.vue'
+import PaymentProofDialog from './PaymentProofDialog.vue'
+
+const props = withDefaults(defineProps<{ id: string; level?: 1 | 2; setTitle?: boolean; dir?: 1 | -1 }>(), { level: 1, setTitle: false, dir: 1 })
+const emit = defineEmits<{ changed: [OrderRequest] }>()
+
+// ---- Delivery: one row per shipment, and the items that have not left yet
+const lineLabel = (lineId: string) => {
+  const ln = request.value?.lines.find((l) => l.lineId === lineId)
+  return ln ? `${ln.product.name} × ${ln.qty}` : lineId
+}
+const shipStarted = computed(() => ['PURCHASING', 'PICKING', 'SHIPPED'].includes(request.value?.status ?? '') && !!request.value?.shipments?.length)
+const toShip = computed(() =>
+  request.value ? openSources(request.value).flatMap((s) => s.lines.map((l) => lineLabel(l.lineId))) : [],
+)
+const session = useSession()
+const notify = useNotify()
+const request = ref<OrderRequest | null>(null)
+const missing = ref(false)
+const heading = ref<HTMLElement | null>(null)
+
+const title = computed(() => {
+  const r = request.value
+  return r ? requestTitle(r.lines[0]?.product.name, r.lines.length, r.type) : ''
+})
+
+async function load(focus = false) {
+  missing.value = false
+  try {
+    const r = await getRequest(props.id)
+    if (r.id !== props.id) return
+    request.value = r
+    if (props.setTitle) document.title = `${title.value} · CIMH Stores`
+    if (focus) {
+      await nextTick()
+      heading.value?.focus({ preventScroll: true })
+    }
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) missing.value = true
+    else notify.report(e, { retry: () => void load() })
+  }
+}
+watch(
+  () => props.id,
+  (id, old) => {
+    // Keep the previous request on screen (dimmed) while the next loads: no skeleton flash between rows.
+    if (!request.value || request.value.id !== id) void load(!!old)
+  },
+  { immediate: true },
+)
+const switching = computed(() => !!request.value && request.value.id !== props.id)
+
+const can = (a: string) => request.value?.allowedActions?.includes(a as never) ?? false
+const mine = computed(() => request.value?.customer === session.account?.id)
+const showQuote = computed(() => !!(request.value?.quotes?.length || request.value?.cimhQuote) && request.value?.type === 'PAID')
+const quoteLive = computed(() => request.value?.status === 'QUOTED')
+const expiry = computed(() => (quoteLive.value ? expiryNote(request.value?.quoteExpiresAt) : null))
+/** The requester's quote waits and View and sign is open to them: the priced quote is read there, not here. */
+const handoff = computed(() => quoteLive.value && can('accept') && !!request.value && !!currentAgreement(request.value))
+/** Staff turned the signed copy down (ACCEPTED → QUOTED): the move is to send a new copy, not to start again. */
+const resend = computed(() => {
+  const last = request.value?.history?.at(-1)
+  return handoff.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED'
+})
+/** Section headings sit one level under the title (h2 on the page, h3 beside the list). */
+const secTag = computed(() => `h${props.level + 1}`)
+
+/**
+ * View and sign calls for attention (owner, 2026-11-18): a soft halo and a pulse until the customer first presses it
+ * for this quote version (a revised quote calls again). Remembered in this browser; a private window forgets.
+ */
+const ctaKey = computed(() => (request.value ? `cimh.cta.${request.value.id}.v${pricedQuote(request.value).version}` : ''))
+const ctaSeen = ref(true)
+watch(
+  ctaKey,
+  (k) => {
+    try {
+      ctaSeen.value = !k || localStorage.getItem(k) === '1'
+    } catch {
+      ctaSeen.value = false
+    }
+  },
+  { immediate: true },
+)
+function ctaPressed() {
+  ctaSeen.value = true
+  try {
+    localStorage.setItem(ctaKey.value, '1')
+  } catch {
+    /* private window: it calls again next visit */
+  }
+}
+
+/** The request path the customer reads: fewer, plainer stages than the status list (stages group statuses). */
+const STAGES = {
+  PAID: [
+    { label: 'Sent', statuses: ['SUBMITTED'] },
+    { label: 'Quote', statuses: ['QUOTING', 'QUOTED'] },
+    { label: 'Signed', statuses: ['ACCEPTED'] },
+    { label: 'Ordered', statuses: ['PURCHASING'] },
+    { label: 'Shipped', statuses: ['SHIPPED'] },
+    { label: 'Delivered', statuses: ['DELIVERED'] },
+  ],
+  PROBONO: [
+    { label: 'Sent', statuses: ['SUBMITTED'] },
+    { label: 'Approved', statuses: ['APPROVED'] },
+    { label: 'Picking', statuses: ['PICKING'] },
+    { label: 'Shipped', statuses: ['SHIPPED'] },
+    { label: 'Delivered', statuses: ['DELIVERED'] },
+  ],
+} as const
+const stages = computed(() => (request.value ? STAGES[request.value.type === 'PROBONO' ? 'PROBONO' : 'PAID'] : []))
+const stageAt = computed(() => {
+  const s = request.value?.status
+  return stages.value.findIndex((st) => (st.statuses as readonly string[]).includes(s ?? ''))
+})
+const closed = computed(() => !!request.value && isClosed(request.value.status))
+const finished = computed(() => request.value?.status === 'DELIVERED')
+
+/** Where the request stands and who acts next. */
+type Tone = 'turn' | 'warn' | 'due' | 'cimh' | 'done' | 'stop'
+
+const well = computed<{ tone: Tone; title: string; text: string } | null>(() => {
+  const r = request.value
+  if (!r) return null
+  const who = mine.value ? 'you' : r.customerName
+  const turn: Tone = expiry.value?.soon ? 'warn' : 'turn'
+
+  switch (r.status) {
+    case 'SUBMITTED':
+      return r.type === 'PROBONO'
+        ? { tone: 'cimh', title: 'With CIMH for review', text: `Staff review Pro Bono requests and email ${who} the decision.` }
+        : { tone: 'cimh', title: 'With CIMH for a quote', text: `CIMH is preparing the quote and emails ${who} when it is ready. Nothing is needed until then.` }
+    case 'QUOTING':
+      return { tone: 'cimh', title: 'CIMH is preparing the quote', text: `CIMH emails ${who} when it is ready. Nothing is needed until then.` }
+    case 'QUOTED': {
+      const total = formatMoney(pricedQuote(r).total, r.currency ?? 'BBD')
+      if (!currentAgreement(r))  // a quote sent before 2026-11-17: staff re-send it with its agreement
+        return { tone: 'cimh', title: 'CIMH is updating the quote', text: `CIMH emails ${who} when the quote and its agreement are ready to sign.` }
+      const last = r.history?.at(-1)
+      if (mine.value && last?.from === 'ACCEPTED' && last.to === 'QUOTED')  // staff rejected the signed copy
+        return { tone: turn, title: 'Upload the signed agreement again', text: `CIMH could not accept the signed copy (${last.reason ?? 'no reason given'}). Your quote still stands: sign the agreement again and upload it.` }
+      return mine.value
+        ? {
+            tone: turn,
+            title: `Your quote is ready: ${total}`,
+            text: 'The agreement lists every item, where it comes from and its price. The head of your organisation signs the document on its behalf, and then upload the signed copy here. If you no longer need the items, cancel the request.',
+          }
+        : { tone: 'cimh', title: `The quote is ready: ${total}`, text: `${r.customerName} signs the agreement or cancels the request.` }
+    }
+    case 'ACCEPTED': {
+      const next = [
+        sources.value.supplier && 'order the supplier items (shipped straight to you)',
+        sources.value.cimh && 'prepare the items from CIMH stock',
+      ].filter(Boolean)
+      return {
+        tone: 'done',
+        title: 'Signed agreement received',
+        text: `CIMH staff check the signature${next.length ? `, then ${next.join(' and ')}` : ''}. CIMH emails every step.`,
+      }
+    }
+    case 'PURCHASING': {
+      const doing = [sources.value.supplier && 'ordering the supplier items', sources.value.cimh && 'picking the items from its stock'].filter(Boolean)
+      return {
+        tone: 'cimh',
+        title: 'Signature verified',
+        text: `CIMH is ${doing.join(' and ') || 'preparing the items'}.${sources.value.supplier ? ' Supplier items are shipped straight to the delivery address.' : ''}`,
+      }
+    }
+    case 'APPROVED':
+    case 'PICKING':
+      return { tone: 'cimh', title: 'Approved', text: 'CIMH is picking the items. An email follows when they are shipped.' }
+    case 'SHIPPED':
+      return { tone: 'cimh', title: 'On its way', text: 'Each parcel and its tracking link is under Delivery.' }
+    case 'DELIVERED':
+      if (r.paymentStatus === 'DUE')
+        return mine.value
+          ? {
+              tone: 'due',
+              title: `Payment required${r.amountDue ? `: ${formatMoney(r.amountDue, r.currency ?? 'BBD')}` : ''}`,
+              text: 'Everything has been delivered. Pay the invoice under Papers, then send CIMH the proof of payment (a bank receipt or transfer confirmation).',
+            }
+          : { tone: 'due', title: 'Payment required', text: `Delivered. ${r.customerName} pays the invoice and sends CIMH the proof of payment.` }
+      if (r.paymentStatus === 'PAID')
+        return { tone: 'done', title: 'Paid', text: `CIMH recorded the payment${r.paidAt ? ` on ${formatDate(r.paidAt)}` : ''}. Thank you. The invoice stays under Papers.` }
+      if (r.paymentStatus === 'PROOF_SENT')
+        return { tone: 'done', title: 'Proof of payment sent', text: 'Everything has been delivered. CIMH checks the payment against the invoice.' }
+      return {
+        tone: 'done',
+        title: 'Delivered',
+        text: r.type === 'PROBONO'
+          ? 'Everything on this request has been delivered. The delivery note is under Papers.'
+          : 'Everything on this request has been delivered. The invoice for the agreed total is under Papers.',
+      }
+    case 'REJECTED':
+      return { tone: 'stop', title: 'Not approved', text: closingReason.value ? `CIMH did not approve it: ${closingReason.value}.` : 'This request was not approved.' }
+    default:
+      return isClosed(r.status)
+        ? { tone: 'stop', title: 'Cancelled', text: `Nothing will be ordered for this request.${closingReason.value ? ` Reason: ${closingReason.value}.` : ''}` }
+        : null
+  }
+});
+
+const closingReason = computed(() => {
+  const r = request.value
+  return (r?.cancellation as { reason?: string } | null)?.reason ?? (r?.rejection as { reason?: string } | null)?.reason ?? null
+});
+
+/** Where the items come from, for the words after signing (no supplier sentence on an all-stock request). */
+const sources = computed(() => ({
+  cimh: !!request.value?.lines.some((l) => l.source === 'CIMH'),
+  supplier: !!request.value?.lines.some((l) => l.source === 'SUPPLIER'),
+}))
+
+/** What happened when, in the path's words (one progress model; the path shows where it stands). */
+function changeText(h: NonNullable<OrderRequest['history']>[number]): string {
+  switch (h.to) {
+    case 'SUBMITTED':
+      return 'Sent to CIMH'
+    case 'QUOTING':
+      return 'CIMH started the quote'
+    case 'QUOTED':
+      return h.from === 'ACCEPTED' ? 'Signed copy not accepted' : h.from === 'QUOTED' ? 'Quote revised' : 'Quote sent'
+    case 'ACCEPTED':
+      return 'Signed agreement received'
+    case 'PURCHASING':
+      return 'Signature verified, items ordered'
+    case 'APPROVED':
+      return 'Approved'
+    case 'PICKING':
+      return 'Picking started'
+    case 'SHIPPED':
+      return 'Shipped'
+    case 'DELIVERED':
+      return 'Delivered'
+    case 'REJECTED':
+      return 'Not approved'
+    case 'CANCELLED':
+    case 'DECLINED':
+      return 'Cancelled'
+    default:
+      return statusLabel(h.to)
+  }
+}
+
+const changes = computed(() => [...(request.value?.history ?? [])].reverse())
+
+/**
+ * The papers after signing (critique fix 4, owner chose "page tiles"): what was signed and what CIMH sent, page 1 as a
+ * small sheet each, opening the full-size reader. Signed copy, invoices, the agreement as sent, then the quotes behind
+ * the prices (the agreed version's). An invoice still to come is a dashed sheet until delivery. Before signing the
+ * papers live on View and sign; a Pro Bono request shows its papers once CIMH has made any.
+ */
+type Paper = { key: string; id?: string; mime: string; label: string; kind: string }
+const SIGNED = ['ACCEPTED', 'PURCHASING', 'SHIPPED', 'DELIVERED']
+const INVOICES = ['invoice', 'commercial_invoice', 'probono_invoice']
+/** Captions stay one short line under a sheet: the file type only when it is not a PDF (a phone photo, say). */
+const typeNote = (mime: string) => (mime === 'application/pdf' ? '' : mime === 'image/png' ? ' · PNG' : mime === 'image/jpeg' ? ' · JPG' : '')
+const papers = computed<Paper[]>(() => {
+  const r = request.value
+  if (!r) return []
+  const files = r.files ?? []
+  const byId = (id: string | null | undefined) => (id ? files.find((f) => f.id === id) : undefined)
+  const out: Paper[] = []
+  const ag = r.agreement
+  const signedState = r.type === 'PAID' && SIGNED.includes(r.status) && !!ag
+  const signed = signedState ? byId(ag?.signedFileId) : undefined
+  if (signed) out.push({ key: signed.id, id: signed.id, mime: signed.mime, label: 'Signed agreement', kind: `Yours${signed.uploadedAt ? `, sent ${formatDate(signed.uploadedAt)}` : ''}${typeNote(signed.mime)}` })
+  const invoices = files.filter((f) => INVOICES.includes(f.kind))
+  for (const f of invoices) out.push({ key: f.id, id: f.id, mime: f.mime, label: FILE_KIND_LABELS[f.kind], kind: `From CIMH${typeNote(f.mime)}` })
+  for (const f of files.filter((f) => f.kind === 'payment_proof'))
+    out.push({ key: f.id, id: f.id, mime: f.mime, label: 'Proof of payment', kind: `Yours${f.uploadedAt ? `, sent ${formatDate(f.uploadedAt)}` : ''}${typeNote(f.mime)}` })
+  if (signedState && !invoices.some((f) => f.kind === 'invoice') && r.status !== 'DELIVERED')
+    out.push({ key: 'invoice-to-come', mime: '', label: 'Invoice', kind: 'Comes when the items are delivered' })
+  if (!signedState) return out
+  const v = ag!.quoteVersion
+  const agreementFile = byId(ag!.fileId)
+  if (agreementFile) out.push({ key: agreementFile.id, id: agreementFile.id, mime: agreementFile.mime, label: 'Agreement', kind: `As sent, version ${v}` })
+  for (const f of files.filter((f) => f.kind === 'cimh_quote' && f.quoteVersion === v))
+    out.push({ key: f.id, id: f.id, mime: f.mime, label: 'CIMH quote', kind: 'CIMH stock' })
+  for (const q of r.quotes ?? []) {
+    if (q.version !== v) continue
+    for (const id of q.fileIds ?? []) {
+      const f = byId(id)
+      if (f) out.push({ key: f.id, id: f.id, mime: f.mime, label: q.supplier ?? 'Supplier quote', kind: `Supplier quote${typeNote(f.mime)}` })
+    }
+  }
+  return out
+})
+
+const paidLines = computed(() => request.value?.lines.filter((l) => !l.product.probono) ?? [])
+const probonoLines = computed(() => request.value?.lines.filter((l) => l.product.probono) ?? [])
+/** Where each line comes from, for the Items list once the quote has been sent. */
+const sourceOf = (l: OrderRequest['lines'][number]) =>
+  l.source === 'CIMH' ? 'From CIMH stock' : l.source === 'SUPPLIER' ? `From ${l.supplier ?? 'a supplier'}, shipped directly` : ''
+// The hand-off shows no prices (View and sign has them). A live quote someone else signs (or one waiting for its
+// agreement) still leads; later the quote is a record after the items.
+const order = computed(() => (handoff.value ? ['items'] : quoteLive.value ? ['quote', 'items'] : ['items', 'quote']))
+/** Once signed (or closed) the quote is a record: folded under the items, its total named in the summary. */
+const quoteRecord = computed(() => {
+  const r = request.value
+  if (!r || quoteLive.value || !showQuote.value) return null
+  const total = pricedQuote(r).total
+  const word = SIGNED.includes(r.status) ? 'Agreed total' : 'Quoted total'
+  return total ? `${word} ${formatMoney(total, r.currency ?? 'BBD')}` : word
+})
+
+/** Delivered paid request: the requester pays and sends a proof of payment (owner, 2026-11-23). */
+const payable = computed(() => mine.value && !!request.value?.paymentStatus)
+const payOpen = ref(false)
+function onProofSent(r: OrderRequest) {
+  request.value = r
+  emit('changed', r)
+}
+
+const dialog = ref<null | 'decline' | 'cancel'>(null)
+const busy = ref(false)
+async function run(kind: 'decline' | 'cancel', reason: string) {
+  if (!request.value) return
+  busy.value = true
+  try {
+    request.value = await act(request.value, `/requests/{requestId}/${kind}`, { reason })
+    notify.toast('Request cancelled', 'success')
+    dialog.value = null
+    emit('changed', request.value)
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) await load()
+    notify.report(e)
+  } finally {
+    busy.value = false
+  }
+}
+</script>
+
+
 
 <style scoped>
 .sheet {
@@ -799,7 +842,8 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
 .well.done {
   --tone: var(--v-theme-success);
 }
-.well.stop {
+.well.stop,
+.well.due {
   --tone: var(--v-theme-error);
 }
 .well.cimh {

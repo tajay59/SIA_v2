@@ -20,7 +20,7 @@ paths:
   /files:
     post:
       tags: [files]
-      summary: Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED; stamped with the current quote version)
+      summary: Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED, or `payment_proof` on their own PAID request once DELIVERED; stamped with the current quote version)
       description: PDF, JPEG, PNG, WebP; type checked from content (magic bytes); ≤ 20 MB; images re-encoded.
       parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
       requestBody:
@@ -33,7 +33,7 @@ paths:
               properties:
                 file: { type: string, format: binary }
                 requestId: { type: string }
-                kind: { type: string, enum: [supplier_quote, signed_agreement, upload, commercial_invoice] }
+                kind: { type: string, enum: [supplier_quote, signed_agreement, payment_proof, upload, commercial_invoice] }
       responses:
         '201':
           description: Stored (attached to the request asynchronously via document.uploaded)
@@ -252,7 +252,7 @@ components:
       properties:
         id: { type: string }
         requestId: { type: [string, 'null'], description: null for label batches }
-        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload, labels] }
+        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, payment_proof, upload, labels] }
         name: { type: string }
         mime: { type: string }
         size: { type: integer }

@@ -8,6 +8,7 @@ stock.* events (consumer.py); picks go through inventory's internal pick endpoin
 
 from __future__ import annotations
 
+import asyncio
 import re
 import uuid
 from collections.abc import Awaitable, Callable
@@ -58,6 +59,50 @@ def actor(p: Principal) -> dict[str, str]:
 
 
 SYSTEM = {"id": "system", "name": "System", "role": "service"}
+
+
+# Only what `summary()` reads (lists): order documents carry history, quotes, files and the outbox.
+SUMMARY_PROJECTION = {k: 1 for k in (
+    "id", "type", "status", "customer", "customerName", "organisationId", "organisationName", "currency",
+    "lines.product.name", "quoteExpiresAt", "submittedAt", "createdAt", "updatedAt", "statusAt", "payment",
+    "files.kind", "files.deleted", "agreement.total", "total", "version",
+)}  # fmt: skip
+UNPAID = {"type": "PAID", "status": "DELIVERED", "payment.paidAt": None}
+# Staff work counts (SIA drawer, dashboard, desk tabs): key -> filter.
+WORK_COUNTS = {
+    "new": {"status": "SUBMITTED"},
+    "quoting": {"status": "QUOTING"},
+    "quoted": {"status": "QUOTED"},
+    "verify": {"status": "ACCEPTED"},
+    "fulfil": {"status": {"$in": ["APPROVED", "PICKING", "PURCHASING"]}},
+    "paymentDue": UNPAID,
+}
+
+
+def payment_status(doc: dict[str, Any]) -> str | None:
+    """A delivered paid request needs paying: DUE until the customer sends a proof of payment, then PROOF_SENT;
+    PAID once staff mark it paid (with or without a proof)."""
+    if doc.get("type") != "PAID" or doc.get("status") != "DELIVERED":
+        return None
+    if (doc.get("payment") or {}).get("paidAt"):  # staff marked it paid
+        return "PAID"
+    sent = any(f.get("kind") == "payment_proof" and not f.get("deleted") for f in doc.get("files") or [])
+    return "PROOF_SENT" if sent else "DUE"
+
+
+def amount_due(doc: dict[str, Any]) -> str | None:
+    """What a delivered paid request owes: the signed agreement's total (a migrated request: its legacy total).
+    None when nothing above zero is on record (the invoice says it)."""
+    if payment_status(doc) is None:
+        return None
+    ag = doc.get("agreement") or {}
+    for value in (ag.get("total"), doc.get("total")):
+        try:
+            if value is not None and Decimal(str(value)) > 0:
+                return d.money_str(value)
+        except (ArithmeticError, ValueError):
+            continue
+    return None
 
 
 # ---------------------------------------------------------------- erasure (user.deleted)
@@ -113,6 +158,7 @@ def _forget_update(doc: dict[str, Any], user_id: str) -> dict[str, Any] | None:
             sets["customerSnapshot"] = snap
         if doc.get("customerName") not in (None, DELETED):
             sets["customerName"] = DELETED
+            sets["nameKeys"] = d.name_keys(doc.get("organisationName"))
         if doc.get("notes") and doc["notes"] != DELETED:
             sets["notes"] = DELETED
         ship = doc.get("shipTo")
@@ -418,6 +464,7 @@ class OrderService:
                 "customerName": customer_name,
                 "organisationId": account.get("organisationId", p.org_id),
                 "organisationName": account.get("organisationName"),
+                "nameKeys": d.name_keys(customer_name, account.get("organisationName")),
                 "lines": req_lines,
                 "currency": "BBD" if kind == d.PAID else None,  # every new quote is in BBD (owner, 2026-11-16)
                 "shipTo": body["shipTo"],
@@ -492,16 +539,36 @@ class OrderService:
                 filt["customer"] = "\0none"
         if q.get("type"):
             filt["type"] = q["type"]
+        if q.get("payment") == "due":  # delivered paid requests with no proof of payment yet
+            filt["type"] = "PAID"
+            filt["status"] = "DELIVERED"
+            filt["files"] = {"$not": {"$elemMatch": {"kind": "payment_proof", "deleted": {"$ne": True}}}}
+            filt["payment.paidAt"] = None
+        elif q.get("payment") == "outstanding":  # staff Open tab: the statuses asked for + delivered paid not yet paid
+            unpaid = {"type": "PAID", "status": "DELIVERED", "payment.paidAt": None}
+            filt["$and"] = [{"$or": [{"status": filt.pop("status")}, unpaid]}]
+        elif q.get("payment") == "settled":  # staff Closed tab: leave out delivered paid requests not yet paid
+            filt["$nor"] = [{"type": "PAID", "status": "DELIVERED", "payment.paidAt": None}]
+        elif q.get("payment") == "unpaid":  # staff: delivered paid requests not marked paid (with or without a proof)
+            filt["type"] = "PAID"
+            filt["status"] = "DELIVERED"
+            filt["payment.paidAt"] = None
         if q.get("year"):
             y = int(q["year"])
             filt["submittedAt"] = {"$gte": datetime(y, 1, 1, tzinfo=UTC), "$lt": datetime(y + 1, 1, 1, tzinfo=UTC)}
         if q.get("q") and p.is_staff:
-            rx = {"$regex": "^" + re.escape(q["q"]), "$options": "i"}
-            filt["$or"] = [{"id": rx}, {"customerName": rx}, {"organisationName": rx}]
+            # Prefix match, each branch on an index: ids as typed and as `ORD` + lower-case hex, names via the
+            # lower-cased `nameKeys` (a case-insensitive regex can't use an index).
+            text = q["q"].strip()
+            ids = {text, "ORD" + text[3:].lower() if text[:3].lower() == "ord" else text.lower()}
+            filt["$or"] = [{"id": {"$regex": "^" + re.escape(i)}} for i in sorted(ids)]
+            filt["$or"].append({"nameKeys": {"$regex": "^" + re.escape(text.lower())}})
         sort = q.get("sort") or "newest"
-        field_, desc = {"newest": ("submittedAt", True), "oldest": ("submittedAt", False)}.get(
-            sort, ("statusAt", False)
-        )
+        field_, desc = {
+            "newest": ("submittedAt", True),
+            "oldest": ("submittedAt", False),
+            "recent": ("statusAt", True),  # latest status change first (SIA desk)
+        }.get(sort, ("statusAt", False))
         if cursor:
             value, cid_ = decode_cursor(cursor)
             if isinstance(value, str) and value and field_ != "id":
@@ -510,13 +577,26 @@ class OrderService:
             after = {"$or": [{field_: {op: value}}, {field_: value, "id": {op: cid_}}]}
             filt = {"$and": [filt, after]}
         direction = -1 if desc else 1
-        docs = await self.store.orders.find(filt).sort([(field_, direction), ("id", direction)]).limit(n + 1).to_list()
+        docs = (
+            await self.store.orders.find(filt, SUMMARY_PROJECTION)
+            .sort([(field_, direction), ("id", direction)])
+            .limit(n + 1)
+            .to_list()
+        )
         nxt = None
         if len(docs) > n:
             docs = docs[:n]
             last = docs[-1]
             nxt = encode_cursor(aware(last.get(field_)), last["id"])
         return [self.summary(x) for x in docs], nxt
+
+    async def work_counts(self, p: Principal) -> dict[str, int]:
+        """Exact counts for the staff desk tabs, one indexed count per tab (replaced six capped list calls)."""
+        if not p.is_staff:
+            raise forbidden("Only staff can count requests")
+        keys = list(WORK_COUNTS)
+        counts = await asyncio.gather(*(self.store.orders.count_documents(WORK_COUNTS[k]) for k in keys))
+        return dict(zip(keys, counts, strict=True))
 
     # ================================================================== views
 
@@ -539,6 +619,9 @@ class OrderService:
             "submittedAt": iso(doc.get("submittedAt")) or iso(doc.get("createdAt")) or "",
             "updatedAt": iso(doc.get("updatedAt")),
             "waitingDays": max(0, (now() - since).days),
+            "paymentStatus": payment_status(doc),
+            "amountDue": amount_due(doc),
+            "paidAt": iso((doc.get("payment") or {}).get("paidAt")),
             "version": int(doc.get("version") or 1),
         }
 
@@ -752,6 +835,8 @@ class OrderService:
                 }.get(st, [])
             if doc.get("shipments") and st in SHIPMENT_EDITABLE:
                 out.append("edit-shipment")
+            if payment_status(doc) in ("DUE", "PROOF_SENT"):
+                out.append("mark-paid")
         return out
 
     @staticmethod
@@ -1462,6 +1547,19 @@ class OrderService:
         if res is None:
             raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
         return self.view(res, p)
+
+    async def mark_paid(self, p: Principal, rid: str, version: int, body: dict[str, Any]) -> dict[str, Any]:
+        """Staff record that a delivered paid request has been paid (owner, 2026-11-23). No status move: the request
+        stays DELIVERED; its payment status becomes PAID and it leaves the customer's Payment required list."""
+        doc = await self._load(rid)
+        if payment_status(doc) not in ("DUE", "PROOF_SENT"):
+            if payment_status(doc) == "PAID":
+                raise conflict("ALREADY_PAID", "This request is already marked paid")
+            raise illegal(doc["status"], "mark-paid")
+        if int(doc.get("version") or 1) != version:
+            raise conflict("VERSION_CONFLICT", "The request changed meanwhile; reload it")
+        payment = {"paidAt": body.get("paidAt") or now(), "by": actor(p), "note": body.get("note"), "markedAt": now()}
+        return await self._patch(p, doc, version, {"$set": {"payment": payment}}, [])
 
     async def deliver(self, p: Principal, rid: str, version: int, body: dict[str, Any], cid: str) -> dict[str, Any]:
         async def build(doc: dict[str, Any], dst: str) -> Change:

@@ -18,7 +18,7 @@ from .service import DocumentService
 
 router = APIRouter()
 MAX_LABELS = 200
-UploadKind = Literal["supplier_quote", "signed_agreement", "upload", "commercial_invoice"]
+UploadKind = Literal["supplier_quote", "signed_agreement", "payment_proof", "upload", "commercial_invoice"]
 
 
 class Strict(BaseModel):

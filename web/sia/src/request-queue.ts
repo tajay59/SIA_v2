@@ -20,6 +20,7 @@ import IVerify from '~icons/material-symbols/task-rounded'
 import ISigned from '~icons/material-symbols/signature-rounded'
 import IShip from '~icons/material-symbols/local-shipping-rounded'
 import IDeliver from '~icons/material-symbols/done-all-rounded'
+import IPaid from '~icons/material-symbols/payments-rounded'
 import IStow from '~icons/material-symbols/shelves-rounded'
 import IScan from '~icons/material-symbols/barcode-scanner-rounded'
 import IRefresh from '~icons/material-symbols/refresh-rounded'
@@ -70,6 +71,12 @@ export function why(r: RequestSummary): { text: string; tone: Tone } {
       return { text: 'Pick and ship', tone: 'fulfil' }
     case 'SHIPPED':
       return { text: 'Mark delivered', tone: 'fulfil' }
+    case 'DELIVERED':
+      // Payment after delivery (owner, 2026-11-23): staff mark a paid request paid once the money is in.
+      if (r.paymentStatus === 'PROOF_SENT') return { text: 'Check the proof of payment, then mark it paid', tone: 'urgent' }
+      if (r.paymentStatus === 'DUE') return { text: 'Waiting for the customer to pay', tone: 'wait' }
+      if (r.paymentStatus === 'PAID') return { text: `Paid${r.paidAt ? ` ${fmtDate(r.paidAt)}` : ''}`, tone: 'closed' }
+      return { text: statusLabel(r.status), tone: 'closed' }
     default:
       return { text: statusLabel(r.status), tone: 'closed' }
   }
@@ -94,6 +101,7 @@ export const BTN = {
   pick: markRaw(IFulfil),
   ship: markRaw(IShip),
   deliver: markRaw(IDeliver),
+  paid: markRaw(IPaid),
   invoice: markRaw(IInvoice),
   customs: markRaw(ICustoms),
   stow: markRaw(IStow),

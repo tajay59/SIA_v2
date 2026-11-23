@@ -187,6 +187,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | PUT / DELETE | `/cart/lines/{productId}` | user | — |
 | POST | `/requests` | user | → `SUBMITTED` (1 or 2 requests) |
 | GET | `/requests` · `/requests/{id}` | user (own/org) · staff | — |
+| GET | `/requests/counts` (exact desk tab counts: new, quoting, quoted, verify, fulfil, paymentDue) | staff | — |
 | POST | `/requests/{id}/accept` | requester, admin | `QUOTED → ACCEPTED` ("View and sign": signed copy of this quote version's agreement) |
 | POST | `/requests/{id}/reject-agreement` | staff | `ACCEPTED → QUOTED` (signature not acceptable; quote valid ≥ 7 more days) |
 | POST | `/requests/{id}/decline` | requester, admin | `QUOTED → DECLINED → CANCELLED` (the customer's "Cancel request" on a quote) |

@@ -36,7 +36,7 @@ from .files import EXT, FileStore, Scanner, ScannerDown, pdf_pages, reencode, sa
 
 log = logging.getLogger("document")
 
-UPLOAD_KINDS = ("supplier_quote", "signed_agreement", "upload", "commercial_invoice")
+UPLOAD_KINDS = ("supplier_quote", "signed_agreement", "payment_proof", "upload", "commercial_invoice")
 NAMES = {
     "cimh_quote": "CIMH-quote",
     "agreement": "Agreement",
@@ -145,13 +145,17 @@ class DocumentService:
             if staff_acc is None:
                 raise not_found("No request with this id")
             return staff_acc
-        if kind != "signed_agreement":
-            raise forbidden("Customers can only upload the signed agreement")
+        if kind not in ("signed_agreement", "payment_proof"):
+            raise forbidden("Customers can only upload the signed agreement or a proof of payment")
         acc = await self.orders.access(rid, p.sub)
         if acc is None or not acc.get("allowed"):
             raise not_found("No request with this id")
         if not acc.get("canAct"):
             raise forbidden("Only the requester or an admin can do this")
+        if kind == "payment_proof":
+            if acc.get("type") != "PAID" or acc.get("status") != "DELIVERED":
+                raise conflict("INVALID_STATE", "A proof of payment can be sent once a paid request is delivered")
+            return acc
         if acc.get("status") != "QUOTED":
             raise conflict("INVALID_STATE", "The signed agreement can be uploaded only while the quote is open")
         return acc

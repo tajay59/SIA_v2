@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from . import domain as d
 from .store import now
 
 log = logging.getLogger("order.upgrade")
@@ -110,13 +111,19 @@ async def customer_names(orders: Any, deps: Any) -> int:
     fixed = 0
     orgs: dict[str, str | None] = {}
     identity_down = False
+    # `namesChecked` marks a request already looked at (2026-11-23): an organisation identity has no name for
+    # stays empty, and without the mark every start re-read and re-asked about every such request (on the dev
+    # stack: all of them; at 100k requests the walk outgrew the 256 MB worker and the restart began it again).
     filt = {
+        "namesChecked": {"$ne": True},
         "$or": [
             {"customerName": {"$in": [None, ""]}},
             {"organisationName": {"$in": [None, ""]}, "organisationId": {"$nin": [None, ""]}},
-        ]
+        ],
     }
-    async for doc in orders.find(filt):
+    fields = {"_id": 1, "customer": 1, "customerName": 1, "customerSnapshot": 1, "organisationId": 1,
+              "organisationName": 1}  # fmt: skip
+    async for doc in orders.find(filt, fields):
         sets: dict[str, Any] = {}
         if not doc.get("customerName"):
             snap = doc.get("customerSnapshot") or {}
@@ -134,9 +141,28 @@ async def customer_names(orders: Any, deps: Any) -> int:
                 orgs[customer] = acc.get("organisationName") if same_org else None
             if orgs.get(customer):
                 sets["organisationName"] = orgs[customer]
-        if sets:
-            res = await orders.update_one({"_id": doc["_id"]}, {"$set": sets})
+        if identity_down and not sets:
+            continue  # not looked at properly: try again next start
+        sets["namesChecked"] = True
+        sets["nameKeys"] = d.name_keys(sets.get("customerName", doc.get("customerName")),
+                                       sets.get("organisationName", doc.get("organisationName")))  # fmt: skip
+        res = await orders.update_one({"_id": doc["_id"]}, {"$set": sets})
+        if len(sets) > 2:
             fixed += res.modified_count
     if fixed:
         log.warning("customer-names upgrade", extra={"requestsFilled": fixed})
+    return fixed
+
+
+async def name_keys(orders: Any) -> int:
+    """name keys (2026-11-23): the staff desk searches names by an indexed prefix on lower-cased `nameKeys`.
+    Fills it on requests written before; a second run changes nothing."""
+    fixed = 0
+    async for doc in orders.find({"nameKeys": {"$exists": False}, "status": {"$ne": "CART"}},
+                                 {"_id": 1, "customerName": 1, "organisationName": 1}):  # fmt: skip
+        keys = d.name_keys(doc.get("customerName"), doc.get("organisationName"))
+        res = await orders.update_one({"_id": doc["_id"]}, {"$set": {"nameKeys": keys}})
+        fixed += res.modified_count
+    if fixed:
+        log.warning("name-keys upgrade", extra={"requestsFilled": fixed})
     return fixed

@@ -91,6 +91,7 @@ export const FILE_KIND_LABELS: Record<FileRef['kind'], string> = {
   invoice: 'Invoice',
   commercial_invoice: 'Commercial invoice',
   probono_invoice: 'Pro Bono invoice',
+  payment_proof: 'Proof of payment',
   upload: 'File',
 }
 
@@ -142,6 +143,7 @@ export async function getRequest(id: string): Promise<OrderRequest> {
 
 type ActionPath =
   | '/requests/{requestId}/accept'
+  | '/requests/{requestId}/mark-paid'
   | '/requests/{requestId}/decline'
   | '/requests/{requestId}/cancel'
   | '/requests/{requestId}/start-quoting'
@@ -185,8 +187,13 @@ export async function pickForRequest(requestId: string, lineId: string, unit: st
   )) as OrderRequest
 }
 
-/** Upload a file to a request (document-svc). Customers may upload only `signed_agreement`. */
-export async function uploadRequestFile(requestId: string, kind: 'signed_agreement' | 'supplier_quote' | 'upload', file: File) {
+/** Upload a file to a request (document-svc). Customers may upload only `signed_agreement` (QUOTED) and
+ * `payment_proof` (a delivered paid request). */
+export async function uploadRequestFile(
+  requestId: string,
+  kind: 'signed_agreement' | 'payment_proof' | 'supplier_quote' | 'upload',
+  file: File,
+) {
   const form = new FormData()
   form.append('file', file)
   form.append('requestId', requestId)
@@ -195,6 +202,9 @@ export async function uploadRequestFile(requestId: string, kind: 'signed_agreeme
     documents.POST('/files', { body: form as any, bodySerializer: (b: unknown) => b as FormData } as any),
   )) as { id: string; name: string }
 }
+
+/** A delivered paid request the customer still has to pay (no proof of payment sent yet). */
+export const paymentDue = (r: { paymentStatus?: string | null }) => r.paymentStatus === 'DUE'
 
 export const fileUrl = (id: string) => `${BASE.documents}/files/${encodeURIComponent(id)}`
 /** The agreement a Send quote would email, drawn from the saved draft and marked as a preview (staff; never stored). */

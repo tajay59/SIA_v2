@@ -159,13 +159,15 @@ export interface paths {
                     status?: components["schemas"]["RequestStatus"][];
                     type?: components["schemas"]["RequestType"];
                     year?: number;
+                    /** @description `due` = delivered PAID requests with no proof of payment yet; `unpaid` = delivered PAID requests not marked paid (proof sent or not; SIA Payment due tab); `settled` = leaves those out (SIA Closed tab); `outstanding` = adds them to the statuses asked for (SIA Open tab) */
+                    payment?: "due" | "unpaid" | "settled" | "outstanding";
                     /** @description staff/admin or same organisation */
                     customer?: string;
                     /** @description staff/admin only */
                     organisationId?: string;
                     /** @description Request id or organisation/customer name prefix (staff) */
                     q?: string;
-                    sort?: "newest" | "oldest" | "waiting";
+                    sort?: "newest" | "oldest" | "waiting" | "recent";
                     /** @description Opaque cursor from a previous page's `nextCursor`. */
                     cursor?: components["parameters"]["Cursor"];
                     limit?: components["parameters"]["Limit"];
@@ -240,6 +242,56 @@ export interface paths {
                 503: components["responses"]["Unavailable"];
             };
         };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/counts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Exact staff work counts for the desk tabs, drawer and dashboard (staff) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Counts */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @description SUBMITTED */
+                            new: number;
+                            /** @description QUOTING */
+                            quoting: number;
+                            /** @description QUOTED */
+                            quoted: number;
+                            /** @description ACCEPTED */
+                            verify: number;
+                            /** @description APPROVED, PICKING, PURCHASING */
+                            fulfil: number;
+                            /** @description Delivered PAID requests not marked paid */
+                            paymentDue: number;
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1066,6 +1118,61 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/requests/{requestId}/mark-paid": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Record that a delivered PAID request has been paid (staff); paymentStatus becomes PAID, status stays DELIVERED */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": {
+                        /** Format: date-time */
+                        paidAt?: string;
+                        note?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Marked paid */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Request"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/requests/{requestId}/access": {
         parameters: {
             query?: never;
@@ -1512,7 +1619,7 @@ export interface components {
         FileRef: {
             id: string;
             /** @enum {string} */
-            kind: "supplier_quote" | "cimh_quote" | "agreement" | "signed_agreement" | "invoice" | "commercial_invoice" | "probono_invoice" | "upload";
+            kind: "supplier_quote" | "cimh_quote" | "agreement" | "signed_agreement" | "invoice" | "commercial_invoice" | "probono_invoice" | "payment_proof" | "upload";
             name: string;
             mime: string;
             size: number;
@@ -1540,6 +1647,15 @@ export interface components {
             updatedAt?: components["schemas"]["Timestamp"];
             /** @description Days in current status (staff queue) */
             waitingDays?: number;
+            /**
+             * @description Delivered PAID requests only: DUE until a payment_proof file is attached, then PROOF_SENT; PAID once staff mark it paid
+             * @enum {string|null}
+             */
+            paymentStatus?: "DUE" | "PROOF_SENT" | "PAID" | null;
+            /** @description When staff recorded the payment */
+            paidAt?: components["schemas"]["Timestamp"] | null;
+            /** @description With paymentStatus: the signed agreement total (migrated requests: their legacy total); null when none above zero is on record */
+            amountDue?: components["schemas"]["Money"] | null;
             version: number;
         };
         Request: components["schemas"]["RequestSummary"] & {
@@ -1595,7 +1711,7 @@ export interface components {
             cancellation?: Record<string, never> | null;
             history: components["schemas"]["StatusChange"][];
             /** @description Actions the caller may take now (drives UI buttons) */
-            allowedActions?: ("accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "edit-shipment" | "deliver")[];
+            allowedActions?: ("accept" | "decline" | "cancel" | "reject-agreement" | "start-quoting" | "quote-draft" | "send-quote" | "purchase-orders" | "approve" | "reject" | "pick" | "ship" | "edit-shipment" | "deliver" | "mark-paid")[];
         };
         /**
          * Format: date-time
@@ -1633,6 +1749,11 @@ export interface components {
         };
         /** @enum {string} */
         Currency: "BBD" | "USD";
+        /**
+         * @description Decimal amount as a string with 2 decimals (never a float).
+         * @example 1250.00
+         */
+        Money: string;
         Address: {
             line1: string;
             line2?: string | null;
@@ -1652,11 +1773,6 @@ export interface components {
             tel?: string | null;
         };
         ShippingAddress: components["schemas"]["Address"] & components["schemas"]["Contact"];
-        /**
-         * @description Decimal amount as a string with 2 decimals (never a float).
-         * @example 1250.00
-         */
-        Money: string;
         Actor: {
             id: string;
             name: string;

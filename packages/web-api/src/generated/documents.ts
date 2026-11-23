@@ -14,7 +14,7 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED; stamped with the current quote version)
+         * Upload a file to a request (staff for all kinds; customers only `signed_agreement` on their own requests while QUOTED, or `payment_proof` on their own PAID request once DELIVERED; stamped with the current quote version)
          * @description PDF, JPEG, PNG, WebP; type checked from content (magic bytes); ≤ 20 MB; images re-encoded.
          */
         post: {
@@ -34,7 +34,7 @@ export interface paths {
                         file: string;
                         requestId: string;
                         /** @enum {string} */
-                        kind: "supplier_quote" | "signed_agreement" | "upload" | "commercial_invoice";
+                        kind: "supplier_quote" | "signed_agreement" | "payment_proof" | "upload" | "commercial_invoice";
                     };
                 };
             };
@@ -550,7 +550,7 @@ export interface components {
             /** @description null for label batches */
             requestId: string | null;
             /** @enum {string} */
-            kind: "supplier_quote" | "cimh_quote" | "agreement" | "signed_agreement" | "invoice" | "commercial_invoice" | "probono_invoice" | "upload" | "labels";
+            kind: "supplier_quote" | "cimh_quote" | "agreement" | "signed_agreement" | "invoice" | "commercial_invoice" | "probono_invoice" | "payment_proof" | "upload" | "labels";
             name: string;
             mime: string;
             size: number;

@@ -204,7 +204,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     // are read on View and sign), one progress model (the path; dated changes folded into History).
     const well = page.getByRole('region', { name: 'Where it stands' })
     await expect(well.getByText('Your quote is ready: BBD 430.00')).toBeVisible()
-    await expect(well.getByText(/Someone who can commit your organisation signs it/)).toBeVisible()
+    await expect(well.getByText(/The head of your organisation signs the document/)).toBeVisible()
     await expect(page.getByText('BBD 430.00')).toHaveCount(1)
     await expect(page.getByText(/Estimated shipping/)).toHaveCount(0)
     await expect(page.getByRole('list', { name: 'Request status' })).toHaveCount(0)
@@ -413,7 +413,8 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
   test('J-04 customer sees the request delivered', async ({ page }) => {
     await shopLogin(page, customer)
     await page.goto(`${SHOP}/requests/${paidRequest}`)
-    await expect(page.getByRole('region', { name: 'Where it stands' }).getByText('Delivered', { exact: true })).toBeVisible()
+    // A delivered paid request waits for payment: the well asks for the proof.
+    await expect(page.getByRole('region', { name: 'Where it stands' }).getByText(/^Payment required/)).toBeVisible()
     // One row per parcel: CIMH's stock items (hand delivered) and the supplier's direct shipment with its Track link.
     const parcels = page.getByRole('list', { name: 'Shipments' })
     await expect(parcels.getByRole('listitem')).toHaveCount(2)

@@ -253,6 +253,18 @@ async function updateShip(id: string, body: ShipmentPatch) {
     busy.value = null
   }
 }
+// ---- payment (owner, 2026-11-23): a delivered paid request is marked paid once the money is in
+const paidOpen = ref(false)
+const paidNote = ref('')
+const proofs = computed(() => (r.value?.files ?? []).filter((f) => f.kind === 'payment_proof'))
+function openPaid() {
+  paidNote.value = ''
+  paidOpen.value = true
+}
+async function submitPaid() {
+  const body = paidNote.value.trim() ? { note: paidNote.value.trim() } : {}
+  if (await run('paid', '/requests/{requestId}/mark-paid', body, 'Marked paid')) paidOpen.value = false
+}
 const deliverOpen = ref(false)
 const invoiceNumber = ref('')
 async function submitDeliver() {
@@ -349,6 +361,7 @@ async function submitDeliver() {
               <v-btn v-if="can('pick')" :to="{ path: '/pick', query: { op: 'order', request: r.id } }" class="m3" color="primary" :prepend-icon="BTN.pick">Pick</v-btn>
               <v-btn v-if="can('ship')" class="m3" color="primary" :prepend-icon="BTN.ship" :disabled="!!busy" @click="openShip()">Record shipment</v-btn>
               <v-btn v-if="can('deliver')" class="m3" color="primary" :prepend-icon="BTN.deliver" :disabled="!!busy" @click="deliverOpen = true">Mark delivered</v-btn>
+ <v-btn v-if="can('mark-paid')" class="m3" color="primary" :prepend-icon="BTN.paid" :disabled="!!busy" @click="openPaid">Mark paid</v-btn>
               <v-btn v-if="can('reject-agreement')" variant="outlined" class="m3" :disabled="!!busy" @click="reasonFor = 'reject-agreement'">Reject signature</v-btn>
             </div>
             <div v-if="canInvoice" class="invoice-acts">
@@ -525,6 +538,30 @@ async function submitDeliver() {
 
       <InvoiceDialog v-model="invoiceOpen" :request="r" :kind="invoiceKind" @created="load" />
       <ShipmentDialog v-model="shipOpen" :request="r" :shipment="editing" :busy="busy === 'ship'" @submit="submitShip" @update="updateShip" />
+
+      <v-dialog v-model="paidOpen" max-width="480">
+        <v-card title="Mark paid">
+          <v-card-text>
+            <p class="paid-lead">
+              Record that {{ r.customerName }} has paid<template v-if="r.amountDue">{{ " " }}<strong>{{ formatMoney(r.amountDue, r.currency ?? 'BBD') }}</strong></template>
+              for this request. It leaves the customer's Payment required list; the customer is not emailed.
+            </p>
+            <p v-if="proofs.length" class="paid-proofs">
+              Proof of payment:
+              <template v-for="(f, i) in proofs" :key="f.id">
+                <a :href="fileUrl(f.id)" target="_blank" rel="noopener">{{ f.name }}</a><template v-if="i < proofs.length - 1">, </template>
+              </template>
+            </p>
+            <p v-else class="paid-proofs muted">The customer has not sent a proof of payment.</p>
+            <v-text-field v-model="paidNote" label="Note (optional)" hint="Bank reference or how it was paid" persistent-hint maxlength="500" />
+          </v-card-text>
+          <v-card-actions>
+            <v-spacer />
+            <v-btn variant="text" @click="paidOpen = false">Back</v-btn>
+            <v-btn color="primary" variant="flat" class="m3" :loading="busy === 'paid'" @click="submitPaid">Mark paid</v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-dialog>
 
       <v-dialog v-model="deliverOpen" max-width="480">
         <v-card title="Mark delivered">
@@ -1060,5 +1097,13 @@ async function submitDeliver() {
   [class*='rv-swap-'][class*='-to'] {
     transform: none;
   }
+}
+.paid-lead {
+  margin: 0 0 var(--sp-3);
+}
+.paid-proofs {
+  margin: 0 0 var(--sp-4);
+  font-size: 14px;
+  overflow-wrap: anywhere;
 }
 </style>

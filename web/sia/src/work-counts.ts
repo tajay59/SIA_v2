@@ -1,15 +1,16 @@
 /**
- * Work counts shared by the drawer and the dashboard (A-01). One fetch per count, each settles on its own:
- * a failed count shows as an error with retry instead of blocking the others. Counts stop at 100 ("100+",
- * one page). Definitions follow the order state machine (order_svc/domain.py):
+ * Work counts shared by the drawer and the dashboard (A-01). The request counts come exact from one call
+ * (order-svc `GET /requests/counts`, 2026-11-23; was six capped list calls); low stock and approvals still
+ * count one page (stop at 100: "100+"). Each source settles on its own: a failed one shows as an error with retry
+ * instead of blocking the others. Definitions follow the order state machine (order_svc/domain.py):
  *  - verify: ACCEPTED (signed agreement uploaded; staff verify it when raising purchase orders)
  *  - fulfil: APPROVED, PICKING (Pro Bono) and PURCHASING (paid); each request counted once
  */
-import { call, identity, inventory, orders, type RequestSummary, useSession } from '@cimh/web-app'
+import { call, identity, inventory, orders, useSession } from '@cimh/web-app'
 import { reactive, ref } from 'vue'
 
-export type CountKey = 'new' | 'quoting' | 'quoted' | 'verify' | 'fulfil' | 'low' | 'approvals'
-export type Count = { n: number | null; failed: boolean }
+export type CountKey = 'new' | 'quoting' | 'quoted' | 'verify' | 'fulfil' | 'payment' | 'low' | 'approvals'
+export type Count = { n: number | null; failed: boolean; exact?: boolean }
 
 const PAGE = 100
 const state = reactive<Record<CountKey, Count>>({
@@ -18,6 +19,7 @@ const state = reactive<Record<CountKey, Count>>({
   quoted: { n: null, failed: false },
   verify: { n: null, failed: false },
   fulfil: { n: null, failed: false },
+  payment: { n: null, failed: false },
   low: { n: null, failed: false },
   approvals: { n: null, failed: false },
 })
@@ -32,11 +34,23 @@ export const REQUEST_STATUS: Partial<Record<CountKey, string>> = {
   fulfil: 'APPROVED,PICKING,PURCHASING',
 }
 
-async function requests(status: string): Promise<number> {
-  const res = (await call(
-    () => orders.GET('/requests', { params: { query: { scope: 'all', status, limit: PAGE } as never } }),
-  )) as { items: RequestSummary[]; nextCursor: string | null }
-  return res.nextCursor ? PAGE + 1 : res.items.length
+const FROM_API: Partial<Record<CountKey, string>> = {
+  new: 'new',
+  quoting: 'quoting',
+  quoted: 'quoted',
+  verify: 'verify',
+  fulfil: 'fulfil',
+  payment: 'paymentDue',
+}
+async function requestCounts() {
+  const keys = Object.keys(FROM_API) as CountKey[]
+  for (const k of keys) state[k].failed = false
+  try {
+    const res = (await call(() => orders.GET('/requests/counts'))) as Record<string, number>
+    for (const k of keys) Object.assign(state[k], { n: res[FROM_API[k]!] ?? 0, exact: true })
+  } catch {
+    for (const k of keys) state[k].failed = true
+  }
 }
 
 async function one(key: CountKey, load: () => Promise<number>) {
@@ -58,7 +72,6 @@ export function useWorkCounts() {
         return r.nextCursor ? PAGE + 1 : r.items.length
       },
     }
-    for (const [k, s] of Object.entries(REQUEST_STATUS)) jobs[k as CountKey] = () => requests(s!)
     if (session.isAdmin)
       jobs.approvals = async () => {
         const r = await call(
@@ -66,12 +79,14 @@ export function useWorkCounts() {
         )
         return r.nextCursor ? PAGE + 1 : r.items.length
       }
-    const keys = only ? [only] : (Object.keys(jobs) as CountKey[])
-    await Promise.allSettled(keys.map((k) => one(k, jobs[k]!)))
+    const keys = (only ? [only] : (Object.keys(jobs) as CountKey[])).filter((k) => jobs[k])
+    const fromApi = !only || only in FROM_API
+    await Promise.allSettled([...keys.map((k) => one(k, jobs[k]!)), ...(fromApi ? [requestCounts()] : [])])
     updatedAt.value = new Date()
     loading.value = false
   }
   return { counts: state, updatedAt, loading, refresh }
 }
 
-export const countLabel = (c: Count) => (c.failed ? '—' : c.n === null ? '…' : c.n > PAGE ? '100+' : String(c.n))
+export const countLabel = (c: Count) =>
+  c.failed ? '—' : c.n === null ? '…' : !c.exact && c.n > PAGE ? '100+' : String(c.n)

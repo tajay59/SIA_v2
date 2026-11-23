@@ -703,6 +703,18 @@ endpoints:
     - admin
     ownership: staff
     note: staff
+  GET /api/orders/v1/requests/counts:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff
+  POST /api/orders/v1/requests/{requestId}/mark-paid:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff
   POST /api/orders/v1/requests/{requestId}/picks:
     roles:
     - staff

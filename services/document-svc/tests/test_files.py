@@ -308,3 +308,31 @@ def test_upload_kinds_match_the_api() -> None:
     from document_svc.service import UPLOAD_KINDS
 
     assert set(get_args(UploadKind)) == set(UPLOAD_KINDS)
+
+
+# ---------------------------------------------------------------- proof of payment (owner, 2026-11-23)
+
+
+def test_customer_sends_proof_of_payment_once_a_paid_request_is_delivered(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"]["status"] = "DELIVERED"
+    r = ctx.upload("ORD1", kind="payment_proof", name="receipt.pdf")
+    assert r.status_code == 201, r.text
+    assert r.json()["kind"] == "payment_proof"
+    assert r.json()["quoteVersion"] is None
+    (event,) = [e for _, _, e in ctx.publisher.sent if e.type == "document.uploaded"]
+    assert event.payload["kind"] == "payment_proof"
+    check_event(event)
+
+
+@pytest.mark.parametrize(("status", "type_"), [("SHIPPED", "PAID"), ("QUOTED", "PAID"), ("DELIVERED", "PROBONO")])
+def test_proof_of_payment_only_for_a_delivered_paid_request(ctx: Ctx, status: str, type_: str) -> None:
+    ctx.orders.requests["ORD1"] |= {"status": status, "type": type_}
+    r = ctx.upload("ORD1", kind="payment_proof")
+    assert r.status_code == 409, r.text
+    assert r.json()["code"] == "INVALID_STATE"
+
+
+def test_only_the_requester_sends_proof_of_payment(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"]["status"] = "DELIVERED"
+    assert ctx.upload("ORD1", kind="payment_proof", headers=PEER).status_code == 403
+    assert ctx.upload("ORD1", kind="payment_proof", headers=OTHER).status_code == 404

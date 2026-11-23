@@ -100,10 +100,11 @@ paths:
         - { name: status, in: query, style: form, explode: false, schema: { type: array, items: { $ref: '#/components/schemas/RequestStatus' } } }
         - { name: type, in: query, schema: { $ref: '#/components/schemas/RequestType' } }
         - { name: year, in: query, schema: { type: integer, minimum: 2000, maximum: 2100 } }
+        - { name: payment, in: query, description: '`due` = delivered PAID requests with no proof of payment yet; `unpaid` = delivered PAID requests not marked paid (proof sent or not; SIA Payment due tab); `settled` = leaves those out (SIA Closed tab); `outstanding` = adds them to the statuses asked for (SIA Open tab)', schema: { type: string, enum: [due, unpaid, settled, outstanding] } }
         - { name: customer, in: query, description: staff/admin or same organisation, schema: { type: string } }
         - { name: organisationId, in: query, description: staff/admin only, schema: { type: string } }
         - { name: q, in: query, description: Request id or organisation/customer name prefix (staff), schema: { type: string, maxLength: 100 } }
-        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, waiting], default: newest } }
+        - { name: sort, in: query, schema: { type: string, enum: [newest, oldest, waiting, recent], default: newest, description: "newest/oldest = date sent; waiting = longest in its status first; recent = latest status change first" } }
         - { $ref: './common.yaml#/components/parameters/Cursor' }
         - { $ref: './common.yaml#/components/parameters/Limit' }
       responses:
@@ -117,6 +118,27 @@ paths:
                   - type: object
                     required: [items]
                     properties: { items: { type: array, items: { $ref: '#/components/schemas/RequestSummary' } } }
+
+  /requests/counts:
+    get:
+      tags: [requests]
+      summary: Exact staff work counts for the desk tabs, drawer and dashboard (staff)
+      responses:
+        '200':
+          description: Counts
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [new, quoting, quoted, verify, fulfil, paymentDue]
+                properties:
+                  new: { type: integer, description: SUBMITTED }
+                  quoting: { type: integer, description: QUOTING }
+                  quoted: { type: integer, description: QUOTED }
+                  verify: { type: integer, description: ACCEPTED }
+                  fulfil: { type: integer, description: 'APPROVED, PICKING, PURCHASING' }
+                  paymentDue: { type: integer, description: Delivered PAID requests not marked paid }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
 
   /requests/{requestId}:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
@@ -407,6 +429,22 @@ paths:
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
 
+  /requests/{requestId}/mark-paid:
+    parameters: [ { $ref: '#/components/parameters/RequestId' } ]
+    post:
+      tags: [staff-actions]
+      summary: Record that a delivered PAID request has been paid (staff); paymentStatus becomes PAID, status stays DELIVERED
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: false
+        content: { application/json: { schema: { type: object, additionalProperties: false, properties: { paidAt: { type: string, format: date-time }, note: { type: string, maxLength: 500 } } } } }
+      responses:
+        '200': { description: Marked paid, content: { application/json: { schema: { $ref: '#/components/schemas/Request' } } } }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
   /internal/requests/{requestId}/access:
     parameters: [ { $ref: '#/components/parameters/RequestId' } ]
     get:
@@ -660,7 +698,7 @@ components:
       required: [id, kind, name, mime, size]
       properties:
         id: { type: string }
-        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, upload] }
+        kind: { type: string, enum: [supplier_quote, cimh_quote, agreement, signed_agreement, invoice, commercial_invoice, probono_invoice, payment_proof, upload] }
         name: { type: string }
         mime: { type: string }
         size: { type: integer }
@@ -685,6 +723,9 @@ components:
         submittedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         updatedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         waitingDays: { type: integer, description: Days in current status (staff queue) }
+        paymentStatus: { type: [string, 'null'], enum: [DUE, PROOF_SENT, PAID, null], description: 'Delivered PAID requests only: DUE until a payment_proof file is attached, then PROOF_SENT; PAID once staff mark it paid' }
+        paidAt: { anyOf: [{ $ref: './common.yaml#/components/schemas/Timestamp' }, { type: 'null' }], description: When staff recorded the payment }
+        amountDue: { anyOf: [{ $ref: './common.yaml#/components/schemas/Money' }, { type: 'null' }], description: 'With paymentStatus: the signed agreement total (migrated requests: their legacy total); null when none above zero is on record' }
         version: { type: integer }
     Request:
       allOf:
@@ -735,4 +776,4 @@ components:
             allowedActions:
               type: array
               description: Actions the caller may take now (drives UI buttons)
-              items: { type: string, enum: [accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, edit-shipment, deliver] }
+              items: { type: string, enum: [accept, decline, cancel, reject-agreement, start-quoting, quote-draft, send-quote, purchase-orders, approve, reject, pick, ship, edit-shipment, deliver, mark-paid] }

@@ -4,15 +4,18 @@
  * Material 3 chip anatomy: 8 px corners, 18 px leading icon, label-large type (500, +0.1 px tracking),
  * 8/12 px padding, tonal container with a 1 px outline in the same hue. Neutral uses outline only (M3 assist
  * chip), so "nothing to do yet" reads quieter than states that need attention. Status is not interactive:
- * no hover/ripple, it is a label, not a button.
+ * no hover/ripple, it is a label, not a button. `iconOnly` = the icon alone, its label as the title (and the
+ * accessible name). `label`/`tone`/`icon` override the status words (e.g. "Payment required").
  */
-import { mdiAlertCircle, mdiCheckCircle, mdiCircleOutline, mdiCloseCircle, mdiProgressClock } from '@mdi/js'
+import { mdiAlertCircle, mdiCashClock, mdiCheckCircle, mdiCircleOutline, mdiCloseCircle, mdiProgressClock } from '@mdi/js'
 import { statusLabel, statusTone, TONE_COLOR } from '@cimh/web-ui'
 import { computed } from 'vue'
 
-const props = defineProps<{ status: string }>()
-const tone = computed(() => statusTone(props.status))
-const label = computed(() => statusLabel(props.status))
+type Tone = ReturnType<typeof statusTone>
+const props = defineProps<{ status: string; iconOnly?: boolean; label?: string; tone?: Tone; icon?: 'cash' }>()
+const tone = computed(() => props.tone ?? statusTone(props.status))
+const label = computed(() => props.label ?? statusLabel(props.status))
+const path = computed(() => (props.icon === 'cash' ? mdiCashClock : ICONS[tone.value]))
 const ICONS = {
   neutral: mdiCircleOutline,
   info: mdiProgressClock,
@@ -23,8 +26,19 @@ const ICONS = {
 </script>
 
 <template>
-  <span class="m3-status" :class="`tone-${tone}`" :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }" :title="label">
-    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="ICONS[tone]" /></svg>
+  <span
+    v-if="iconOnly"
+    class="m3-status icon-only"
+    :class="`tone-${tone}`"
+    :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }"
+    role="img"
+    :aria-label="label"
+    :title="label"
+  >
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="path" /></svg>
+  </span>
+  <span v-else class="m3-status" :class="`tone-${tone}`" :style="{ '--chip': `var(--v-theme-${TONE_COLOR[tone]})` }" :title="label">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path :d="path" /></svg>
     <span class="label">{{ label }}</span>
   </span>
 </template>
@@ -48,6 +62,11 @@ const ICONS = {
   line-height: 1;
   white-space: nowrap;
   vertical-align: middle;
+}
+.m3-status.icon-only {
+  width: 28px;
+  padding: 0;
+  justify-content: center;
 }
 .icon {
   flex: none;
