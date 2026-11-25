@@ -11,6 +11,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import AccountRecord from '../../../components/AccountRecord.vue'
+import { pinLeaving } from '../../../list-motion'
 
 definePage({ meta: { guard: 'staff', title: 'Accounts', ownHeading: true } })
 
@@ -173,7 +174,7 @@ const summary = computed(() => {
             <p class="t-body">No accounts match{{ q.trim() ? ` “${q.trim()}”` : ' these filters' }}.</p>
             <div v-if="filtered" class="row"><v-btn class="m3" variant="outlined" @click="clearFilters">Clear filters</v-btn></div>
           </div>
-          <TransitionGroup v-else tag="ul" name="arow" class="rows">
+          <TransitionGroup v-else tag="ul" name="arow" class="rows" @before-leave="pinLeaving">
             <li v-if="!showRecord" key="head" class="row-h" aria-hidden="true">
               <span>Name</span>
               <span class="c-org">Organisation</span>
@@ -464,7 +465,6 @@ const summary = computed(() => {
 }
 .arow-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 140ms ease-in;
 }
 .arow-leave-to {

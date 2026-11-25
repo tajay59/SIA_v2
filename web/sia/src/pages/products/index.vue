@@ -19,7 +19,7 @@ import {
   useCursorList,
   useReference,
 } from '@cimh/web-app'
-import { mdiChevronDown, mdiFilterVariant, mdiFormatListBulleted, mdiImageMultipleOutline, mdiMagnify, mdiPlus } from '@mdi/js'
+import { mdiCheck, mdiChevronDown, mdiFilterVariant, mdiFormatListBulleted, mdiImageMultipleOutline, mdiMagnify, mdiPlus } from '@mdi/js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
@@ -108,6 +108,28 @@ const YESNO = [
 ]
 const moreCount = computed(() => [department.value, sellable.value, probono.value].filter((v) => v !== null).length + (inactive.value ? 1 : 0))
 const moreOpen = ref(moreCount.value > 0)
+
+// View switch: the scroll box keeps its height while the old view leaves (below 1280 px the page scrolls and the
+// box would otherwise collapse for a moment); released as soon as the new view is inserted, so it never jumps at
+// the end either.
+// Meters drawn by a view switch start at their level (the same counts; a refill on every row pulled the eye).
+const switching = ref(false)
+let switchTimer: ReturnType<typeof setTimeout> | undefined
+watch(view, () => {
+  switching.value = true
+  // Safety: a switch while the list is loading or empty runs no transition, so after-enter never clears it.
+  clearTimeout(switchTimer)
+  switchTimer = setTimeout(() => (switching.value = false), 600)
+})
+onBeforeUnmount(() => clearTimeout(switchTimer))
+function holdHeight(el: Element) {
+  const box = (el as HTMLElement).parentElement
+  if (box) box.style.minHeight = `${box.offsetHeight}px`
+}
+function releaseHeight(el: Element) {
+  const box = (el as HTMLElement).parentElement
+  if (box) box.style.minHeight = ''
+}
 function clearFilters() {
   type.value = null
   department.value = null
@@ -173,9 +195,17 @@ const summary = computed(() => {
         @click:clear="q = ''"
       />
       <div class="chips" role="group" aria-label="Type">
-        <button v-for="c in typeChips" :key="c.title" type="button" class="chip" :aria-pressed="type === c.value" @click="type = c.value">
-          {{ c.title }}
-        </button>
+        <!-- Tonal buttons (owner 2026-11-25), as the /pick purposes: the chosen type tonal primary with a check. -->
+        <v-btn
+          v-for="c in typeChips"
+          :key="c.title"
+          class="chip"
+          variant="tonal"
+          :color="type === c.value ? 'primary' : undefined"
+          :prepend-icon="type === c.value ? mdiCheck : undefined"
+          :aria-pressed="type === c.value ? 'true' : 'false'"
+          @click="type = c.value"
+        >{{ c.title }}</v-btn>
       </div>
       <v-btn
         variant="outlined"
@@ -190,8 +220,12 @@ const summary = computed(() => {
         More filters<span v-if="moreCount" class="badge console-mono">{{ moreCount }}</span>
       </v-btn>
     </div>
-    <v-expand-transition>
-      <div v-show="moreOpen" id="more-filters" class="more">
+    <!-- More filters unfold out of the strip (impeccable animate, 2026-11-25): a grid row 0fr → 1fr, so the real height
+         animates with no JS measuring; the page gap folds in with it; the contents fade in a beat later. Closed, the
+         contents are visibility: hidden (out of the tab order and the accessibility tree). -->
+    <div class="more-wrap" :class="{ open: moreOpen }">
+      <div class="more-clip">
+      <div id="more-filters" class="more">
         <v-select v-model="department" :items="reference?.departments ?? []" label="Department" clearable hide-details density="compact" />
         <v-select v-model="sellable" :items="YESNO" label="Shown to customers" clearable hide-details density="compact" :disabled="searching" />
         <v-select v-model="probono" :items="YESNO" label="Pro Bono" clearable hide-details density="compact" />
@@ -199,14 +233,16 @@ const summary = computed(() => {
         <v-btn variant="text" class="m3" :disabled="!filtered" @click="clearFilters">Clear filters</v-btn>
         <p v-if="searching" class="t-caption muted note">Search shows active products only; “Shown to customers” and “Include inactive” apply to browsing.</p>
       </div>
-    </v-expand-transition>
+      </div>
+    </div>
 
     <div class="console-panels panels" :class="{ split: showRecord }">
       <!-- List -->
       <section class="plist" aria-label="Products">
         <div class="console-head">
           <h2 class="console-title" aria-live="polite">{{ summary }}</h2>
-          <v-btn-toggle v-if="!showRecord" v-model="view" mandatory density="compact" variant="text" aria-label="View" class="view">
+          <!-- Tonal segmented pill (owner 2026-11-25): both halves on a tonal ground, the chosen view tonal primary. -->
+          <v-btn-toggle v-if="!showRecord" v-model="view" mandatory variant="tonal" color="primary" rounded="pill" divided aria-label="View" class="view">
             <v-btn value="list" :icon="mdiFormatListBulleted" aria-label="Rows" />
             <v-btn value="grid" :icon="mdiImageMultipleOutline" aria-label="Photos" />
           </v-btn-toggle>
@@ -224,7 +260,21 @@ const summary = computed(() => {
             </div>
           </div>
 
-          <TransitionGroup v-else-if="view === 'list' || showRecord" tag="ul" name="prow" class="rows" :class="{ 'no-model': noModels }">
+          <!-- Rows ↔ photos (impeccable animate, 2026-11-25): the old view fades out fast, the new one settles in; the
+               scroll box keeps its height meanwhile, so narrow screens (page scroll) never collapse. -->
+          <Transition
+            v-else
+            name="vswap"
+            mode="out-in"
+            @before-leave="holdHeight"
+            @enter="releaseHeight"
+            @leave-cancelled="releaseHeight"
+            @enter-cancelled="releaseHeight"
+            @after-enter="switching = false"
+          >
+          <!-- Keyed wrappers: a TransitionGroup cannot be a Transition's direct child (its leave never ran). -->
+          <div v-if="view === 'list' || showRecord" key="rows" class="vbox">
+          <TransitionGroup tag="ul" name="prow" class="rows" :class="{ 'no-model': noModels }">
             <li v-if="!showRecord" key="head" class="row-h" aria-hidden="true">
               <span />
               <span>Name</span>
@@ -256,12 +306,14 @@ const summary = computed(() => {
                 <span class="c-model console-mono">{{ p.modelnumber || '—' }}</span>
                 <span class="c-type">{{ typeLabel(reference, p.type) }}</span>
                 <span class="c-dept">{{ p.department }}</span>
-                <span class="c-stock"><StockMeter :available="p.stockCount" :threshold="p.threshold" /></span>
+                <span class="c-stock"><StockMeter :available="p.stockCount" :threshold="p.threshold" :still="switching" /></span>
               </router-link>
             </li>
           </TransitionGroup>
 
-          <TransitionGroup v-else tag="ul" name="prow" class="pgrid">
+          </div>
+          <div v-else key="grid" class="vbox vbox-grid">
+          <TransitionGroup tag="ul" name="prow" class="pgrid">
             <li v-for="(p, i) in list.items.value" :key="p.id" :style="{ '--i': Math.min(i, 12) }">
               <router-link :to="`/products/${p.id}`" class="pcard" @click.prevent="open(p)">
                 <span class="ptile">
@@ -272,12 +324,14 @@ const summary = computed(() => {
                 </span>
                 <span class="pname">{{ p.name }}</span>
                 <span class="pfoot">
-                  <StockMeter :available="p.stockCount" :threshold="p.threshold" />
+                  <StockMeter :available="p.stockCount" :threshold="p.threshold" :still="switching" />
                   <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" :fit="false" /></span>
                 </span>
               </router-link>
             </li>
           </TransitionGroup>
+          </div>
+          </Transition>
 
           <div v-if="list.nextCursor.value" class="load-more">
             <v-btn class="m3" variant="outlined" :loading="list.loading.value" @click="list.loadMore">Load more</v-btn>
@@ -342,30 +396,15 @@ const summary = computed(() => {
   gap: 6px;
 }
 .chip {
-  height: 32px;
-  padding: 0 12px;
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 8px;
-  font: inherit;
-  font-size: 13px;
-  font-weight: 500;
-  color: inherit;
-  background: none;
-  cursor: pointer;
+  flex: none; /* phones scroll the row sideways; buttons keep their width */
+  height: 36px;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
   white-space: nowrap;
-}
-.chip {
-  transition: background-color 150ms ease, border-color 150ms ease;
 }
 .chip:active {
   transform: scale(0.97);
-}
-.chip:hover {
-  background: rgb(var(--v-theme-surface-variant));
-}
-.chip[aria-pressed='true'] {
-  border-color: rgb(var(--v-theme-primary));
-  background: rgba(var(--v-theme-primary), 0.14);
 }
 .more-btn {
   margin-left: auto;
@@ -387,15 +426,63 @@ const summary = computed(() => {
   background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
 }
+.more-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-top: calc(-1 * var(--sp-3)); /* closed: cancel the page gap, so nothing jumps when it opens */
+  transition:
+    grid-template-rows 200ms cubic-bezier(0.4, 0, 0.2, 1),
+    margin-top 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.more-wrap.open {
+  grid-template-rows: 1fr;
+  margin-top: 0;
+  transition-duration: 300ms;
+  transition-timing-function: var(--ease-out);
+}
+/* The panel's surface is the clip itself, so the fold reveals the panel's edge as it grows (motion review:
+   the list was pushed by an empty hole while a fading box arrived 60 ms late). Drawn as an inset shadow: at
+   0 height a box with an inset shadow paints nothing, where a border would leave a 2 px line. */
+.more-clip {
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgb(var(--v-theme-surface));
+  box-shadow: inset 0 0 0 1px rgb(var(--v-theme-seam));
+  visibility: hidden;
+  transition: visibility 0s 200ms; /* hidden only once the fold has closed */
+}
+.more-wrap.open .more-clip {
+  visibility: visible;
+  transition: none;
+}
+/* Only the fields fade: in shortly after the fold starts, out before its edge reaches them. */
+.more {
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 90ms ease-out,
+    transform 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.more-wrap.open .more {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 150ms ease-out 20ms,
+    transform 300ms var(--ease-out);
+}
+/* Reduced motion: base.css makes every transition instant; only the movement is removed here. */
+@media (prefers-reduced-motion: reduce) {
+  .more {
+    transform: none;
+  }
+}
 .more {
   display: grid;
   grid-template-columns: repeat(3, minmax(160px, 220px)) max-content max-content;
   align-items: center;
   gap: var(--sp-3);
   padding: var(--sp-3);
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 4px;
-  background: rgb(var(--v-theme-surface));
 }
 .note {
   grid-column: 1 / -1;
@@ -417,6 +504,25 @@ const summary = computed(() => {
 }
 .view {
   height: 32px;
+}
+.view {
+  border-radius: 999px;
+  overflow: hidden;
+}
+/* One pill split in two: the app's per-button pill (m3) is undone inside the group, so the group's own pill and
+   its divider show. */
+.view :deep(.v-btn) {
+  width: 40px;
+  min-width: 0;
+  height: 32px;
+  border-radius: 0 !important;
+}
+.view :deep(.v-btn .v-icon) {
+  font-size: 18px;
+}
+/* The half not chosen: the tonal ground stays, the icon in medium ink (Vuetify tints it with the toggle colour). */
+.view :deep(.v-btn:not(.v-btn--active)) {
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 .rows {
   list-style: none;
@@ -708,7 +814,37 @@ const summary = computed(() => {
     grid-template-columns: minmax(0, 1fr);
   }
 }
-/* Rows: enter with a capped stagger (fade + 6 px rise), leave by fading, slide to new places on re-sort. */
+/* Rows ↔ photos: out 90 ms (fade), in 200 ms (fade + 6 px settle; photos from 98.5 % scale). */
+.vswap-leave-active {
+  transition: opacity 90ms ease-in;
+}
+.vswap-leave-to {
+  opacity: 0;
+}
+.vswap-enter-active {
+  transition:
+    opacity 200ms ease-out,
+    transform 260ms var(--ease-out);
+}
+.vswap-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+.vbox-grid {
+  transform-origin: 50% 0; /* top-anchored for the whole transition (on the -from class alone it ran from the centre) */
+}
+.vbox-grid.vswap-enter-from {
+  transform: scale(0.985);
+}
+@media (prefers-reduced-motion: reduce) {
+  .vswap-enter-from,
+  .vbox-grid.vswap-enter-from {
+    transform: none;
+  }
+}
+/* Rows: enter with a capped stagger (fade + 6 px rise), slide to new places on re-sort, and leave at once: a type
+   or filter change replaces most rows, and leaving rows taken out of flow (position: absolute, no top) all stacked
+   on row one while they faded (owner, 2026-11-25). */
 .prow-enter-active {
   transition: opacity 220ms var(--ease-out), transform 220ms var(--ease-out);
   transition-delay: calc(var(--i, 0) * 24ms);
@@ -716,17 +852,6 @@ const summary = computed(() => {
 .prow-enter-from {
   opacity: 0;
   transform: translateY(6px);
-}
-.prow-leave-active {
-  position: absolute;
-  width: 100%;
-  transition: opacity 140ms ease-in;
-}
-.pgrid .prow-leave-active {
-  width: 180px;
-}
-.prow-leave-to {
-  opacity: 0;
 }
 .prow-move {
   transition: transform 280ms var(--ease-out);

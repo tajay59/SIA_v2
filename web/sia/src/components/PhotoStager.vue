@@ -7,6 +7,7 @@
 import { useNotify } from '@cimh/web-app'
 import { mdiArrowLeft, mdiArrowRight, mdiDeleteOutline, mdiImagePlusOutline, mdiStar, mdiStarOutline } from '@mdi/js'
 import { ref } from 'vue'
+import { pinLeaving } from '../list-motion'
 
 export interface StagedPhoto {
   id: string
@@ -100,7 +101,7 @@ const size = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} 
     <v-checkbox v-model="removeBackground" label="Remove the background (where the photo service supports it)" hide-details density="compact" />
 
     <p v-if="!photos.length" class="t-caption muted">No photos yet. You can also add them later on the product's Images tab.</p>
-    <TransitionGroup v-else tag="ul" name="tile" class="grid" aria-label="Photos to upload">
+    <TransitionGroup v-else tag="ul" name="tile" class="grid" @before-leave="pinLeaving" aria-label="Photos to upload">
       <li v-for="(p, i) in photos" :key="p.id" class="tile" :class="{ primary: i === 0 }">
         <img :src="p.url" :alt="`Photo ${i + 1}: ${p.file.name}`" />
         <div class="meta">
@@ -154,6 +155,7 @@ const size = (b: number) => (b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} 
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
   gap: var(--sp-3);
+  position: relative; /* leaving items are pinned inside it (list-motion.ts) */
 }
 .tile {
   display: flex;

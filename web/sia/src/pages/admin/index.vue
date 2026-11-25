@@ -18,6 +18,7 @@ import {
   mdiHistory,
 } from '@mdi/js'
 import { computed, onMounted, ref } from 'vue'
+import { pinLeaving } from '../../list-motion'
 
 definePage({ meta: { guard: 'staff', title: 'Admin', ownHeading: true } })
 const session = useSession()
@@ -78,7 +79,7 @@ const tools = computed(() =>
           </h3>
           <div v-if="!pending.loaded" class="console-skel skel" />
           <p v-else-if="pending.failed" class="t-body muted">Couldn't load. <button type="button" class="console-retry" @click="load">Retry</button></p>
-          <TransitionGroup v-else tag="ul" name="nrow" appear class="list">
+          <TransitionGroup v-else tag="ul" name="nrow" appear class="list" @before-leave="pinLeaving">
             <li v-for="(a, i) in pending.items" :key="a.id" :style="{ '--i': i }">
               <router-link :to="`/admin/accounts?open=${a.id}`" class="item">
                 <span class="who"><span class="nm">{{ nameOf(a) }}</span><span class="sub">{{ a.organisationText || 'No organisation given' }} · {{ a.email }}</span></span>
@@ -99,7 +100,7 @@ const tools = computed(() =>
           </h3>
           <div v-if="!erasure.loaded" class="console-skel skel" />
           <p v-else-if="erasure.failed" class="t-body muted">Couldn't load. <button type="button" class="console-retry" @click="load">Retry</button></p>
-          <TransitionGroup v-else tag="ul" name="nrow" appear class="list">
+          <TransitionGroup v-else tag="ul" name="nrow" appear class="list" @before-leave="pinLeaving">
             <li v-for="(a, i) in erasure.items" :key="a.id" :style="{ '--i': i }">
               <router-link :to="`/admin/accounts?erasure=1&open=${a.id}`" class="item">
                 <span class="who"><span class="nm">{{ nameOf(a) }}</span><span class="sub">{{ a.email }}</span></span>
@@ -193,6 +194,7 @@ const tools = computed(() =>
   list-style: none;
   margin: 0;
   padding: 0 0 var(--sp-2);
+  position: relative; /* leaving items are pinned inside it (list-motion.ts) */
 }
 .item,
 .tool {
@@ -293,7 +295,6 @@ const tools = computed(() =>
 }
 .nrow-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 140ms ease-in;
 }
 .nrow-leave-to {

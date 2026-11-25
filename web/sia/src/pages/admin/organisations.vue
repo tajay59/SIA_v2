@@ -11,6 +11,7 @@ import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import OrganisationRecord from '../../components/OrganisationRecord.vue'
 import { orgTypeTitle } from '../../organisations'
+import { pinLeaving } from '../../list-motion'
 
 definePage({ meta: { guard: 'staff', title: 'Organisations', ownHeading: true } })
 
@@ -112,7 +113,7 @@ const summary = computed(() => {
               <v-btn v-if="session.isAdmin" class="m3" variant="outlined" :prepend-icon="mdiPlus" @click="open('new')">New organisation</v-btn>
             </div>
           </div>
-          <TransitionGroup v-else tag="ul" name="orow" class="rows">
+          <TransitionGroup v-else tag="ul" name="orow" class="rows" @before-leave="pinLeaving">
             <li v-if="!(wide && openId)" key="head" class="row-h" aria-hidden="true">
               <span>Name</span>
               <span class="c-type">Type</span>
@@ -369,7 +370,6 @@ const summary = computed(() => {
 }
 .orow-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 140ms ease-in;
 }
 .orow-leave-to {

@@ -10,6 +10,7 @@ import { formatAge, formatDate } from '@cimh/web-ui'
 import { mdiAccountCheckOutline, mdiAlertOutline, mdiCheckCircleOutline, mdiHelpCircleOutline } from '@mdi/js'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import DecisionDialog from '../../components/DecisionDialog.vue'
+import { pinLeaving } from '../../list-motion'
 
 definePage({ meta: { guard: 'admin', title: 'Pending accounts', ownHeading: true } })
 
@@ -122,7 +123,7 @@ const summary = computed(() => {
         <router-link to="/admin/accounts" class="t-body">All accounts</router-link>
       </div>
 
-      <TransitionGroup v-else tag="ul" name="rv" class="rows">
+      <TransitionGroup v-else tag="ul" name="rv" class="rows" @before-leave="pinLeaving">
         <li v-if="list.items.value.length" key="head" class="rv rv-h" aria-hidden="true">
           <span />
           <span>Person</span>
@@ -372,7 +373,6 @@ const summary = computed(() => {
 }
 .rv-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 160ms ease-in, transform 160ms ease-in;
 }
 .rv-leave-to {

@@ -9,11 +9,16 @@
 import { mdiAlertCircle, mdiAlertOutline } from '@mdi/js'
 import { computed, onMounted, ref, watch } from 'vue'
 
-const props = withDefaults(defineProps<{ available?: number | null; threshold?: number | null; size?: 'row' | 'large' }>(), {
-  available: null,
-  threshold: 0,
-  size: 'row',
-})
+const props = withDefaults(
+  defineProps<{
+    available?: number | null
+    threshold?: number | null
+    size?: 'row' | 'large'
+    /** Mount already at its level (no fill): e.g. the same rows drawn again by a view switch. Count changes still animate. */
+    still?: boolean
+  }>(),
+  { available: null, threshold: 0, size: 'row', still: false },
+)
 
 const t = computed(() => Math.max(0, props.threshold ?? 0))
 const state = computed(() => {
@@ -27,8 +32,10 @@ const state = computed(() => {
 const scale = computed(() => Math.max(t.value * 3, props.available ?? 0, 1))
 // Focal motion: the bar fills to its level once it is on screen (scaleX, transform only), and again whenever
 // the count changes. Starts empty for one frame; the number is always shown.
-const ready = ref(false)
-onMounted(() => requestAnimationFrame(() => requestAnimationFrame(() => (ready.value = true))))
+const ready = ref(props.still)
+onMounted(() => {
+  if (!ready.value) requestAnimationFrame(() => requestAnimationFrame(() => (ready.value = true)))
+})
 // The count rolls only when it changes (not on first render).
 const changed = ref(false)
 watch(() => props.available, () => (changed.value = true))

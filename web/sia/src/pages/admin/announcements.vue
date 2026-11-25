@@ -12,6 +12,7 @@ import { useDisplay } from 'vuetify'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import AnnouncementEditor from '../../components/AnnouncementEditor.vue'
 import SegmentedChoice from '../../components/SegmentedChoice.vue'
+import { pinLeaving } from '../../list-motion'
 
 definePage({ meta: { guard: 'admin', title: 'Announcements', ownHeading: true } })
 
@@ -187,7 +188,7 @@ async function closeRecord() {
           <template v-else>
             <template v-for="group in [{ key: 'live', title: 'Live now', rows: live }, { key: 'later', title: 'Starting later', rows: later }]" :key="group.key">
               <h3 v-if="group.rows.length" class="group">{{ group.title }} <span class="console-mono">{{ group.rows.length }}</span></h3>
-              <TransitionGroup tag="ul" name="arow" class="rows">
+              <TransitionGroup tag="ul" name="arow" class="rows" @before-leave="pinLeaving">
                 <li v-for="(a, i) in group.rows" :key="a.id" :style="{ '--i': Math.min(i, 12) }">
                   <a
                     :href="`/admin/announcements?open=${a.id}`"
@@ -448,7 +449,6 @@ async function closeRecord() {
 }
 .arow-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 140ms ease-in;
 }
 .arow-leave-to {
