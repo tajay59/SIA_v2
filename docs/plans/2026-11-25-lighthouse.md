@@ -1,6 +1,6 @@
 # Lighthouse: results, fixes done, fixes to come
 
-Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 merged (#55) and on staging; 5-A measured (§5.1); next: fix 6, then 3** · Owner request 2026-11-25
+Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 merged (#55) and on staging; 5-A measured (§5.1); staging edge fixed (#56, installed); fix 6 built (branch `fix/signed-out-console-and-pick-queue`); next: fix 3** · Owner request 2026-11-25
 
 Working plan, not part of the manual. Picks up where the session left off: read §6 first.
 
@@ -102,7 +102,7 @@ Best practices stays 93 after the fixes: only the two 401s are left (fix 6).
 | # | Fix | Why | Size / risk |
 |---|---|---|---|
 | A | **Done 2026-11-25 (§5.1).** ~~Merge #55, then re-run Lighthouse on staging's public pages~~ (`https://store.hashiz.store/`, `/catalogue`, a product, `/pro-bono`; `https://sia.hashiz.store/login`). Read-only page loads only; never sign up or create data there (it holds the real legacy data). | Compression only shows once nginx serves the files: this is the real phone performance number. | Small. Merging deploys the new gateway config to staging (CI reloads the gateway after `nginx -t`). |
-| 6 | **No 401s for signed-out visitors:** e.g. an identity endpoint that answers 200 `{ account: null }` for "am I signed in?" (or skip `/auth/refresh` when no session is known), so the console stays clean. | Last item keeping Best practices at 93 on every page. | Small; contract change (identity OpenAPI) + web-app `session.ts`/`api.ts`. |
+| 6 | **Built 2026-11-25** (no contract change: with no `csrf_token` cookie the web apps skip `/me` and `/auth/refresh`, which could only answer 401; identity refuses a web refresh without it; signed-out SHOP/SIA pages load with no failed request and no console error). ~~No 401s for signed-out visitors:~~ e.g. an identity endpoint that answers 200 `{ account: null }` for "am I signed in?" (or skip `/auth/refresh` when no session is known), so the console stays clean. | Last item keeping Best practices at 93 on every page. | Small; contract change (identity OpenAPI) + web-app `session.ts`/`api.ts`. |
 | 3 | **Smaller first load:** check whether all of Vuetify's CSS ships (`vuetify/styles` vs per-component styles with `vite-plugin-vuetify` `autoImport` + `styles: 'sass'`/`configFile`), split rarely used code out of the main chunk (pdf.js is already separate; check what else lands in `index-*.js`, e.g. via `rollup-plugin-visualizer`), lazy-load heavy components below the fold. | Main JS ~60 % unused on the first page; 370–415 KB render-blocking CSS. The biggest remaining phone cost once compression is on. | Medium; touches build config and possibly the look (verify with the Playwright suite + screenshots). Decide after A. |
 | B | **Brotli / precompressed assets:** build `.gz`/`.br` next to each asset (e.g. `vite-plugin-compression`) and serve them with `gzip_static` (brotli needs an nginx module not in the stock image). | A further ~15–20 % below gzip, and no compression CPU per request. | Small–medium. Optional after A. |
 | C | **Font and hero image:** check `font-display` and preload of Inter (SHOP home LCP), and the 110 KB `gears-*.webp` on SHOP home. | Small LCP gains on phones. | Small. |
@@ -132,8 +132,9 @@ Accessibility 100 everywhere. Best practices 96: only the two 401s (fix 6) remai
 ## 6. State at the end of the session (2026-11-25, second session)
 
 - **#55 merged** (squash) and deployed to staging; this plan is on `main` with it. 5-A done (§5.1).
-- **Branch `fix/staging-edge-no-api-gzip`** (from `main`): `edge-site.conf` `gzip off;` + this update. Not yet installed on kw-server (owner approval: shared edge). After merging: copy the merged file from the server's checkout or `scp` it, back up `/srv/edge-sites/cimh-stores-staging.conf`, `docker exec printit-nginx nginx -t`, reload, then check `curl -sD- -o /dev/null -H 'Accept-Encoding: gzip' https://store.hashiz.store/api/catalog/v1/products?limit=1` has no `content-encoding` while `/assets/index-*.js` still has gzip.
-- **Next:** fix 6 (no 401s for signed-out visitors), then fix 3 (smaller first load). Measure phones without ESET (see §5.1).
+- **#56 merged and the edge file installed on kw-server by hand** (backup `/srv/edge-sites/cimh-stores-staging.conf.bak`, `nginx -t`, reload): `/api/` answers now leave uncompressed, web app files still gzip, the other sites on the edge answer as before (`printitdesigns.com` without `www.` has a certificate that doesn't name it: pre-existing, not ours).
+- **Fix 6 built** on branch `fix/signed-out-console-and-pick-queue` (with SIA/SHOP UI work from the same session).
+- **Next:** fix 3 (smaller first load), then C. Measure phones without ESET (see §5.1).
 - PR #54 (announcements + invoice CRUD) is merged and on staging: order-svc's `invoices` upgrade made 35 records, 0 number clashes; the staging edge site is installed (announcement WebSocket 101 on both hosts, a foreign Origin gets 403).
 - Preview servers were running on 15291 (SHOP) / 15292 (SIA) from `web/*/dist` built on this branch. **Gotcha:** stopping a background `npx vite preview` task leaves its `node` process holding the port; kill the listener (PowerShell `Get-NetTCPConnection -LocalPort 15291 -State Listen` → `Stop-Process`) before restarting, and restart previews after editing `vite.config.ts` (the CSP header is read at start).
 - **Never run `deploy/staging-lite/deploy.sh --edge` from a tree with unmerged changes:** it rebuilds and ships the local tree before installing the edge file.

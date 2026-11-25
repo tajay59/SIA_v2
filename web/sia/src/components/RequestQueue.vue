@@ -127,7 +127,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
             <span v-if="r.organisationName" class="who-sub">{{ r.organisationName }}</span>
           </span>
           <span class="why">
-            <span class="pill" :class="why(r).tone"><v-icon :icon="TONE_ICON[why(r).tone]" size="14" /><span>{{ why(r).text }}</span></span>
+            <span class="pill" :class="why(r).tone" :title="why(r).text"><v-icon :icon="TONE_ICON[why(r).tone]" size="14" /><span class="pill-text">{{ why(r).text }}</span></span>
           </span>
           <span v-if="showStatus" class="status">
             <template v-if="unpaid(r)">
@@ -162,7 +162,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row {
   display: grid;
-  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.2fr) minmax(0, 1fr) 112px;
+  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1fr) minmax(0, 1.4fr) 112px;
   gap: var(--sp-3);
   align-items: center;
   min-height: 44px;
@@ -177,7 +177,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row.with-status {
   /* The reason is why the queue exists: it gets the widest column (critique: cut to "Approve or re" at 1440 px). */
-  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1.5fr) minmax(0, 1fr) 200px 96px;
+  grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1fr) minmax(0, 1.5fr) 200px 96px;
 }
 .row:hover {
   background: rgb(var(--v-theme-surface-variant));
@@ -221,6 +221,9 @@ function onRowKey(e: KeyboardEvent, i: number) {
   white-space: nowrap;
 }
 /* Item titles run longer than customer names did: up to two lines before they are cut. */
+.who .probono-badge {
+  margin-left: auto; /* at the right edge of the name line (owner 2026-11-25) */
+}
 .who-name {
   min-width: 0;
   max-width: 100%;
@@ -239,15 +242,19 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .pill {
   display: inline-flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 6px;
   max-width: 100%;
-  /* Wraps to a second line rather than cutting the words (ellipsis never applied: the text is a flex item). */
   padding-block: 4px;
   color: rgb(var(--v-theme-on-surface));
 }
-.pill .v-icon {
-  margin-top: 2px;
+/* One line, never wrapped (owner 2026-11-25): the column is sized for the reasons; a longer one ends in "…" and
+   the whole sentence is the pill's title. The ellipsis sits on the text span: on a flex container it never applies. */
+.pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pill .v-icon {
   flex: none;
@@ -267,7 +274,8 @@ function onRowKey(e: KeyboardEvent, i: number) {
   color: rgb(var(--v-theme-error));
   font-weight: 600;
 }
-.wait {
+/* The wait column only: the reason pill can carry tone class "wait" too (it then could not wrap and ran over the name). */
+.row > .wait {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
@@ -276,7 +284,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
   color: rgb(var(--v-theme-secondary));
   white-space: nowrap;
 }
-.wait.overdue {
+.row > .wait.overdue {
   color: rgb(var(--v-theme-warning));
   font-weight: 600;
 }
@@ -349,7 +357,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
 .row.compact .why {
   grid-area: why;
 }
-.row.compact .wait {
+.row.compact > .wait {
   grid-area: wait;
 }
 .row .status {
@@ -362,9 +370,14 @@ function onRowKey(e: KeyboardEvent, i: number) {
   display: none;
 }
 
-@media (max-width: 1279.98px) {
+/* The list's own width decides (beside the selected request it is ~690 px even on a wide window): below 900 px the
+   status column goes (the reason says the same thing) and the reason keeps room for one line. */
+.scroller {
+  container: rq / inline-size;
+}
+@container rq (width < 900px) {
   .row.with-status {
-    grid-template-columns: minmax(110px, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr) 112px;
+    grid-template-columns: minmax(96px, 0.6fr) minmax(0, 1fr) minmax(0, 1.4fr) 112px;
   }
   .row.with-status .status {
     display: none;
@@ -389,7 +402,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
   .why {
     grid-area: why;
   }
-  .wait {
+  .row > .wait {
     grid-area: wait;
   }
   .overdue-word {

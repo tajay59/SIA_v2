@@ -24,6 +24,7 @@ import {
   unitWhere,
 } from '@cimh/web-app'
 import { orders, type RequestSummary, ShortRef } from '@cimh/web-app'
+import { mdiArrowRight, mdiCheck, mdiRefresh, mdiSwapHorizontal } from '@mdi/js'
 import { statusLabel } from '@cimh/web-ui'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -312,13 +313,30 @@ function unpicked(l: PickLine) {
     <Transition :name="`tab-${tabDir}`" mode="out-in" @after-enter="focusPanel">
     <section v-if="op === 'order'" ref="panel" class="desk" :class="{ open: !!order }">
       <aside class="queue panel" aria-label="Ready to pick">
+        <!-- Head (golden ratio, 2026-11-25): title 17.8 ink + count in mono, order 11 muted; nothing wraps. -->
         <div class="queue-head">
-          <h2 class="t-h3">Ready to pick</h2>
-          <span class="t-caption muted">{{ queueState === 'ready' ? `${queue.length} · longest wait first` : '' }}</span>
-          <v-btn variant="text" size="small" :loading="queueState === 'loading'" @click="loadQueue">Refresh</v-btn>
+          <div class="ph-text">
+            <h2 class="ph-title">
+              <span class="ph-name">Ready to pick</span>
+              <span v-if="queueState === 'ready'" class="ph-count">{{ queue.length }}<span class="d-sr-only"> waiting</span></span>
+            </h2>
+            <p class="ph-sub">Longest wait first</p>
+          </div>
+          <v-btn
+            class="ph-tool"
+            variant="text"
+            size="small"
+            icon
+            aria-label="Refresh the list"
+            :loading="queueState === 'loading'"
+            @click="loadQueue"
+          >
+            <v-icon :icon="mdiRefresh" />
+            <v-tooltip activator="parent" location="top" :open-delay="250" aria-label="Refresh the list">Refresh the list</v-tooltip>
+          </v-btn>
         </div>
         <div class="queue-scan">
-          <ScanField label="Request id" hint="Or scan the id on a pick slip" :autofocus="!route.query.request" @scan="scanRequest" />
+          <ScanField label="Request id" hide-label hint="" placeholder="Scan a request id" :autofocus="!route.query.request" @scan="scanRequest" />
           <v-alert v-if="orderError" type="error" variant="tonal" density="compact">{{ orderError }}</v-alert>
         </div>
         <div v-if="queueState === 'loading' && !queue.length" class="queue-empty"><v-progress-circular indeterminate size="24" /></div>
@@ -335,7 +353,7 @@ function unpicked(l: PickLine) {
                 <span class="age t-caption" :class="{ old: (q.waitingDays ?? 0) >= 3 }">{{ waited(q) }}</span>
               </span>
               <span class="r1">
-                <span class="t-mono t-caption rid"><ShortRef :id="q.id" /></span>
+                <span class="t-mono t-caption rid"><ShortRef :id="q.id" fit /></span>
                 <span v-if="q.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
               </span>
               <span class="t-caption muted">{{ q.lineCount }} {{ q.lineCount === 1 ? 'line' : 'lines' }} · {{ statusLabel(q.status) }}</span>
@@ -391,23 +409,41 @@ function unpicked(l: PickLine) {
 
     <!-- Pick, Relocate, Issue / Return share Pick Order's composition: set-up rail left, work pane right. -->
     <section v-else-if="op === 'pick'" ref="panel" class="desk">
-      <aside class="rail panel" aria-labelledby="purpose-title">
-        <div class="rail-head"><h2 id="purpose-title" class="t-h3">Purpose</h2></div>
-        <div class="rail-body">
-          <p class="t-caption muted">Why the units leave the shelf. Units reserved for a request are picked under Pick Order.</p>
+      <!-- Golden-ratio head like Pick Order's queue (2026-11-25): title 17.8 ink, notes 11 muted; tonal purposes in an
+           even 2 × 2 grid; nothing wraps. -->
+      <aside class="rail panel purpose" aria-labelledby="purpose-title">
+        <div class="ph-head">
+          <div class="ph-text">
+            <h2 id="purpose-title" class="ph-title"><span class="ph-name">Purpose</span></h2>
+            <p class="ph-sub">Why the units leave the shelf</p>
+          </div>
+        </div>
+        <div class="ph-body">
           <div class="reasons" role="group" aria-label="Common purposes">
-            <v-chip v-for="r in REASONS" :key="r" :color="reason === r ? 'primary' : undefined" :variant="reason === r ? 'flat' : 'outlined'" @click="setReason(r)">{{ r }}</v-chip>
+            <v-btn
+              v-for="r in REASONS"
+              :key="r"
+              variant="tonal"
+              :color="reason === r ? 'primary' : undefined"
+              :prepend-icon="reason === r ? mdiCheck : undefined"
+              :aria-pressed="reason === r ? 'true' : 'false'"
+              @click="setReason(r)"
+            >{{ r }}</v-btn>
           </div>
           <v-text-field
             ref="reasonField"
             v-model="reason"
-            label="Reason"
-            counter="300"
+            aria-label="Reason"
+            placeholder="Or type another purpose"
             maxlength="300"
             :hint="reason.trim() ? 'Press Enter to start scanning' : 'Needed before the first scan'"
             persistent-hint
             @keydown.enter.prevent="reasonEnter"
           />
+          <div class="ph-foot">
+            <span class="ph-sub">Reserved for a request?</span>
+            <v-btn variant="tonal" size="small" color="primary" :append-icon="mdiArrowRight" @click="choose('order')">Pick Order</v-btn>
+          </div>
         </div>
       </aside>
       <div class="work">
@@ -428,25 +464,32 @@ function unpicked(l: PickLine) {
     </section>
 
     <section v-else-if="op === 'relocate'" ref="panel" class="desk">
-      <aside class="rail panel" aria-labelledby="target-title">
-        <div class="rail-head"><h2 id="target-title" class="t-h3">Where the units go</h2></div>
-        <div class="rail-body">
+      <!-- Golden-ratio rail like Purpose (2026-11-25): head 17.8 / 11, the shelf at 22.65 with its tally, nothing wraps. -->
+      <aside class="rail panel shelf" aria-labelledby="target-title">
+        <div class="ph-head">
+          <div class="ph-text">
+            <h2 id="target-title" class="ph-title"><span class="ph-name">Where the units go</span></h2>
+            <p class="ph-sub">{{ target ? 'Each unit you scan goes on this shelf' : 'Scan the QR code on the shelf' }}</p>
+          </div>
+        </div>
+        <div class="ph-body">
           <template v-if="!target">
-            <p class="t-caption muted">Go to the shelf the units go on and scan its QR code.</p>
-            <ScanField label="Shelf" hint="" :loading="checking" autofocus @scan="chooseTarget" />
+            <ScanField label="Shelf" hide-label placeholder="Scan a shelf" hint="" :loading="checking" autofocus @scan="chooseTarget" />
             <v-alert v-if="targetError" type="error" variant="tonal" density="compact">{{ targetError }}</v-alert>
           </template>
           <div v-else class="target" role="status">
-            <span class="t-caption muted">Putting units on</span>
-            <span class="t-h2">Shelf {{ target.number }}</span>
-            <span class="t-body">{{ target.locationName ?? target.location }}</span>
-            <span class="t-caption muted">{{ target.siteName }}</span>
-            <span class="t-body tally"><strong class="tnum">{{ onTarget }}</strong> put on this shelf</span>
-            <v-btn variant="outlined" class="change" @click="target = null">Change shelf</v-btn>
+            <div class="tg-row">
+              <span class="tg-shelf">Shelf {{ target.number }}</span>
+              <span class="tg-tally"><span class="tg-count">{{ onTarget }}</span> put here</span>
+            </div>
+            <span class="tg-loc">{{ target.locationName ?? target.location }}</span>
+            <span class="ph-sub">{{ target.siteName }}</span>
+            <v-btn variant="tonal" size="small" class="change" :prepend-icon="mdiSwapHorizontal" @click="target = null">Change shelf</v-btn>
           </div>
-          <p v-if="waitingRetry" class="t-body">
-            <strong class="tnum">{{ waitingRetry }}</strong> refused {{ waitingRetry === 1 ? 'scan waits' : 'scans wait' }} for Retry. Each one is retried on the shelf it was scanned for.
-          </p>
+          <div v-if="waitingRetry" class="tg-retry">
+            <span class="tg-line"><strong class="tnum">{{ waitingRetry }}</strong> refused {{ waitingRetry === 1 ? 'scan waits' : 'scans wait' }} for Retry</span>
+            <span class="ph-sub">Each goes back to the shelf it was scanned for</span>
+          </div>
         </div>
       </aside>
       <div class="work">
@@ -568,7 +611,7 @@ function unpicked(l: PickLine) {
 /* Pick Order: queue rail + work pane. */
 .desk {
   display: grid;
-  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  grid-template-columns: minmax(340px, 440px) minmax(0, 1fr);
   gap: var(--sp-4);
   align-items: start;
 }
@@ -577,21 +620,70 @@ function unpicked(l: PickLine) {
   position: sticky;
   top: var(--sp-4);
 }
-.queue-head {
+/* Golden-ratio head: 11 / 14 / 17.8 px (14 ÷ √φ, 14, 14 × √φ), spacing 8 · 13 · 21; sides at the rows' 16 px edge.
+   Hierarchy by size and ink: the title in full ink, the count in medium ink, the order muted. No line ever wraps. */
+.queue-head,
+.ph-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 21px 8px 13px var(--sp-4);
+}
+.ph-text {
+  flex: 1;
+  min-width: 0;
+}
+.ph-title {
   display: flex;
   align-items: baseline;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-3) var(--sp-2) var(--sp-4);
+  gap: 8px;
+  margin: 0;
+  font-size: 17.8px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
 }
-.queue-head .t-caption {
-  flex: 1;
+.ph-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ph-count {
+  flex: none;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+}
+.ph-sub {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  letter-spacing: 0.01em;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ph-tool {
+  flex: none;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
 }
 .queue-scan {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
-  padding: 0 var(--sp-4) var(--sp-3);
+  gap: 8px;
+  padding: 0 var(--sp-4) 13px;
   border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.queue-scan :deep(input) {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* No hint under this field (the placeholder says it), so no empty message line either. */
+.queue-scan :deep(.v-input__details) {
+  display: none;
 }
 .queue-empty {
   padding: var(--sp-6) var(--sp-4);
@@ -652,6 +744,7 @@ function unpicked(l: PickLine) {
   white-space: nowrap;
 }
 .rid {
+  flex: 1; /* takes the row, so a chip after it sits at the right edge */
   color: rgb(var(--v-theme-primary));
   overflow: hidden;
   text-overflow: ellipsis;
@@ -730,10 +823,8 @@ function unpicked(l: PickLine) {
   gap: var(--sp-4);
   align-items: center;
   padding: var(--sp-3) var(--sp-4);
-  transition: border-color 200ms ease-out, background-color 200ms ease-out;
-}
-.line.full {
-  border-color: rgba(var(--v-theme-success), 0.5);
+  border: 0; /* no edge, full or not (owner 2026-11-25): the panel tone and the gap set the cards apart; the bar says full */
+  transition: background-color 200ms ease-out;
 }
 .line.just {
   background: rgba(var(--v-theme-success), 0.08);
@@ -917,12 +1008,9 @@ function unpicked(l: PickLine) {
   flex-direction: column;
   gap: 2px;
 }
-.target .tally {
-  margin-top: var(--sp-2);
-}
 .target .change {
   align-self: flex-start;
-  margin-top: var(--sp-3);
+  margin-top: 13px;
 }
 .mode {
   align-self: flex-start;
@@ -940,16 +1028,97 @@ function unpicked(l: PickLine) {
     position: static;
   }
 }
-.reasons {
+/* Rail body under a ph-head: parts 13 apart, 21 at the foot; sides on the 16 px edge. */
+.ph-body {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2);
+  flex-direction: column;
+  gap: 13px;
+  padding: 0 var(--sp-4) 21px;
 }
-/* Tap targets for gloved hands: the app's compact chip is 18 px tall. */
-.reasons :deep(.v-chip) {
-  height: 36px;
-  padding: 0 var(--sp-3);
-  border-radius: 8px;
-  font-size: 0.875rem;
+.reasons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+/* Tonal, 40 px tall (gloved hands), one line each: the grid gives every purpose the same width. */
+.reasons :deep(.v-btn) {
+  height: 40px;
+  min-width: 0;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.reasons :deep(.v-btn__content) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.purpose :deep(.v-messages__message) {
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A quiet foot row: the question muted at 11, the way out as a small tonal button; one line. */
+.ph-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 13px;
+  border-top: 1px solid rgb(var(--v-theme-seam));
+}
+.ph-foot .ph-sub {
+  min-width: 0;
+}
+.ph-foot .v-btn {
+  flex: none;
+}
+/* Shelf card: the shelf 22.65 (14 × φ) beside its tally, the location 14 in ink, the site 11 muted. */
+.tg-row {
+  display: flex;
+  align-items: baseline;
+  gap: 13px;
+}
+.tg-shelf {
+  flex: 1;
+  min-width: 0;
+  font-size: 22.65px;
+  line-height: 28px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg-tally {
+  flex: none;
+  font-size: 11px;
+  line-height: 16px;
+  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  white-space: nowrap;
+}
+.tg-count {
+  margin-right: 4px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 17.8px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: rgb(var(--v-theme-on-surface));
+}
+.tg-loc,
+.tg-line {
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tg-retry {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 </style>

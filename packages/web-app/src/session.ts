@@ -3,6 +3,7 @@
  * Admins without MFA may only use the MFA setup endpoints, /me and logout (API: 403 MFA_REQUIRED), so
  * `needsMfaSetup` sends them to MFA setup first.
  */
+import { readCookie } from '@cimh/web-api'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import { type Account, ApiError, call, identity, onSessionExpired, refreshSession } from './api'
@@ -41,6 +42,14 @@ export const useSession = defineStore('session', () => {
 
   function load(force = false): Promise<void> {
     if (loaded.value && !force) return Promise.resolve()
+    // No csrf_token cookie = nobody signed in on this browser: identity sets it with every session (same
+    // lifetime as the refresh cookie) and refuses a web refresh without it, so /me and /auth/refresh could
+    // only answer 401. Skipping them keeps a visitor's console free of errors (Lighthouse best practices).
+    if (!readCookie('csrf_token')) {
+      account.value = null
+      loaded.value = true
+      return Promise.resolve()
+    }
     // A quiet probe: an anonymous visitor is not an "expired session", so no expiry handlers fire here.
     // An expired access token with a valid refresh cookie is refreshed once.
     const me = () => call(() => identity.GET('/me'), { refresh: false })

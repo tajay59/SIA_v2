@@ -273,7 +273,7 @@ const summary = computed(() => {
                 <span class="pname">{{ p.name }}</span>
                 <span class="pfoot">
                   <StockMeter :available="p.stockCount" :threshold="p.threshold" />
-                  <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" /></span>
+                  <span class="console-mono t-caption muted pid" :title="p.modelnumber || undefined"><template v-if="p.modelnumber">{{ p.modelnumber }}</template><ShortRef v-else :id="p.id" :fit="false" /></span>
                 </span>
               </router-link>
             </li>

@@ -279,9 +279,11 @@ function onChanged(r: OrderRequest) {
                 <router-link :to="rowLink(r)" class="row" :class="{ open: r.id === openId, closed: isClosed(r.status) }" :aria-current="r.id === openId ? 'true' : undefined">
                   <span class="row-main">
                     <span class="row-title">
-                      {{ title(r) }}
-                      <span v-if="r.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
-                      <span v-if="paymentDue(r)" class="pay-badge">Payment required</span>
+                      <span class="row-title-text">{{ title(r) }}</span>
+                      <span v-if="r.type === 'PROBONO' || paymentDue(r)" class="row-badges">
+                        <span v-if="r.type === 'PROBONO'" class="probono-badge">Pro Bono</span>
+                        <span v-if="paymentDue(r)" class="pay-badge">Payment required</span>
+                      </span>
                     </span>
                     <span class="row-meta">
                       {{ stateText(r) }} · sent {{ formatDate(r.submittedAt) }}
@@ -512,14 +514,27 @@ function onChanged(r: OrderRequest) {
   gap: 2px;
 }
 .row-title {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
   font-size: 15px;
   line-height: 22px;
   font-weight: 600;
+}
+.row-title-text {
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+/* Badges sit together at the right edge of the title line (owner 2026-11-25). */
+.row-badges {
+  flex: none;
+  display: flex;
+  gap: var(--sp-1);
+  padding-top: 1px;
 }
 .pay-badge {
   display: inline-block;
-  margin-left: var(--sp-1);
   padding: 0 8px;
   border-radius: 999px;
   font-size: 12px;
@@ -530,10 +545,6 @@ function onChanged(r: OrderRequest) {
   background: rgba(var(--v-theme-warning), 0.16);
   color: rgb(var(--v-theme-on-surface));
   border: 1px solid rgba(var(--v-theme-warning), 0.6);
-}
-.row-title .probono-badge {
-  margin-left: var(--sp-1);
-  vertical-align: 1px;
 }
 .row.closed .row-title {
   color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));

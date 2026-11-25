@@ -102,12 +102,12 @@ test.describe.serial('J-09 warehouse scanning (web)', () => {
     await scanInto(page, 'Shelf', 'SHELnotashelf')
     await expect(page.getByText('No shelf with this code')).toBeVisible()
     await scanInto(page, 'Shelf', shelves[0]!)
-    await expect(page.getByText('Putting units on')).toBeVisible()
+    await expect(page.getByText('Each unit you scan goes on this shelf')).toBeVisible()
     await expect(page.getByText('Shelf 1', { exact: true })).toBeVisible()
 
     for (const u of units) await scanInto(page, 'Unit', u)
     await expect(page.getByText(`${productName} · stowed`)).toHaveCount(3)
-    await expect(page.getByText(/3\s+put on this shelf/)).toBeVisible()
+    await expect(page.getByText(/3\s+put here/)).toBeVisible()
     // A unit already on a shelf moves to the chosen one (and back, so later tests find all three on shelf 1).
     await page.getByRole('button', { name: 'Change shelf' }).click()
     await scanInto(page, 'Shelf', shelves[1]!)
