@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * A record id. By default shown short ("ORD…3f9a2c", `shortRef`) with the full id in a tooltip.
- * `fit`: the full id whenever it fits without adding a line to its parent (re-checked when the parent's width
- * changes), else the short form. `copy`: a small button that copies the full id (never inside a link or button).
+ * A record id: in full whenever it fits without adding a line to its block or overflowing it (re-checked when the
+ * width around it changes), else short ("ORD…3f9a2c", `shortRef`) with the full id in a tooltip (owner 2026-11-25:
+ * an id is never cut where the whole one fits). `:fit="false"` keeps it always short. `copy`: a small button that
+ * copies the full id (never inside a link or button).
  */
 import { mdiCheck, mdiContentCopy } from '@mdi/js'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useNotify } from '../notify'
 import { shortRef } from '../orders'
 
-const props = defineProps<{ id: string; fit?: boolean; copy?: boolean }>()
+const props = withDefaults(defineProps<{ id: string; fit?: boolean; copy?: boolean }>(), { fit: true, copy: false })
 
 const root = ref<HTMLElement | null>(null)
 const full = ref(false)
@@ -59,7 +60,9 @@ onMounted(() => {
     lastWidth = w
     void measure()
   })
-  ro.observe(parent)
+  // Watch the box around the id's block too: the block itself may size to the id (a flex item, a cell), so its
+  // own width changes with every full/short switch and would make the two forms take turns.
+  ro.observe(parent.parentElement ?? parent)
   void document.fonts?.ready.then(() => { lastWidth = -1; void measure() })
 })
 onBeforeUnmount(() => ro?.disconnect())

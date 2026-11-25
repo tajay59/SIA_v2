@@ -6,7 +6,7 @@
  * Uploaded as `payment_proof` (document-svc; scanned like every upload); CIMH staff are emailed. Send stays enabled:
  * a press with no file says so under the slot and moves the cursor there (forms rule).
  */
-import { ApiError, type OrderRequest, getRequest, requestTitle, shortRef, uploadRequestFile, useNotify } from '@cimh/web-app'
+import { ApiError, type OrderRequest, getRequest, requestTitle, ShortRef, uploadRequestFile, useNotify } from '@cimh/web-app'
 import { formatMoney } from '@cimh/web-ui'
 import { mdiClose, mdiFileDocumentOutline, mdiImageOutline, mdiTrayArrowUp } from '@mdi/js'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -110,7 +110,7 @@ async function send() {
         <div class="dlg-who">
           <h2 id="proof-title" class="dlg-title">Send proof of payment</h2>
           <p class="dlg-what">{{ title }}</p>
-          <p class="dlg-sub"><span class="t-mono">{{ shortRef(request.id) }}</span></p>
+          <p class="dlg-sub"><span class="t-mono"><ShortRef :id="request.id" /></span></p>
         </div>
         <dl class="dlg-key">
           <dt class="dlg-cap">Amount</dt>

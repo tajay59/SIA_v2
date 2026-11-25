@@ -178,7 +178,7 @@ function value(k: string, v: unknown): string {
   if (typeof v === 'boolean') return v ? 'Yes' : 'No'
   if (k === 'role' && typeof v === 'string') return ROLE_WORD[v] ?? v
   if ((k === 'organisationId' || k === 'mergedInto') && typeof v === 'string') return orgName(v)
-  if (k === 'requestId' && typeof v === 'string') return shortRef(v)
+  if (k === 'requestId' && typeof v === 'string') return v // in full: details wrap, so the whole id always fits
   if (k === 'seconds' && typeof v === 'number') return v >= 120 ? `${Math.round(v / 60)} minutes` : `${v} seconds`
   if (Array.isArray(v)) return v.map((x) => value(k, x)).join(', ')
   if (typeof v === 'object') {

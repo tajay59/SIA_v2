@@ -7,7 +7,7 @@
  * a false 0.00); a row opens the request. Foot: Continue · Go to orders (→ the list filtered on Payment required).
  * Once per account per tab session (sessionStorage), so moving around the store does not repeat it.
  */
-import { call, orders, type RequestSummary, requestTitle, shortRef, useSession } from '@cimh/web-app'
+import { call, orders, type RequestSummary, requestTitle, ShortRef, useSession } from '@cimh/web-app'
 import { formatDate, formatMoney } from '@cimh/web-ui'
 import { mdiChevronRight } from '@mdi/js'
 import { computed, ref, watch } from 'vue'
@@ -116,7 +116,7 @@ function openOne(id: string) {
               <span class="entry-main">
                 <span class="entry-title">{{ requestTitle(r.firstItemName, r.lineCount, r.type) }}</span>
                 <span class="entry-meta">
-                  <span class="t-mono">{{ shortRef(r.id) }}</span>
+                  <span class="t-mono"><ShortRef :id="r.id" /></span>
                   <span v-if="r.updatedAt" class="nowrap"> · delivered {{ formatDate(r.updatedAt) }}</span>
                 </span>
               </span>

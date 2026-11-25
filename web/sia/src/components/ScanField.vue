@@ -7,8 +7,18 @@ import { mdiBarcodeScan } from '@mdi/js'
 import { nextTick, onMounted, ref } from 'vue'
 
 const props = withDefaults(
-  defineProps<{ label: string; hint?: string; placeholder?: string; loading?: boolean; autofocus?: boolean; keep?: boolean; prominent?: boolean }>(),
-  { hint: 'Scan the code, or type it and press Enter', placeholder: undefined, loading: false, autofocus: false, keep: false, prominent: false },
+  defineProps<{
+    label: string
+    hint?: string
+    placeholder?: string
+    loading?: boolean
+    autofocus?: boolean
+    keep?: boolean
+    prominent?: boolean
+    /** The label names the input for assistive tech only; the placeholder carries the visible words. */
+    hideLabel?: boolean
+  }>(),
+  { hint: 'Scan the code, or type it and press Enter', placeholder: undefined, loading: false, autofocus: false, keep: false, prominent: false, hideLabel: false },
 )
 const emit = defineEmits<{ scan: [code: string] }>()
 const value = ref('')
@@ -33,7 +43,8 @@ onMounted(() => {
     <v-text-field
       ref="field"
       v-model="value"
-      :label="label"
+      :label="hideLabel ? undefined : label"
+      :aria-label="hideLabel ? label : undefined"
       :hint="hint"
       :placeholder="placeholder"
       :persistent-placeholder="!!placeholder"
@@ -58,6 +69,10 @@ onMounted(() => {
 /* Codes in the mono face (DESIGN_BRIEF), on the input only: on the whole field it shifts the label. */
 .scan :deep(input) {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+/* The placeholder is words, not a code: the interface face. */
+.scan :deep(input::placeholder) {
+  font-family: 'Inter Variable', Inter, system-ui, sans-serif;
 }
 </style>
 <style scoped>
