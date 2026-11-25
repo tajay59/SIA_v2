@@ -1,6 +1,6 @@
 # Lighthouse: results, fixes done, fixes to come
 
-Date: 2026-11-25 · Status: **all fixes built: 1, 2, 4, 5 (#55), edge (#56), 6 (#57), 3 (#58), C + B + D (branch `perf/lighthouse-c-b-d`, §5.3); honest phone numbers measured (§5.3)** · Owner request 2026-11-25
+Date: 2026-11-25 · Status: **done: every fix merged and on staging (#55–#59); CI gate live (§5.4)** · Owner request 2026-11-25
 
 Working plan, not part of the manual. Picks up where the session left off: read §6 first.
 
@@ -167,9 +167,14 @@ Still in every first load: Vue (~80 KB raw), vue-router (23 KB), Vuetify core, t
 | SHOP login | 82 | 2.8 s | 3.5 s | 220 ms | 0 |
 | SIA sign-in (desktop) | 99 | 0.7 s | 0.8 s | 0 ms | 0 |
 
-Before the fixes, staging measured 37–58 on phones (ESET-skewed, so not directly comparable). Next lever if wanted: SHOP home's 560 ms of main-thread blocking (the hero carousel and the masthead start together).
+Before the fixes, staging measured 37–58 on phones (ESET-skewed, so not directly comparable). The home figures above were a cold first run: three runs in a row give 63 (cold), then 75 and 75 (TBT 360–380 ms, LCP 3.85 s). Rendering only the first hero slide eagerly (`:eager="i === 0"`) was tried and not kept: TBT −60 ms but LCP +0.2 s, score unchanged.
 
 How to repeat the honest measurement: serve `web/*/dist` from `nginx:1.27-alpine` with the gateway's gzip lines (`/api/*` proxied to the dev stack through `host.docker.internal`), put it and a `node:22-bookworm-slim` container (apt `chromium`, `CHROME_PATH=/usr/bin/chromium`) on one Docker network, and run `npx lighthouse@12.6.0 http://<nginx>:<port>/ --chrome-flags="--headless=new --no-sandbox" --form-factor=mobile` in the node container.
+
+### 5.4 Staging and CI after #59 (2026-11-25)
+
+- Staging serves the stored `.gz` (SHOP main script 63,244 B on the wire = the build's file; CSS 18.6 KB), the Inter preload is in the HTML, `/api/` answers stay uncompressed, and signed-out SHOP/SIA pages load with no failed request or console error.
+- The CI gate ran on `main` (production builds, cold runner): SHOP home 62 (first audit, cold), catalogue 80, product 84, login 84 on phones; SIA sign-in 99 desktop; accessibility 100 and best practices 100 everywhere, CLS 0, SEO 100 (SIA 58 by design).
 
 ## 6. State at the end of the session (2026-11-25, second session)
 
@@ -177,11 +182,7 @@ How to repeat the honest measurement: serve `web/*/dist` from `nginx:1.27-alpine
 - **#56 merged and the edge file installed on kw-server by hand** (backup `/srv/edge-sites/cimh-stores-staging.conf.bak`, `nginx -t`, reload): `/api/` answers now leave uncompressed, web app files still gzip, the other sites on the edge answer as before (`printitdesigns.com` without `www.` has a certificate that doesn't name it: pre-existing, not ours).
 - **Fix 6 built** on branch `fix/signed-out-console-and-pick-queue` (with SIA/SHOP UI work from the same session).
 - **#57 merged** (fix 6 + SIA pick/desk UI). **Fix 3 built** on `perf/smaller-first-load` (§5.2).
-- **C, B, D built** on `perf/lighthouse-c-b-d` (stacked on #58; rebase onto `main` once #58 merges). Honest phone numbers in §5.3.
-- **Next (optional):** SHOP home main-thread blocking (560 ms); check staging after the deploys (Best practices 100 expected once #57 is live).
-- PR #54 (announcements + invoice CRUD) is merged and on staging: order-svc's `invoices` upgrade made 35 records, 0 number clashes; the staging edge site is installed (announcement WebSocket 101 on both hosts, a foreign Origin gets 403).
-- Preview servers were running on 15291 (SHOP) / 15292 (SIA) from `web/*/dist` built on this branch. **Gotcha:** stopping a background `npx vite preview` task leaves its `node` process holding the port; kill the listener (PowerShell `Get-NetTCPConnection -LocalPort 15291 -State Listen` → `Stop-Process`) before restarting, and restart previews after editing `vite.config.ts` (the CSP header is read at start).
-- **Never run `deploy/staging-lite/deploy.sh --edge` from a tree with unmerged changes:** it rebuilds and ships the local tree before installing the edge file.
+- **All merged and on staging** (#57 fix 6 + pick UI, #58 fix 3 + invoice-dialog a11y fix, #59 C/B/D). Nothing left in this plan; future regressions show in the CI gate (job summary of e2e, artifact `lighthouse-reports`).
 
 ## 7. How to run it again
 
