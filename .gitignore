@@ -80,3 +80,4 @@ deploy/prometheus/blackbox-targets.rendered.yml
 /.mcp.json
 /web/shop/.impeccable/
 /packages/web-app/.impeccable/
+lighthouse-reports/

@@ -3,6 +3,7 @@ import { defineConfig } from 'vite'
 import vuetify from 'vite-plugin-vuetify'
 import VueRouter from 'vue-router/vite'
 import { trimVuetifyCss } from '../../packages/web-ui/tooling/trim-vuetify-css'
+import { precompress, preloadFonts } from '../../packages/web-ui/tooling/build-extras'
 
 // Same Content-Security-Policy as staging/production (deploy/staging-lite/gateway.conf), so the browser
 // tests catch violations before deployment.
@@ -25,6 +26,8 @@ export default defineConfig({
     VueRouter({ routesFolder: 'src/pages', dts: 'src/typed-router.d.ts' }),
     vue(),
     vuetify({ autoImport: true }),
+    preloadFonts(),
+    precompress(),
   ],
   // One copy of each runtime (as in web/sia): a second vue-router in the build left useRoute() undefined in
   // App.vue, so production builds rendered a blank page.

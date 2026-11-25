@@ -84,6 +84,7 @@ server {
   location /assets/ {
     root /srv/sia-web/sia;
     gzip on;
+    gzip_static on;  # serve the .gz the build stored (level 9), else compress on the fly
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     try_files $uri =404;
@@ -91,6 +92,7 @@ server {
   location / {
     root /srv/sia-web/sia;
     gzip on;
+    gzip_static on;  # serve the .gz the build stored (level 9), else compress on the fly
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "no-cache" always;
     try_files $uri /index.html;
@@ -114,6 +116,7 @@ server {
   location /assets/ {
     root /srv/sia-web/shop;
     gzip on;
+    gzip_static on;  # serve the .gz the build stored (level 9), else compress on the fly
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     try_files $uri =404;
@@ -121,6 +124,7 @@ server {
   location / {
     root /srv/sia-web/shop;
     gzip on;
+    gzip_static on;  # serve the .gz the build stored (level 9), else compress on the fly
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "no-cache" always;
     try_files $uri /index.html;

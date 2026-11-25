@@ -1,6 +1,6 @@
 # Lighthouse: results, fixes done, fixes to come
 
-Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 (#55), staging edge (#56) and fix 6 (#57) merged and on staging; fix 3 built (branch `perf/smaller-first-load`, §5.2); next: measure phones without ESET, then C / B** · Owner request 2026-11-25
+Date: 2026-11-25 · Status: **all fixes built: 1, 2, 4, 5 (#55), edge (#56), 6 (#57), 3 (#58), C + B + D (branch `perf/lighthouse-c-b-d`, §5.3); honest phone numbers measured (§5.3)** · Owner request 2026-11-25
 
 Working plan, not part of the manual. Picks up where the session left off: read §6 first.
 
@@ -104,9 +104,9 @@ Best practices stays 93 after the fixes: only the two 401s are left (fix 6).
 | A | **Done 2026-11-25 (§5.1).** ~~Merge #55, then re-run Lighthouse on staging's public pages~~ (`https://store.hashiz.store/`, `/catalogue`, a product, `/pro-bono`; `https://sia.hashiz.store/login`). Read-only page loads only; never sign up or create data there (it holds the real legacy data). | Compression only shows once nginx serves the files: this is the real phone performance number. | Small. Merging deploys the new gateway config to staging (CI reloads the gateway after `nginx -t`). |
 | 6 | **Built 2026-11-25** (no contract change: with no `csrf_token` cookie the web apps skip `/me` and `/auth/refresh`, which could only answer 401; identity refuses a web refresh without it; signed-out SHOP/SIA pages load with no failed request and no console error). ~~No 401s for signed-out visitors:~~ e.g. an identity endpoint that answers 200 `{ account: null }` for "am I signed in?" (or skip `/auth/refresh` when no session is known), so the console stays clean. | Last item keeping Best practices at 93 on every page. | Small; contract change (identity OpenAPI) + web-app `session.ts`/`api.ts`. |
 | 3 | **Built 2026-11-25 (§5.2).** ~~Smaller first load:~~ check whether all of Vuetify's CSS ships (`vuetify/styles` vs per-component styles with `vite-plugin-vuetify` `autoImport` + `styles: 'sass'`/`configFile`), split rarely used code out of the main chunk (pdf.js is already separate; check what else lands in `index-*.js`, e.g. via `rollup-plugin-visualizer`), lazy-load heavy components below the fold. | Main JS ~60 % unused on the first page; 370–415 KB render-blocking CSS. The biggest remaining phone cost once compression is on. | Medium; touches build config and possibly the look (verify with the Playwright suite + screenshots). Decide after A. |
-| B | **Brotli / precompressed assets:** build `.gz`/`.br` next to each asset (e.g. `vite-plugin-compression`) and serve them with `gzip_static` (brotli needs an nginx module not in the stock image). | A further ~15–20 % below gzip, and no compression CPU per request. | Small–medium. Optional after A. |
-| C | **Font and hero image:** check `font-display` and preload of Inter (SHOP home LCP), and the 110 KB `gears-*.webp` on SHOP home. | Small LCP gains on phones. | Small. |
-| D | **Lighthouse in CI (optional):** run the §7 spec against previews on PRs touching `web/`, failing on accessibility < 100 or CLS > 0.1 (performance too noisy on CI runners to gate). | Keeps the 100 accessibility and the layout-shift fix from regressing. | Medium (CI time ~15 min; could audit a subset). |
+| B | **Built 2026-11-25 (§5.3; gzip only, no brotli).** ~~Brotli / precompressed assets:~~ build `.gz`/`.br` next to each asset (e.g. `vite-plugin-compression`) and serve them with `gzip_static` (brotli needs an nginx module not in the stock image). | A further ~15–20 % below gzip, and no compression CPU per request. | Small–medium. Optional after A. |
+| C | **Built 2026-11-25 (§5.3).** ~~Font and hero image:~~ check `font-display` and preload of Inter (SHOP home LCP), and the 110 KB `gears-*.webp` on SHOP home. | Small LCP gains on phones. | Small. |
+| D | **Built 2026-11-25 (§5.3).** ~~Lighthouse in CI (optional):~~ run the §7 spec against previews on PRs touching `web/`, failing on accessibility < 100 or CLS > 0.1 (performance too noisy on CI runners to gate). | Keeps the 100 accessibility and the layout-shift fix from regressing. | Medium (CI time ~15 min; could audit a subset). |
 
 SIA's SEO score (58) is correct for a staff app and should stay.
 
@@ -152,13 +152,33 @@ Entry stylesheet 360 → 110 KB (SHOP), 415 → 113 KB (SIA). Pages now load 30�
 
 Still in every first load: Vue (~80 KB raw), vue-router (23 KB), Vuetify core, the shell (lists, menus, snackbar), Vuetify's date adapter (11.5 KB, created by `createVuetify` whatever the page). Further steps would be per-page (lazy-load below-the-fold parts) with smaller returns.
 
+### 5.3 C, B, D and honest phone numbers (2026-11-25, branch `perf/lighthouse-c-b-d`)
+
+- **C:** Inter (Latin) preloaded from index.html (`preloadFonts()` in `packages/web-ui/tooling/build-extras.ts`; the file name is hashed, so it is written at build); the first hero slide gets `fetchpriority="high"`; `gears.webp` (decorative, shown at 22 % opacity) re-encoded at WebP quality 45: 107 → 59 KB, no visible change.
+- **B:** the build stores a level-9 `.gz` next to every text asset ≥ 1 KB (`precompress()`; not source maps) and the SPA locations have `gzip_static on` (production template + staging gateway; both pass `nginx -t`; the official nginx image has the module). The SHOP main script goes out at 63 KB (180 KB raw). No brotli: it needs an nginx module the stock image does not have.
+- **D:** `tools/perf/lighthouse-gate.mjs` runs at the end of the CI e2e job against the production builds (SHOP home, catalogue, a product, login at phone size; SIA sign-in): fails on accessibility below 100 or CLS above 0.1; all scores go to the job summary, HTML reports to the `lighthouse-reports` artifact. Performance is reported, not gated.
+- **Honest phone numbers.** ESET also intercepts plain HTTP from Chrome that Lighthouse starts, so measuring from Windows is skewed even against localhost. Measured instead with Lighthouse in a Linux container on the same Docker network as an nginx container serving the production builds with this gzip/gzip_static setup (traffic never touches the Windows network stack; Lighthouse's simulated slow 4G still applies):
+
+| Page | Phone perf | FCP | LCP | TBT | CLS |
+|---|---|---|---|---|---|
+| SHOP home | 68 | 2.9 s | 4.0 s | 560 ms | 0 |
+| SHOP catalogue | 81 | 3.0 s | 4.0 s | 120 ms | 0.002 |
+| SHOP product | 80 | 2.8 s | 3.8 s | 210 ms | 0 |
+| SHOP login | 82 | 2.8 s | 3.5 s | 220 ms | 0 |
+| SIA sign-in (desktop) | 99 | 0.7 s | 0.8 s | 0 ms | 0 |
+
+Before the fixes, staging measured 37–58 on phones (ESET-skewed, so not directly comparable). Next lever if wanted: SHOP home's 560 ms of main-thread blocking (the hero carousel and the masthead start together).
+
+How to repeat the honest measurement: serve `web/*/dist` from `nginx:1.27-alpine` with the gateway's gzip lines (`/api/*` proxied to the dev stack through `host.docker.internal`), put it and a `node:22-bookworm-slim` container (apt `chromium`, `CHROME_PATH=/usr/bin/chromium`) on one Docker network, and run `npx lighthouse@12.6.0 http://<nginx>:<port>/ --chrome-flags="--headless=new --no-sandbox" --form-factor=mobile` in the node container.
+
 ## 6. State at the end of the session (2026-11-25, second session)
 
 - **#55 merged** (squash) and deployed to staging; this plan is on `main` with it. 5-A done (§5.1).
 - **#56 merged and the edge file installed on kw-server by hand** (backup `/srv/edge-sites/cimh-stores-staging.conf.bak`, `nginx -t`, reload): `/api/` answers now leave uncompressed, web app files still gzip, the other sites on the edge answer as before (`printitdesigns.com` without `www.` has a certificate that doesn't name it: pre-existing, not ours).
 - **Fix 6 built** on branch `fix/signed-out-console-and-pick-queue` (with SIA/SHOP UI work from the same session).
 - **#57 merged** (fix 6 + SIA pick/desk UI). **Fix 3 built** on `perf/smaller-first-load` (§5.2).
-- **Next:** measure phones on staging from a machine without ESET (or PageSpeed Insights, owner's call), then C (font preload, home image) and B (precompressed assets).
+- **C, B, D built** on `perf/lighthouse-c-b-d` (stacked on #58; rebase onto `main` once #58 merges). Honest phone numbers in §5.3.
+- **Next (optional):** SHOP home main-thread blocking (560 ms); check staging after the deploys (Best practices 100 expected once #57 is live).
 - PR #54 (announcements + invoice CRUD) is merged and on staging: order-svc's `invoices` upgrade made 35 records, 0 number clashes; the staging edge site is installed (announcement WebSocket 101 on both hosts, a foreign Origin gets 403).
 - Preview servers were running on 15291 (SHOP) / 15292 (SIA) from `web/*/dist` built on this branch. **Gotcha:** stopping a background `npx vite preview` task leaves its `node` process holding the port; kill the listener (PowerShell `Get-NetTCPConnection -LocalPort 15291 -State Listen` → `Stop-Process`) before restarting, and restart previews after editing `vite.config.ts` (the CSP header is read at start).
 - **Never run `deploy/staging-lite/deploy.sh --edge` from a tree with unmerged changes:** it rebuilds and ships the local tree before installing the edge file.
