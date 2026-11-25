@@ -163,7 +163,14 @@ def test_view_and_sign_journey_with_cimh_and_supplier_lines(ctx: Ctx) -> None:
     assert pick("L2", "MET2_xx", "k0").json()["code"] == "LINE_NOT_PICKABLE"
     assert pick("L1", "MET2_xx", "k1").json()["code"] == "UNIT_WRONG_PRODUCT"
     assert pick("L1", "MET1_zz", "k2").json()["code"] == "UNIT_NOT_RESERVED_FOR_ORDER"
-    cimh_box = {"source": "CIMH", "lineIds": ["L1"], "carrier": "DHL", "tracking": "123", "date": "2026-11-09"}
+    cimh_box = {
+        "source": "CIMH",
+        "lineIds": ["L1"],
+        "carrier": "DHL",
+        "tracking": "123",
+        "cost": "12.00",
+        "date": "2026-11-09",
+    }
     r = ctx.act(rid, "shipments", cimh_box)
     assert r.status_code == 409
     assert r.json()["code"] == "PICKING_INCOMPLETE"
@@ -175,6 +182,11 @@ def test_view_and_sign_journey_with_cimh_and_supplier_lines(ctx: Ctx) -> None:
     r = ctx.act(rid, "shipments", {**cimh_box, "tracking": None})
     assert r.status_code == 422
     assert r.json()["code"] == "TRACKING_REQUIRED"
+    no_cost = {k: v for k, v in cimh_box.items() if k != "cost"}
+    for bad in (no_cost, {**cimh_box, "cost": None}):  # the shipping cost is required (owner 2026-11-24)
+        r = ctx.act(rid, "shipments", bad)
+        assert r.status_code == 422
+        assert r.json()["code"] == "VALIDATION_FAILED"
     r = ctx.act(rid, "shipments", {**cimh_box, "lineIds": ["L1", "L2"]})
     assert r.json()["code"] == "LINE_SOURCE_MISMATCH"  # L2 comes from the supplier, not CIMH stock
 
@@ -189,7 +201,7 @@ def test_view_and_sign_journey_with_cimh_and_supplier_lines(ctx: Ctx) -> None:
 
     # The supplier ships direct, with a carrier that has no template: staff paste the link.
     direct = {"source": "SUPPLIER", "supplier": SUPPLIER, "lineIds": ["L2"], "carrier": "OTHER",
-              "carrierName": "Island Couriers", "tracking": "IC-77", "date": "2026-11-10"}  # fmt: skip
+              "carrierName": "Island Couriers", "tracking": "IC-77", "cost": "30.00", "date": "2026-11-10"}  # fmt: skip
     r = ctx.act(rid, "shipments", {**direct, "trackingLink": "http://ic.example/77"})
     assert r.json()["code"] == "TRACKING_URL_INVALID"
     shipped = ctx.ok(rid, "shipments", {**direct, "trackingLink": "https://ic.example/77"})
@@ -230,7 +242,7 @@ def test_supplier_only_request_ships_without_picking(ctx: Ctx) -> None:
         {"supplier": "Campbell", "poNumber": "PO-9", "lineIds": ["L1", "L2"]}]})  # fmt: skip
     assert "pick" not in ctx.get(rid)["allowedActions"]
     box = {"source": "SUPPLIER", "supplier": SUPPLIER, "lineIds": ["L1", "L2"], "carrier": "UPS",
-           "tracking": "1Z999", "date": "2026-11-09"}  # fmt: skip
+           "tracking": "1Z999", "cost": "0.00", "date": "2026-11-09"}  # fmt: skip
     r = ctx.act(rid, "shipments", {**box, "supplier": "Someone else"})
     assert r.json()["code"] == "LINE_SOURCE_MISMATCH"
     out = ctx.ok(rid, "shipments", box)

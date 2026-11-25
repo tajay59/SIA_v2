@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -141,10 +142,13 @@ def test_usd_supplier_rates_are_named_on_the_agreement() -> None:
     assert "Vaisala quoted in USD, converted at 1 USD = 2.0225 BBD." in _text(req, pdfs.agreement)
 
 
-def test_invoice_charges_the_signed_total() -> None:
-    page = " | ".join(_text(request_doc("ORD1", "DELIVERED"), pdfs.invoice))
-    assert "Amount due | BBD 560.00" in page
-    assert "Estimated shipping, Vaisala" in page
+def test_automatic_invoice_charges_the_signed_total() -> None:
+    """Estimated shipping from the agreement (20 + 35), not what the parcels cost: total = the signed 560.00."""
+    req = request_doc("ORD1", "DELIVERED", shipments=[{"id": "S1", "cost": "99.00", "lineIds": ["L1"]}])
+    data = pdfs.auto_invoice_data(req, "invoice")
+    lines = sum(Decimal(x["unitPrice"]) * x["qty"] for x in data["lines"])
+    assert (data["fees"], data["shipping"], data["discount"]) == ("25.00", "55.00", "0.00")
+    assert lines + Decimal(data["fees"]) + Decimal(data["shipping"]) == Decimal("560.00")
 
 
 def test_a_quote_revised_meanwhile_is_not_rendered(ctx: Ctx) -> None:
@@ -194,10 +198,9 @@ def test_commercial_invoice_only_for_cimh_parcels_leaving_barbados(
 
 def test_commercial_invoice_lists_only_the_shipment_lines() -> None:
     req = request_doc("ORD1", "SHIPPED", shipments=[CIMH_BOX])
-    page = " | ".join(_text(req, lambda r: pdfs.commercial_invoice(r, shipment_id="SHP1")))
-    assert "Rain gauge — Acme" in page
-    assert "Anemometer" not in page  # the supplier ships it and invoices it
-    assert "tracking 123" in page
+    data = pdfs.auto_invoice_data(req, "commercial_invoice", "SHP1")
+    assert [x["lineId"] for x in data["lines"]] == ["L1"]  # the supplier ships L2 and invoices it
+    assert pdfs.built_invoice(req, data | {"number": "C-1", "date": "2026-11-24"}).startswith(b"%PDF")
 
 
 def test_probono_commercial_invoice(ctx: Ctx) -> None:
@@ -267,3 +270,42 @@ def test_only_staff_preview_and_order_svc_refusals_pass_through(ctx: Ctx) -> Non
     assert ctx.client.get(url, headers=STAFF).status_code == 409
     ctx.orders.down = True
     assert ctx.client.get(url, headers=STAFF).status_code == 503
+
+
+def _delivered() -> EventEnvelope:
+    return _event("order.delivered", orderType="PAID", customer="USRUSER", **{"from": "SHIPPED", "to": "DELIVERED"})
+
+
+def test_automatic_invoice_is_recorded_and_skipped_when_one_exists(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "DELIVERED", invoice={"number": "D-7"})
+    event = _delivered()
+    _run(ctx, event)
+    ((rid, kind, body),) = ctx.orders.recorded
+    assert (rid, kind, body["source"], body["number"], body["rev"]) == ("ORD1", "invoice", "AUTO", "D-7", None)
+    assert ctx.orders.requests["ORD1"]["invoices"]["invoice"]["source"] == "AUTO"
+    _run(ctx, event)  # redelivered: the same file, published again, nothing recorded twice
+    assert len(ctx.orders.recorded) == 1
+    assert [e.payload["fileId"] for e in _generated(ctx)] == [body["file"]["id"]] * 2
+    _run(ctx, _delivered())  # another event: an invoice exists, none made
+    assert len(_generated(ctx)) == 2
+
+
+def test_no_automatic_invoice_after_staff_voided_one(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "DELIVERED", voidedInvoices=[{"kind": "invoice"}])
+    _run(ctx, _delivered())
+    assert _generated(ctx) == []
+
+
+def test_automatic_invoice_numbers_come_from_the_series_and_skip_a_taken_one(ctx: Ctx) -> None:
+    ctx.orders.requests["ORD1"] = request_doc("ORD1", "DELIVERED")
+    ctx.orders.numbers.add("invoice:inv-0100")  # taken a moment ago by another request
+    ctx.orders.next_number = "INV-0100"
+    calls = iter(["INV-0100", "INV-0101"])
+
+    async def nxt(kind: str) -> str | None:
+        return next(calls)
+
+    ctx.orders.next_invoice_number = nxt  # type: ignore[method-assign]
+    _run(ctx, _delivered())
+    assert ctx.orders.requests["ORD1"]["invoices"]["invoice"]["number"] == "INV-0101"
+    assert len(list((ctx.root / "protected" / "orders" / "ORD1").glob("*.pdf"))) == 1

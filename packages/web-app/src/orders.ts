@@ -8,7 +8,7 @@
 import { BASE, documentsClient, type OrdersComponents, ordersClient } from '@cimh/web-api'
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { call, ifMatch } from './api'
+import { ApiError, call, ifMatch } from './api'
 import { newScanKey } from './inventory'
 
 type S = OrdersComponents['schemas']
@@ -227,7 +227,10 @@ export interface InvoiceInput {
 }
 export interface InvoiceDraft {
   kind: InvoiceKind
+  /** The number given at Mark delivered (invoice only), else null. */
   number: string | null
+  /** The latest number of this kind + 1 (null when there is none to count from). */
+  suggestedNumber?: string | null
   lines: InvoiceLineInput[]
   fees: string
   discount: string
@@ -250,10 +253,70 @@ export async function previewInvoice(requestId: string, body: InvoiceInput): Pro
   return (await call(() => documents.POST('/requests/{requestId}/invoice-preview' as any, opts as any))) as Blob
 }
 
-/** Store the invoice on the request; document-svc emails the customer and/or the staff invoice list as ticked. */
-export async function createInvoice(requestId: string, body: InvoiceInput): Promise<{ id: string; name: string }> {
+/** Store the invoice on the request (rev 1); document-svc emails the customer and/or the staff invoice list as
+ * ticked. 409 INVOICE_EXISTS when the request already has one of this kind, INVOICE_NUMBER_TAKEN for a used number. */
+export async function createInvoice(requestId: string, body: InvoiceInput): Promise<InvoiceSaved> {
   const opts = { ...reqPath(requestId), body }
-  return (await call(() => documents.POST('/requests/{requestId}/invoices' as any, opts as any))) as { id: string; name: string }
+  return (await call(() => documents.POST('/requests/{requestId}/invoices' as any, opts as any))) as InvoiceSaved
+}
+
+/** One PDF the invoice was issued as (the last revision is the current one). */
+export interface InvoiceRevision {
+  rev: number
+  fileId: string
+  number: string | null
+  total: string | null
+  by?: { id: string; name: string; role: string } | null
+  at: string | null
+}
+/** The request's current invoice of one kind, as the builder reopens it (staff; documents API). */
+export interface InvoiceRecord {
+  kind: InvoiceKind
+  /** null on an older invoice whose number is unknown */
+  number: string | null
+  rev: number
+  fileId: string
+  date: string | null
+  total: string | null
+  /** AUTO = made on delivery / for a parcel; LEGACY = made before invoices kept their lines (lines null). */
+  source: 'STAFF' | 'AUTO' | 'LEGACY'
+  /** The request is marked paid: read-only, only an administrator can void it. */
+  locked: boolean
+  lines: InvoiceLineInput[] | null
+  fees: string | null
+  discount: string | null
+  shipping: string | null
+  revisions: InvoiceRevision[]
+  recipient: string[]
+}
+export interface InvoiceSaved { id: string; name: string; rev?: number; number?: string }
+
+const invoicePath = (requestId: string, kind: InvoiceKind, rev?: number) => ({
+  params: { path: { requestId, kind }, ...(rev ? { header: { 'If-Match': ifMatch(rev) } } : {}) },
+})
+
+/** The request's current invoice of `kind`, or null when it has none (the builder then starts a new one). */
+export async function getInvoice(requestId: string, kind: InvoiceKind): Promise<InvoiceRecord | null> {
+  try {
+    return (await call(() =>
+      documents.GET('/requests/{requestId}/invoices/{kind}' as any, invoicePath(requestId, kind) as any),
+    )) as InvoiceRecord
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) return null
+    throw e
+  }
+}
+
+/** Save changes as the next revision (`rev` = the one being changed): a new PDF replaces it for the customer. */
+export async function reviseInvoice(requestId: string, kind: InvoiceKind, rev: number, body: InvoiceInput): Promise<InvoiceSaved> {
+  const opts = { ...invoicePath(requestId, kind, rev), body }
+  return (await call(() => documents.PUT('/requests/{requestId}/invoices/{kind}' as any, opts as any))) as InvoiceSaved
+}
+
+/** Void the current invoice with a reason (nobody is emailed; its number stays used). */
+export async function voidInvoice(requestId: string, kind: InvoiceKind, rev: number, reason: string): Promise<void> {
+  const opts = { ...invoicePath(requestId, kind, rev), body: { reason } }
+  await call(() => documents.DELETE('/requests/{requestId}/invoices/{kind}' as any, opts as any))
 }
 
 /** The supplier's own USD unit price and the rate, when staff converted a USD supplier quote to BBD. */

@@ -22,12 +22,18 @@ declare -A KEYS=(
   [relay]='~lock:outbox-relay:*'
 )
 
+# Pub/sub, only where used: catalog-svc publishes and catalog-push subscribes to announcement changes (plan
+# 2026-11-23); both use the catalog user.
+declare -A CHANNELS=(
+  [catalog]='&cat:ann:* +publish +subscribe +unsubscribe'
+)
+
 tmp=$(mktemp)
 echo "user default off" > "$tmp"
 for svc in "${!KEYS[@]}"; do
   pw=$(cat "$DIR/redis_$svc")
   common=${COMMON//\$\{svc\}/$svc}
-  echo "user $svc on >$pw resetkeys ${KEYS[$svc]} $common resetchannels $BASE" >> "$tmp"
+  echo "user $svc on >$pw resetkeys ${KEYS[$svc]} $common resetchannels $BASE ${CHANNELS[$svc]:-}" >> "$tmp"
 done
 pw=$(cat "$DIR/redis_exporter")
 echo "user exporter on >$pw resetkeys resetchannels -@all +ping +info +client|list +config|get +slowlog|get +latency|latest +select +scan +type +strlen +llen +scard +zcard +hlen +xlen" >> "$tmp"

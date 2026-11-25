@@ -14,7 +14,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
@@ -48,6 +51,7 @@ import bb.edu.cimh.sia.data.OrderRequest
 import bb.edu.cimh.sia.data.OrdersApi
 import bb.edu.cimh.sia.data.RequestSummary
 import bb.edu.cimh.sia.data.ShipmentInput
+import bb.edu.cimh.sia.data.shippingCost
 import bb.edu.cimh.sia.data.queue.ScanOutcome
 import bb.edu.cimh.sia.data.queue.ScanQueue
 import bb.edu.cimh.sia.ui.scan.CameraField
@@ -250,13 +254,14 @@ fun PickOrderScreen(vm: PickOrderViewModel, requestId: String, onShip: () -> Uni
 // "Other" (a carrier name + its tracking link) is recorded in SIA on the web.
 private val CARRIERS = listOf("FEDEX" to "FedEx", "DHL" to "DHL", "UPS" to "UPS", "HAND" to "Hand delivery")
 
-/** M-08 (APD §5): carrier, tracking (typed or scanned from the label), note, date. Needs the network. */
+/** M-08 (APD §5): carrier, tracking (typed or scanned from the label), note, date, shipping cost (required). Needs the network. */
 @Composable
 fun ShipScreen(orders: OrdersApi, requestId: String, onShipped: () -> Unit, modifier: Modifier = Modifier) {
     var request by remember { mutableStateOf<OrderRequest?>(null) }
     var carrier by rememberSaveable { mutableStateOf("FEDEX") }
     var tracking by rememberSaveable { mutableStateOf("") }
     var note by rememberSaveable { mutableStateOf("") }
+    var cost by rememberSaveable { mutableStateOf("") }
     var date by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     var notify by rememberSaveable { mutableStateOf(true) }
     var busy by rememberSaveable { mutableStateOf(false) }
@@ -275,6 +280,7 @@ fun ShipScreen(orders: OrdersApi, requestId: String, onShipped: () -> Unit, modi
     }
     val dateOk = runCatching { LocalDate.parse(date) }.isSuccess
     val trackingOk = carrier == "HAND" || tracking.isNotBlank()
+    val costValue = shippingCost(cost)
 
     Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(requestId, style = MaterialTheme.typography.titleMedium, fontFamily = Mono)
@@ -312,15 +318,33 @@ fun ShipScreen(orders: OrdersApi, requestId: String, onShipped: () -> Unit, modi
             value = date, onValueChange = { date = it.take(10) }, label = { Text("Ship date (YYYY-MM-DD)") },
             isError = !dateOk, singleLine = true, modifier = Modifier.fillMaxWidth(),
         )
+        // Required (owner 2026-11-24): what CIMH paid to send the parcel; 0.00 when nothing (e.g. a hand delivery).
+        OutlinedTextField(
+            value = cost, onValueChange = { cost = it.take(15) },
+            label = { Text("Shipping cost") }, prefix = { Text("BBD ") }, placeholder = { Text("0.00", fontFamily = Mono) },
+            textStyle = LocalTextStyle.current.copy(fontFamily = Mono),
+            isError = cost.isNotBlank() && costValue == null, singleLine = true, modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            supportingText = {
+                Text(
+                    when {
+                        cost.isBlank() -> "Required: 0.00 if it cost nothing. For CIMH's records; the customer never sees it"
+                        costValue == null -> "Write the cost as a number, e.g. 45.00"
+                        else -> "For CIMH's records; the customer never sees it"
+                    },
+                )
+            },
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Switch(checked = notify, onCheckedChange = { notify = it })
             Text("Email the customer", modifier = Modifier.padding(start = 12.dp))
         }
         message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Button(
-            enabled = !busy && request != null && dateOk && trackingOk,
+            enabled = !busy && request != null && dateOk && trackingOk && costValue != null,
             onClick = {
                 val r = request ?: return@Button
+                val shipCost = costValue ?: return@Button
                 busy = true
                 message = null
                 scope.launch {
@@ -332,6 +356,7 @@ fun ShipScreen(orders: OrdersApi, requestId: String, onShipped: () -> Unit, modi
                                 carrier = carrier,
                                 tracking = tracking.trim().ifBlank { null }.takeIf { carrier != "HAND" },
                                 note = note.trim().ifBlank { null },
+                                cost = shipCost,
                                 date = date,
                                 notifyCustomer = notify,
                             ),

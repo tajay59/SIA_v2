@@ -105,7 +105,7 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 
 | ID | STRIDE | Threat | Risk | Controls | Status |
 |---|---|---|---|---|---|
-| T-01 | S | Credential stuffing / brute force on `/auth/login` | H | nginx 5 req/min/IP on auth; per-account lockout after 5 failures (15 min, increasing); Argon2id; breached-password check at sign-up/reset; generic error messages | ✅ |
+| T-01 | S | Credential stuffing / brute force on `/auth/login` | H | nginx 5 req/min/IP on auth; per-account lockout after 5 failures (15 min, increasing; wrong TOTP codes count, a reused right code does not: it only answers an exact match of a code valid seconds ago, `MFA_CODE_REUSED`, 2026-11-25); Argon2id; breached-password check at sign-up/reset; generic error messages | ✅ |
 | T-02 | S | Account enumeration via register / forgot / login responses | M | Register and forgot always return 202; login uses the same error for unknown email and bad password; timing-equalised hashing | ✅ |
 | T-03 | S | Stolen refresh token reused | H | Rotation on every refresh; **reuse detection revokes the whole session family**; HttpOnly cookies (web), Keystore (mobile) | ✅ |
 | T-04 | S | Admin account takeover | H | **TOTP MFA required for admin** (TRD TR-AUTH-9, Must); admin sessions 8 h max; audit of every admin action; alert on admin login from a new IP | ✅ |
@@ -176,6 +176,10 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-39 | I | Lost/stolen staff phone | M | Tokens in Keystore; app lock with device credential after 5 min inactivity; admin can revoke sessions (suspend / logout-all) | ✅ (TR-SEC-11) |
 | T-40 | T | Replayed or tampered offline scans | L | Idempotency key per scan; server re-validates everything; queue holds no tokens | ✅ |
 | T-41 | I | Traffic interception on warehouse Wi-Fi | M | HTTPS only (`cleartextTrafficPermitted=false`); certificate pinning (built: ISRG Root X1, X2 and Root YE, pin set expiring 2027-12-31 so a CA change can't lock staff out; pins are roots rather than intermediates because Let's Encrypt rotates intermediates; CIMH CA added if production uses one) | ✅ (TR-SEC-11) |
+| T-42 | S/I | Cross-site WebSocket hijacking of the announcement socket | M | Origin must be SHOP/SIA (else HTTP 403); only announcements travel on it; `app=sia` needs a verified staff cookie, closed 4401 at token expiry | ✅ (2026-11-23) |
+| T-43 | D | Socket exhaustion on catalog-push | M | `limit_conn 20` per address, `PUSH_MAX_SOCKETS` per worker (1013 → polling), own container + memory limit, alert `PushSocketsNearCap` | ✅ (2026-11-23) |
+| T-44 | T | Script or phishing link in an announcement | M | Admin + MFA, audited; plain text only; links https, site path or a checked product; confirm before publishing; End now everywhere at once | ✅ (2026-11-23) |
+| T-45 | T/R | An issued invoice silently changed or withdrawn | M | One current invoice per kind; every save a new revision (earlier PDFs kept, staff-only); audited; read-only once paid, then only an admin can void (with a reason); voided numbers stay used | ✅ (2026-11-24) |
 
 ## 6.9 Legacy application findings (Flask, running until cut-over)
 

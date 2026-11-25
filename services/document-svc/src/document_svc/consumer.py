@@ -7,6 +7,8 @@
                             (both for the event's quote version; skipped if staff revised again meanwhile)
   order.shipment_recorded   CIMH parcel, ship-to outside Barbados -> commercial_invoice for its lines (customs)
   order.delivered           PAID -> invoice, PROBONO -> probono_invoice
+An invoice / commercial invoice is made only when the request has none of that kind yet (one per kind; staff
+build, change and void them in SIA), and is recorded with order-svc as the current one (source AUTO).
 Each produces document.generated, which order-svc attaches to the request and notification-svc may mail.
 Delivery is at-least-once; the file id comes from the event id, so a redelivery rewrites the same file.
 """
@@ -55,10 +57,11 @@ def make_handler(service: DocumentService) -> Any:
             req = await service.orders.request(rid)
             country = ((req or {}).get("shipTo") or {}).get("country")
             if req and country and country != HOME_COUNTRY:
-                await service.generate("commercial_invoice", rid, event, shipment_id=p.get("shipmentId"))
+                await service.generate_invoice("commercial_invoice", rid, event, shipment_id=p.get("shipmentId"))
+        elif p.get("orderType") == "PROBONO":
+            await service.generate("probono_invoice", rid, event)
         else:
-            kind = "probono_invoice" if p.get("orderType") == "PROBONO" else "invoice"
-            await service.generate(kind, rid, event)
+            await service.generate_invoice("invoice", rid, event)
 
     return handle
 

@@ -302,61 +302,12 @@ def agreement(req: dict[str, Any], *, preview: bool = False) -> bytes:
     return _build("Quote agreement", req, body, subtitle=subtitle, mark="PREVIEW · NOT SENT" if preview else None)
 
 
-def invoice(req: dict[str, Any]) -> bytes:
-    cur = req.get("currency") or "BBD"
-    inv = req.get("invoice") or {}
-    number = inv.get("number") or req.get("id", "")
-    body: list[Any] = [_parties(req, "Bill to"), Spacer(1, 6 * mm), _price_table(req, cur)]
-    body += [Spacer(1, 3 * mm), _price_totals(req, cur, "Amount due")]  # the signed total (owner, 2026-11-17)
-    return _build("Invoice", req, body, subtitle=f"Invoice {number} · request {req.get('id', '')} · "
-                  f"{_date(inv.get('date')) or _today()}")  # fmt: skip
-
-
 def probono_invoice(req: dict[str, Any]) -> bytes:
     rows = [[_product(ln), str(ln.get("qty", "")), "No charge"] for ln in req.get("lines") or []]
     body: list[Any] = [_parties(req, "Recipient"), Spacer(1, 6 * mm)]
     body.append(_table(["Item", "Qty", "Value"], rows, [130, 16, 28], money_cols=1))
     body += [Spacer(1, 6 * mm), _p("Pro Bono items are supplied free of charge by CIMH.", SMALL)]
     return _build("Pro Bono delivery note", req, body)
-
-
-def commercial_invoice(req: dict[str, Any], shipment_id: str | None = None) -> bytes:
-    """For customs on a CIMH parcel leaving Barbados: the lines of that one shipment (all CIMH lines without one)."""
-    cur = req.get("currency") or "BBD"
-    ship = next((s for s in req.get("shipments") or [] if s.get("id") == shipment_id), None) or {}
-    keep = set(ship.get("lineIds") or []) or None
-    if req.get("type") == "PROBONO":
-        rows = [[_product(ln), str(ln.get("qty", "")), "0.00", "0.00"] for ln in req.get("lines") or []
-                if keep is None or ln.get("lineId") in keep]  # fmt: skip
-        note = "No commercial value: Pro Bono items donated by CIMH."
-    else:
-        rows = [[_product(ln), str(ln.get("qty", "")), u, t] for ln, _, u, t, src in _priced(req)
-                if src == "CIMH" and (keep is None or ln.get("lineId") in keep)]  # fmt: skip
-        note = "Supplier items ship directly from the supplier and are invoiced by them."
-    shipper = [_p("Shipper", H2), _p(ORG), _p(ORG_ADDRESS)]
-    consignee = [_p("Consignee", H2)] + [_p(x) for x in _address(req.get("shipTo"))]
-    parties = Table([[shipper, consignee]], colWidths=[87 * mm, 87 * mm])
-    parties.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-    body: list[Any] = [parties, Spacer(1, 4 * mm)]
-    if ship:
-        code = str(ship.get("carrier") or "")
-        carrier = ship.get("carrierName") or {
-            "FEDEX": "FedEx",
-            "DHL": "DHL",
-            "UPS": "UPS",
-            "HAND": "Hand delivery",
-        }.get(code, code)
-        body.append(_p(f"Carrier: {carrier}" + (f" · tracking {ship['tracking']}" if ship.get("tracking") else "")))
-    body += [
-        Spacer(1, 4 * mm),
-        _table(["Description", "Qty", f"Unit ({cur})", f"Total ({cur})"], rows, [104, 14, 28, 28]),
-    ]
-    body += [
-        Spacer(1, 4 * mm),
-        _p(note, SMALL),
-        _p("Country of origin: as marked on goods. Reason for export: sale.", SMALL),
-    ]
-    return _build("Commercial invoice", req, body)
 
 
 def _chop(text: str, font: str, size: float, width: float) -> list[str]:
@@ -477,6 +428,25 @@ def invoice_draft(req: dict[str, Any], kind: str) -> dict[str, Any]:
     }
 
 
+def invoice_recipient(req: dict[str, Any], kind: str) -> list[str]:
+    """The "Billed to" (invoice) or "Ship to" (commercial invoice) block, as address lines."""
+    return _address(_recipient(req, kind))
+
+
+def auto_invoice_data(req: dict[str, Any], kind: str, shipment_id: str | None = None) -> dict[str, Any]:
+    """What an automatic invoice prints: the builder's draft, except that an invoice charges the signed total
+    (owner, 2026-11-17), so its shipping is the agreement's estimated shipping, not what the parcels cost; and a
+    commercial invoice for a parcel lists only that parcel's lines."""
+    data = invoice_draft(req, kind)
+    if kind == "invoice" and req.get("type") != "PROBONO":
+        data["shipping"] = f"{sum((_money(a) for _, a in _shipping(req)), Decimal('0')):.2f}"
+    ship = next((x for x in req.get("shipments") or [] if x.get("id") == shipment_id), None) if shipment_id else None
+    keep = set((ship or {}).get("lineIds") or [])
+    if keep:
+        data["lines"] = [ln for ln in data["lines"] if ln.get("lineId") in keep]
+    return data
+
+
 def _usd(value: Decimal) -> str:
     return f"${value:,.2f}"
 
@@ -495,7 +465,8 @@ def built_invoice(req: dict[str, Any], data: dict[str, Any], *, preview: bool = 
     if isinstance(when, str):
         when = datetime.fromisoformat(when)
     date_text = when.strftime("%a, %b %d, %Y") if commercial else when.strftime("%B %d, %Y")
-    number = escape(str(data.get("number") or "—"), quote=False)
+    rev = int(data.get("rev") or 1)
+    number = escape(str(data.get("number") or "—") + (f" (rev {rev})" if rev > 1 else ""), quote=False)
     rid = escape(str(req.get("id", "")), quote=False)
 
     body: list[Any] = [Paragraph("CARIBBEAN INSTITUTE FOR METEOROLOGY AND HYDROLOGY", _TB)]

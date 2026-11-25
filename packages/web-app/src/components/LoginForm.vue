@@ -46,6 +46,13 @@ const MESSAGES: Record<string, string> = {
   ACCOUNT_SUSPENDED: 'This account is suspended. Contact the CIMH stores team.',
 }
 
+/** "Try again in 12 minutes": when a lock ends (the server sends the seconds left as Retry-After). */
+function lockedMessage(seconds?: number): string {
+  if (!seconds) return 'Too many failed attempts. Try again later.'
+  const minutes = Math.ceil(seconds / 60)
+  return `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`
+}
+
 const title = computed(() => (step.value === 'mfa' ? 'Enter the code from your authenticator app' : null))
 
 async function submit() {
@@ -72,12 +79,18 @@ async function submit() {
       await router.push({ path: props.verifyPath, query: { email: email.value.trim() } })
     } else if (out.code === 'ACCOUNT_PENDING_APPROVAL' && props.pendingPath) {
       await router.push(props.pendingPath)
+    } else if (out.code === 'ACCOUNT_LOCKED') {
+      formError.value = lockedMessage(out.retryAfter)
     } else {
       formError.value = MESSAGES[out.code] ?? out.message
     }
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) {
-      if (step.value === 'mfa') fieldErrors.value = { totp: 'That code is not valid. Try the current one.' }
+      if (step.value === 'mfa' && e.code === 'MFA_CODE_REUSED') {
+        // The right code, already used: each code works once, so retyping it would only fail again.
+        fieldErrors.value = { totp: 'That code was just used. Wait for the next code (it changes every 30 seconds).' }
+        totp.value = ''
+      } else if (step.value === 'mfa') fieldErrors.value = { totp: 'That code is not valid. Try the current one.' }
       else formError.value = 'Email or password is incorrect.'
     } else if (e instanceof ApiError && e.status === 422) {
       fieldErrors.value = e.fieldErrors()

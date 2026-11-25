@@ -257,15 +257,27 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
       <section class="group" aria-labelledby="g-history">
         <h3 id="g-history" class="console-title">Status history</h3>
         <p v-if="!history.length" class="t-body muted">No changes recorded.</p>
-        <TransitionGroup v-else tag="ol" name="entry" class="ledger">
-          <li v-for="h in history" :key="`${h.at}-${h.to}`">
-            <span class="when console-mono">{{ formatDateTime(h.at) }}</span>
-            <span class="what">
-              <StatusChip v-if="h.to" :status="h.to" />
-              <span class="t-body">by {{ h.by.name }}<span v-if="h.reason" class="muted">: “{{ h.reason }}”</span></span>
-            </span>
-          </li>
-        </TransitionGroup>
+        <!-- Vuetify v-timeline, newest first (filled node), earlier changes hollow. Items render divs, hence the roles. -->
+        <v-timeline v-else role="list" aria-labelledby="g-history" class="ledger" side="end" density="compact" align="start" truncate-line="both" line-thickness="2">
+          <!-- Timeline items are display: contents (no box to time), so the duration is given; the body animates. -->
+          <TransitionGroup name="entry" :duration="900">
+            <v-timeline-item
+              v-for="(h, i) in history"
+              :key="`${h.at}-${h.to}`"
+              role="listitem"
+              class="entry"
+              :class="{ latest: i === 0 }"
+              :dot-color="i === 0 ? 'primary' : undefined"
+              fill-dot
+            >
+              <span class="what">
+                <StatusChip v-if="h.to" :status="h.to" />
+                <span class="t-body">by {{ h.by.name }}<span v-if="h.reason" class="muted">: “{{ h.reason }}”</span></span>
+              </span>
+              <span class="when console-mono">{{ formatDateTime(h.at) }}</span>
+            </v-timeline-item>
+          </TransitionGroup>
+        </v-timeline>
       </section>
 
       <footer v-if="canAct && (account.status === 'ACTIVE' || (account.role === 'admin' && account.mfaEnabled && !isSelf))" class="ar-foot">
@@ -506,18 +518,34 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
   font-size: 12px;
 }
 .ledger {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  border-top: 1px solid rgb(var(--v-theme-seam));
+  row-gap: var(--sp-3) !important;
 }
-.ledger li {
-  display: grid;
-  grid-template-columns: 150px 1fr;
-  gap: var(--sp-4);
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid rgb(var(--v-theme-seam));
+.entry :deep(.v-timeline-item__body) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-inline-start: var(--sp-3) !important;
+}
+/* 12 px nodes centred on the status chip's line: the latest filled primary, earlier ones a hollow ring. */
+.entry :deep(.v-timeline-divider__dot) {
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-on-surface-variant));
+}
+.entry :deep(.v-timeline-divider__inner-dot) {
+  background: transparent;
+}
+.entry.latest :deep(.v-timeline-divider__dot) {
+  box-shadow: none;
+}
+.entry.latest :deep(.v-timeline-divider__inner-dot) {
+  background: rgb(var(--v-theme-primary));
+}
+.entry :deep(.v-timeline-divider__before),
+.entry :deep(.v-timeline-divider__after) {
+  background: rgb(var(--v-theme-seam));
 }
 .when {
   font-size: 12px;
@@ -561,10 +589,6 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
 @media (max-width: 599.98px) {
   .ar:not(.embedded) {
     padding: var(--sp-4);
-  }
-  .ledger li {
-    grid-template-columns: 1fr;
-    gap: 4px;
   }
   .step-sub,
   .well-acts {
@@ -619,8 +643,22 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
   left: var(--sp-6);
   right: var(--sp-6);
 }
-.entry-enter-active {
+.entry-enter-active :deep(.v-timeline-item__body) {
+  border-radius: 4px;
   animation: ar-entry 900ms var(--ease-out) both;
+}
+.entry-enter-active :deep(.v-timeline-divider__dot) {
+  animation: ar-dot 900ms var(--ease-out) both;
+}
+@keyframes ar-dot {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  25% {
+    transform: none;
+    opacity: 1;
+  }
 }
 @keyframes ar-entry {
   from {
@@ -636,9 +674,6 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
     background: transparent;
   }
 }
-.entry-move {
-  transition: transform 280ms var(--ease-out);
-}
 @keyframes ar-entry-reduced {
   from {
     background: rgba(var(--v-theme-primary), 0.18);
@@ -653,11 +688,11 @@ const history = computed(() => [...(account.value?.statusHistory ?? [])].reverse
   .well-leave-to {
     transform: none;
   }
-  .entry-enter-active {
+  .entry-enter-active :deep(.v-timeline-item__body) {
     animation: ar-entry-reduced 900ms ease both;
   }
-  .entry-move {
-    transition: none;
+  .entry-enter-active :deep(.v-timeline-divider__dot) {
+    animation: none;
   }
 }
 </style>

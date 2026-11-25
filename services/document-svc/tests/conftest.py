@@ -53,12 +53,14 @@ def verifier() -> TokenVerifier:
     return TokenVerifier(JwksCache(jwks), issuer="i", audience="a")
 
 
+# Tokens are minted when this module loads and reused all run: an hour, so a slow full run (coverage, ~6 min)
+# never sends expired ones (they were 5 min; order-svc's late tests got 401s, 2026-11-25).
 def token(
     role: str, sub: str, email: str = "x@example.org", mfa: bool = True, org: str | None = None
 ) -> dict[str, str]:
     now = int(time.time())
     claims = {"iss": "i", "aud": "a", "sub": sub, "role": role, "email": email, "jti": f"j-{sub}-{role}",
-              "iat": now, "exp": now + 300, "mfa": mfa, "org": org}  # fmt: skip
+              "iat": now, "exp": now + 3600, "mfa": mfa, "org": org}  # fmt: skip
     return {"Authorization": "Bearer " + jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})}
 
 
@@ -114,6 +116,9 @@ class MemoryOrders:
 
     requests: dict[str, dict[str, Any]] = field(default_factory=dict)
     attached: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    recorded: list[tuple[str, str, dict[str, Any]]] = field(default_factory=list)
+    numbers: set[str] = field(default_factory=set)
+    next_number: str | None = None
     down: bool = False
 
     async def access(self, rid: str, user: str) -> dict[str, Any] | None:
@@ -153,6 +158,52 @@ class MemoryOrders:
         if doc.get("draftProblem"):
             raise ProblemError(422, "SHIPPING_ESTIMATE_REQUIRED", doc["draftProblem"])
         return doc
+
+    async def record_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Like order-svc: one current invoice per kind, revisions, lock once paid, numbers unique per kind."""
+        if self.down:
+            raise unavailable("order-svc")
+        doc = self.requests.get(rid)
+        if doc is None:
+            raise ProblemError(404, "NOT_FOUND", "No request with this id")
+        invoices = doc.setdefault("invoices", {})
+        cur = invoices.get(kind)
+        if body["rev"] is None and cur:
+            raise ProblemError(409, "INVOICE_EXISTS", "already has one")
+        if body["rev"] is not None:
+            if not cur or cur["rev"] != body["rev"]:
+                raise ProblemError(409, "VERSION_CONFLICT", "changed meanwhile")
+            if doc.get("paid"):
+                raise ProblemError(409, "INVOICE_LOCKED", "marked paid")
+        key = f"{kind}:{body['number'].lower()}"
+        mine = f"{kind}:{cur['number'].lower()}" if cur else None
+        if key != mine and key in self.numbers:
+            raise ProblemError(409, "INVOICE_NUMBER_TAKEN", "number used")
+        self.numbers.add(key)
+        rev = 1 if cur is None else cur["rev"] + 1
+        old = cur["fileId"] if cur else None
+        invoices[kind] = {"number": body["number"], "rev": rev, "fileId": body["file"]["id"], "lines": body["lines"],
+                          "fees": body["fees"], "discount": body["discount"], "shipping": body["shipping"],
+                          "source": body["source"] if cur is None else "STAFF", "date": body["date"]}  # fmt: skip
+        self.recorded.append((rid, kind, body))
+        self.attached.append((rid, body["file"]))
+        return {"invoice": invoices[kind], "replacedFileId": old}
+
+    async def void_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        doc = self.requests.get(rid) or {}
+        cur = (doc.get("invoices") or {}).get(kind)
+        if cur is None:
+            raise ProblemError(404, "NOT_FOUND", "no invoice")
+        if cur["rev"] != body["rev"]:
+            raise ProblemError(409, "VERSION_CONFLICT", "changed meanwhile")
+        if doc.get("paid") and not body["admin"]:
+            raise ProblemError(403, "FORBIDDEN", "only an administrator")
+        del doc["invoices"][kind]
+        doc.setdefault("voidedInvoices", []).append({**cur, "kind": kind})
+        return {"voidedFileId": cur["fileId"], "number": cur["number"], "rev": cur["rev"]}
+
+    async def next_invoice_number(self, kind: str) -> str | None:
+        return self.next_number
 
 
 @dataclass

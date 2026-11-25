@@ -81,9 +81,11 @@ Status diagrams: [Chapter 5](05-workflows.md#53-paid-request-quote-to-delivery).
 | catalog | `/products` (browse, create), `/products/search`, `/products/{id}`, `/products/{id}/images`, `/reference`, `/settings/fees`, `/settings/email-lists`, `/settings/general` |
 | inventory | `/sites`, `/sites/{s}/locations`, `/locations/{l}/shelves`, `/shelves/{b}` (+ `/units`), `/units/{b}`, `/labels`, `/stow`, `/pick`, `/relocate`, `/assign`, `/unassign`, `/products/{id}/stock`, `/stock/low`, `/assignments`, `/history` |
 | orders | `/cart`, `/cart/lines/{productId}`, `/requests`, `/requests/{id}` + the actions in §10.4 |
-| documents | `POST /files`, `GET /files/{id}` (X-Accel-Redirect), `DELETE /files/{id}`, `GET /requests/{id}/agreement-preview` (staff: the agreement before it is sent, marked as a preview, never stored), `GET /requests/{id}/invoice-draft`, `POST /requests/{id}/invoice-preview`, `POST /requests/{id}/invoices` (staff invoice builder, legacy SIA layout) |
+| documents | `POST /files`, `GET /files/{id}` (X-Accel-Redirect), `DELETE /files/{id}`, `GET/PUT/DELETE /requests/{id}/invoices/{kind}` (staff: the request's one invoice / commercial invoice, opened, revised or voided), `GET /requests/{id}/agreement-preview` (staff: the agreement before it is sent, marked as a preview, never stored), `GET /requests/{id}/invoice-draft`, `POST /requests/{id}/invoice-preview`, `POST /requests/{id}/invoices` (staff invoice builder, legacy SIA layout) |
 
 The full catalogue with roles, and the **legacy → v2 endpoint mapping**, is in the [API Specification](../api/README.md#5-endpoint-catalogue).
+
+**Announcements** (2026-11-23): `GET /api/catalog/v1/announcements?app=shop|sia` (live list), admin CRUD on `/admin/announcements` (If-Match on edit/end), and the WebSocket `/api/catalog/v1/announcements/stream` (catalog-push; `snapshot`, `upsert`, `remove`, `ping`; contract `docs/api/push.asyncapi.yaml`). Errors: `LINK_NOT_ALLOWED`, `TTL_OUT_OF_RANGE`, `STARTS_AFTER_EXPIRY`, `PRODUCT_NOT_FOUND`, `PRODUCT_NOT_ON_SHOP`.
 
 ## 10.6 Error codes clients should handle
 

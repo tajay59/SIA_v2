@@ -8,7 +8,7 @@
  * Pages show their title as the page heading (pages with their own heading set `meta.ownHeading`).
  * Bare layout (login, MFA setup…) shows no shell.
  */
-import { AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
+import { AnnouncementBar, AppNotifier, useSession, useThemeMode } from '@cimh/web-app'
 import siaMark from '@cimh/web-app/assets/brand/sia-mark.svg'
 import { markRaw } from 'vue'
 // Filled Material Symbols via Iconify (unplugin-icons): compiled in, nothing fetched at runtime.
@@ -26,6 +26,7 @@ import IAccounts from '~icons/material-symbols/group-rounded'
 import IOrgs from '~icons/material-symbols/corporate-fare-rounded'
 import IAudit from '~icons/material-symbols/policy-rounded'
 import ISettings from '~icons/material-symbols/settings-rounded'
+import ICampaign from '~icons/material-symbols/campaign-rounded'
 import ICollapse from '~icons/material-symbols/left-panel-close-rounded'
 import IExpand from '~icons/material-symbols/left-panel-open-rounded'
 import IScan from '~icons/material-symbols/barcode-scanner-rounded'
@@ -50,6 +51,7 @@ const i = {
   orgs: markRaw(IOrgs),
   audit: markRaw(IAudit),
   settings: markRaw(ISettings),
+  announce: markRaw(ICampaign),
   collapse: markRaw(ICollapse),
   expand: markRaw(IExpand),
   scan: markRaw(IScan),
@@ -133,6 +135,7 @@ const groups = computed<{ title: string; links: Link[] }[]>(() => [
       { title: 'Pending accounts', to: '/admin/approvals', icon: i.approvals, desc: 'Approve or reject new customer sign-ups.', count: 'approvals', show: session.isAdmin },
       { title: 'Accounts', to: '/admin/accounts', icon: i.accounts, desc: 'Find customers and staff; suspend, export or erase.' },
       { title: 'Organisations', to: '/admin/organisations', icon: i.orgs, desc: 'Met services and agencies that customers belong to.' },
+      { title: 'Announcements', to: '/admin/announcements', icon: i.announce, desc: 'The banner at the top of every SHOP and SIA page.', show: session.isAdmin },
       { title: 'Audit log', to: '/admin/audit', icon: i.audit, desc: 'Admin and security actions, searchable.', show: session.isAdmin },
       { title: 'Settings', to: '/admin/settings', icon: i.settings, desc: 'Admin fee, reference data and staff email lists.', show: session.isAdmin },
     ] as Link[]).filter((l) => l.show !== false),
@@ -202,6 +205,8 @@ async function logout() {
 <template>
   <v-app>
     <a href="#main" class="skip-link">Skip to content</a>
+    <!-- Announcements (plan 2026-11-23): signed-in staff only (D2), on every page. -->
+    <AnnouncementBar app="sia" :enabled="session.isStaff && !session.needsMfaSetup" />
     <template v-if="!bare">
       <v-app-bar v-if="!wide" flat border="b" height="56" color="surface">
         <v-btn variant="text" :icon="i.menu" aria-label="Open navigation" @click="open = !open" />

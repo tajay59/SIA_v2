@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Annotated, Any, Literal
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from cimh_common.auth import Principal
@@ -33,7 +33,11 @@ class LabelsIn(Strict):
     productId: str = Field(min_length=1, max_length=64)
     productName: str | None = Field(default=None, max_length=200)
     # ~15 ms per QR code (pure-Python encoder): 200 labels ≈ 3 s, rendered off the event loop.
-    barcodes: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(min_length=1, max_length=MAX_LABELS)
+    # No control characters: reportlab's QR encoder crashes on some (Schemathesis sent a newline); real codes have
+    # none.
+    barcodes: list[Annotated[str, Field(min_length=1, max_length=80, pattern=r"^[^\x00-\x1f\x7f]+$")]] = Field(
+        min_length=1, max_length=MAX_LABELS
+    )
 
 
 def svc(request: Request) -> DocumentService:
@@ -175,6 +179,56 @@ async def create_invoice(
     requestId: str, body: InvoiceIn, request: Request, me: Principal = Depends(require_staff)
 ) -> dict[str, Any]:
     return await svc(request).create_invoice(me, requestId, _invoice_body(body), cid(request))
+
+
+def _rev(value: str | None) -> int:
+    """`If-Match: <rev>` of the invoice being changed (428 without it, as every If-Match operation)."""
+    if not value:
+        raise ProblemError(428, "PRECONDITION_REQUIRED", "If-Match header with the invoice revision is required")
+    try:
+        rev = int(value.strip().removeprefix("W/").strip('"'))
+    except ValueError as exc:
+        raise ProblemError(400, None, "If-Match must be a revision number") from exc
+    if not 1 <= rev <= 10_000:
+        raise ProblemError(400, None, "If-Match must be a revision number")
+    return rev
+
+
+IfMatch = Annotated[str | None, Header(alias="If-Match")]
+
+
+@router.get("/requests/{requestId}/invoices/{kind}", tags=["files"])
+async def get_invoice(
+    requestId: str, kind: InvoiceKind, request: Request, me: Principal = Depends(require_staff)
+) -> JSONResponse:
+    body = await svc(request).invoice_get(me, requestId, kind)
+    return JSONResponse(body, headers={"ETag": f'"{body["rev"]}"', "Cache-Control": "private, no-store"})
+
+
+@router.put("/requests/{requestId}/invoices/{kind}", tags=["files"])
+async def revise_invoice(
+    requestId: str,
+    kind: InvoiceKind,
+    body: InvoiceIn,
+    request: Request,
+    v: IfMatch = None,
+    me: Principal = Depends(require_staff),
+) -> dict[str, Any]:
+    rev = _rev(v)
+    return await svc(request).revise_invoice(me, requestId, kind, _invoice_body(body), rev, cid(request))
+
+
+@router.delete("/requests/{requestId}/invoices/{kind}", status_code=204, tags=["files"])
+async def void_invoice(
+    requestId: str,
+    kind: InvoiceKind,
+    body: ReasonIn,
+    request: Request,
+    v: IfMatch = None,
+    me: Principal = Depends(require_staff),
+) -> Response:
+    await svc(request).void_invoice(me, requestId, kind, _rev(v), body.reason, cid(request))
+    return Response(status_code=204)
 
 
 @router.post("/internal/labels", status_code=201, tags=["internal"])

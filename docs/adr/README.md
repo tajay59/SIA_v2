@@ -19,3 +19,4 @@ One file per decision: context, options, decision, consequences. The summary tab
 | [0013](0013-single-application-host.md) | Single application host | Accepted |
 | [0014](0014-carts-in-orders.md) | Carts in `orders` with `status: CART` | Accepted |
 | [0015](0015-quote-and-sign-no-payments.md) | Quote → view and sign, no payments | Accepted (amended 2026-11-17) |
+| [0016](0016-server-push-websocket-catalog-push.md) | Server push over a WebSocket from `catalog-push` | Accepted (2026-11-23) |

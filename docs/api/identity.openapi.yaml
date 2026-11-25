@@ -106,9 +106,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/LoginResponse' }
-        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '401':
+          description: 'INVALID_CREDENTIALS; MFA_INVALID (wrong code, counts towards the lock); MFA_CODE_REUSED (the right code, already used: each 30 s code works once; not counted)'
+          content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } }
         '403':
-          description: Account not ACTIVE (code ACCOUNT_PENDING_VERIFICATION, ACCOUNT_PENDING_APPROVAL, ACCOUNT_REJECTED, ACCOUNT_SUSPENDED, ACCOUNT_LOCKED, MFA_REQUIRED)
+          description: 'Account not ACTIVE (code ACCOUNT_PENDING_VERIFICATION, ACCOUNT_PENDING_APPROVAL, ACCOUNT_REJECTED, ACCOUNT_SUSPENDED, MFA_REQUIRED) or ACCOUNT_LOCKED (5 failures; `Retry-After` = seconds until it unlocks)'
           content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } }
         '429': { $ref: './common.yaml#/components/responses/TooManyRequests' }
 

@@ -5,6 +5,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ShipmentTest {
@@ -23,10 +24,21 @@ class ShipmentTest {
     @Test fun bodyNamesTheSourceAndLinesAndDropsEmptyTracking() {
         val body = ApiJson.encodeToJsonElement(
             ShipmentInput.serializer(),
-            ShipmentInput(lineIds = listOf("L3"), carrier = "HAND", date = "2026-11-19"),
+            ShipmentInput(lineIds = listOf("L3"), carrier = "HAND", cost = "0.00", date = "2026-11-19"),
         ).jsonObject
         assertEquals("CIMH", body["source"]!!.jsonPrimitive.content)
         assertEquals("L3", body["lineIds"]!!.jsonArray.single().jsonPrimitive.content)
         assertFalse("tracking" in body) // explicitNulls = false: the server reads a missing value as none
+        assertEquals("0.00", body["cost"]!!.jsonPrimitive.content) // required since 2026-11-24
+    }
+
+    @Test fun shippingCostIsTheApiMoneyString() {
+        assertEquals("45.00", shippingCost("45"))
+        assertEquals("45.50", shippingCost(" 45.5 "))
+        assertEquals("0.00", shippingCost("0.00"))
+        assertNull(shippingCost(""))
+        assertNull(shippingCost("4,50"))
+        assertNull(shippingCost("45.555"))
+        assertNull(shippingCost("-1"))
     }
 }

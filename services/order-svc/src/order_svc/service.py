@@ -18,6 +18,7 @@ from decimal import Decimal
 from typing import Any
 
 from pymongo import ReturnDocument
+from pymongo.errors import DuplicateKeyError
 
 from cimh_common.auth import Principal
 from cimh_common.authz import can_see, ensure_can_act
@@ -65,7 +66,7 @@ SYSTEM = {"id": "system", "name": "System", "role": "service"}
 SUMMARY_PROJECTION = {k: 1 for k in (
     "id", "type", "status", "customer", "customerName", "organisationId", "organisationName", "currency",
     "lines.product.name", "quoteExpiresAt", "submittedAt", "createdAt", "updatedAt", "statusAt", "payment",
-    "files.kind", "files.deleted", "agreement.total", "total", "version",
+    "files.kind", "files.deleted", "agreement.total", "total", "version", "invoices.invoice.total",
 )}  # fmt: skip
 UNPAID = {"type": "PAID", "status": "DELIVERED", "payment.paidAt": None}
 # Staff work counts (SIA drawer, dashboard, desk tabs): key -> filter.
@@ -91,11 +92,15 @@ def payment_status(doc: dict[str, Any]) -> str | None:
 
 
 def amount_due(doc: dict[str, Any]) -> str | None:
-    """What a delivered paid request owes: the signed agreement's total (a migrated request: its legacy total).
+    """What a delivered paid request owes: the current invoice's total once staff have one with lines (owner,
+    2026-11-24), else the signed agreement's total (a migrated request: its legacy total).
     None when nothing above zero is on record (the invoice says it)."""
     if payment_status(doc) is None:
         return None
     ag = doc.get("agreement") or {}
+    inv = (doc.get("invoices") or {}).get("invoice") or {}
+    if inv.get("total") is not None:
+        return d.money_str(inv["total"])
     for value in (ag.get("total"), doc.get("total")):
         try:
             if value is not None and Decimal(str(value)) > 0:
@@ -103,6 +108,80 @@ def amount_due(doc: dict[str, Any]) -> str | None:
         except (ArithmeticError, ValueError):
             continue
     return None
+
+
+# ---------------------------------------------------------------- invoices (plan 2026-11-24-invoice-crud)
+
+INVOICE_KINDS = ("invoice", "commercial_invoice")
+INVOICE_SOURCES = ("STAFF", "AUTO", "LEGACY")
+
+
+def invoice_number_key(kind: str, number: str) -> str:
+    """`invoiceNumbers` entry: kind + the number lower-cased with spaces collapsed ("invoice:2026-014")."""
+    return f"{kind}:{' '.join(str(number).split()).lower()}"
+
+
+def bump_number(last: str) -> str | None:
+    """The number after `last`: its last group of digits + 1, zero-padded to the same width ("2026-014" ->
+    "2026-015", "INV9" -> "INV10"). None when it has no digits (staff type one)."""
+    m = re.search(r"(\d+)(\D*)$", last)
+    if not m:
+        return None
+    digits = m.group(1)
+    return last[: m.start(1)] + str(int(digits) + 1).zfill(len(digits)) + m.group(2)
+
+
+def invoice_total(rec: dict[str, Any]) -> Decimal:
+    """As the PDF prints it: sum of qty x unit price, plus fees and shipping, less the discount."""
+    sub = sum((d.money(x["unitPrice"]) * int(x["qty"]) for x in rec.get("lines") or []), Decimal("0"))
+    return sub + d.money(rec.get("fees") or 0) + d.money(rec.get("shipping") or 0) - d.money(rec.get("discount") or 0)
+
+
+def invoice_view(rec: dict[str, Any], staff: bool, *, locked: bool) -> dict[str, Any]:
+    """The current invoice of one kind. Customers: which PDF it is (number, revision, date). Staff: everything the
+    builder needs to reopen it, its earlier copies and whether it is locked (the request is marked paid)."""
+    out: dict[str, Any] = {
+        "number": rec.get("number"),
+        "rev": int(rec.get("rev") or 1),
+        "fileId": rec.get("fileId"),
+        "date": iso(rec.get("date")),
+        "total": d.money_str(rec.get("total")),
+    }
+    if not staff:
+        return out
+    lines = rec.get("lines")
+    out |= {
+        "source": rec.get("source") or "LEGACY",
+        "locked": locked,
+        "lines": None
+        if lines is None
+        else [
+            {
+                "lineId": x.get("lineId"),
+                "description": x["description"],
+                "qty": int(x["qty"]),
+                "unitPrice": d.money_str(x["unitPrice"]),
+            }
+            for x in lines
+        ],
+        "fees": d.money_str(rec.get("fees")),
+        "discount": d.money_str(rec.get("discount")),
+        "shipping": d.money_str(rec.get("shipping")),
+        "createdAt": iso(rec.get("createdAt")),
+        "updatedAt": iso(rec.get("updatedAt")),
+        "revisions": [
+            {
+                "rev": r.get("rev"),
+                "fileId": r.get("fileId"),
+                "number": r.get("number"),
+                "total": d.money_str(r.get("total")),
+                "by": r.get("by"),
+                "at": iso(r.get("at")),
+            }
+            for r in rec.get("revisions") or []
+        ],
+    }
+    return out
 
 
 # ---------------------------------------------------------------- erasure (user.deleted)
@@ -119,6 +198,9 @@ ACTOR_PATHS = (
     "quotes.sentBy.id",
     "quoteDraft.savedBy.id",
     "purchaseOrders.placedBy.id",
+    "invoices.invoice.revisions.by.id",
+    "invoices.commercial_invoice.revisions.by.id",
+    "invoicesVoided.voided.by.id",
 )
 CONTACT_FIELDS = ("firstname", "lastname", "email", "tel", "attention")
 OPEN_CANCELLABLE = {(t, src) for (t, src, dst) in d.TRANSITIONS if dst == "CANCELLED"}
@@ -149,6 +231,8 @@ def _forget_update(doc: dict[str, Any], user_id: str) -> dict[str, Any] | None:
         "quotes",
         "quoteDraft",
         "purchaseOrders",
+        "invoices",
+        "invoicesVoided",
     ):
         if key in doc and (scrubbed := _scrub_actors(doc[key], user_id)) != doc[key]:
             sets[key] = scrubbed
@@ -726,7 +810,17 @@ class OrderService:
             "invoice": {"number": doc["invoice"].get("number"), "date": iso(doc["invoice"].get("date"))}
             if doc.get("invoice")
             else None,
-            "files": [self._file(f) for f in doc.get("files") or [] if not f.get("deleted")],
+            # Replaced and voided invoice PDFs leave the list (staff reach them through `invoices` revisions).
+            "files": [
+                self._file(f)
+                for f in doc.get("files") or []
+                if not (f.get("deleted") or f.get("replaced") or f.get("voided"))
+            ],
+            "invoices": {
+                k: invoice_view(rec, staff, locked=payment_status(doc) == "PAID")
+                for k, rec in (doc.get("invoices") or {}).items()
+                if k in INVOICE_KINDS and isinstance(rec, dict)
+            },
             "cancellation": self._who(doc.get("cancellation")),
             "history": [
                 {"from": h.get("from"), "to": h["to"], "by": h["by"], "at": iso(h["at"]), "reason": h.get("reason")}
@@ -735,6 +829,17 @@ class OrderService:
             "allowedActions": self.allowed_actions(doc, p),
         }
         if staff:
+            out["voidedInvoices"] = [
+                {
+                    "kind": v.get("kind"),
+                    "number": v.get("number"),
+                    "rev": v.get("rev"),
+                    "fileId": v.get("fileId"),
+                    "total": d.money_str(v.get("total")),
+                    "voided": self._who(v.get("voided")),
+                }
+                for v in doc.get("invoicesVoided") or []
+            ]
             out["purchaseOrders"] = [
                 {**po, "placedAt": iso(po.get("placedAt"))} for po in doc.get("purchaseOrders") or []
             ]
@@ -1631,6 +1736,138 @@ class OrderService:
                 {"id": rid, "status": {"$ne": d.CART}, "files.id": {"$ne": f["id"]}}, {"$push": {"files": entry}}
             )
         return bool(res.modified_count)
+
+    # ------------------------------------------------------------------ invoices (document-svc renders, we record)
+
+    async def record_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        """document-svc, after rendering a PDF: make it the request's current invoice of `kind` (one per kind).
+
+        `rev` None = a new invoice (409 INVOICE_EXISTS when one is current); otherwise the revision it replaces
+        (409 VERSION_CONFLICT when another save came first; 409 INVOICE_LOCKED once the request is marked paid).
+        A number used by another invoice of the same kind, voided ones included, is 409 INVOICE_NUMBER_TAKEN. The
+        record changes in one conditional update; attaching the new PDF and marking the old one replaced follow
+        (both idempotent).
+        The request `version` is not bumped (a PDF arriving must not break If-Match)."""
+        doc = await self._load(rid)
+        cur = (doc.get("invoices") or {}).get(kind)
+        expect = body.get("rev")
+        label = "commercial invoice" if kind == "commercial_invoice" else "invoice"
+        if expect is None and cur is not None:
+            raise conflict("INVOICE_EXISTS", f"This request already has a {label}; open it to change it")
+        if expect is not None:
+            if cur is None:
+                raise not_found(f"This request has no {label}")
+            if int(cur.get("rev") or 1) != expect:
+                raise conflict("VERSION_CONFLICT", f"The {label} changed meanwhile; reload it")
+            if payment_status(doc) == "PAID":
+                raise conflict("INVOICE_LOCKED", f"The request is marked paid; the {label} can no longer change")
+        number = " ".join(str(body["number"]).split())
+        key = invoice_number_key(kind, number)
+        own = invoice_number_key(kind, cur["number"]) if cur and cur.get("number") else None
+        if key != own:
+            taken = key in (doc.get("invoiceNumbers") or []) or await self.store.orders.find_one(
+                {"invoiceNumbers": key, "id": {"$ne": rid}}, {"_id": 1}
+            )
+            if taken:
+                raise conflict("INVOICE_NUMBER_TAKEN", f"Number {number} is already used by another {label}")
+        t = now()
+        f = body["file"]
+        rev = 1 if cur is None else int(cur.get("rev") or 1) + 1
+        lines = [
+            {
+                "lineId": x.get("lineId"),
+                "description": x["description"],
+                "qty": int(x["qty"]),
+                "unitPrice": d.to_db(d.money(x["unitPrice"])),
+            }
+            for x in body["lines"]
+        ]
+        total = invoice_total(body)
+        when = body["date"]
+        if isinstance(when, str):
+            when = datetime.fromisoformat(when)
+        if isinstance(when, datetime) and when.tzinfo is None:
+            when = when.replace(tzinfo=UTC)
+        rec = {
+            "number": number,
+            "rev": rev,
+            "fileId": f["id"],
+            "date": when,
+            "lines": lines,
+            "fees": d.to_db(d.money(body.get("fees") or 0)),
+            "discount": d.to_db(d.money(body.get("discount") or 0)),
+            "shipping": d.to_db(d.money(body.get("shipping") or 0)),
+            "total": d.to_db(total),
+            # Once staff save over an automatic one, it is theirs.
+            "source": (body.get("source") or "STAFF") if cur is None else "STAFF",
+            "createdAt": (cur or {}).get("createdAt") or t,
+            "updatedAt": t,
+            "revisions": [
+                *((cur or {}).get("revisions") or []),
+                {"rev": rev, "fileId": f["id"], "number": number, "total": d.to_db(total), "by": body["by"], "at": t},
+            ],
+        }
+        filt: dict[str, Any] = {"id": rid, "status": {"$ne": d.CART}}
+        if cur is None:
+            filt[f"invoices.{kind}"] = {"$exists": False}
+        else:
+            filt[f"invoices.{kind}.rev"] = int(cur.get("rev") or 1)
+        update = {"$set": {f"invoices.{kind}": rec, "updatedAt": t}, "$addToSet": {"invoiceNumbers": key}}
+        try:
+            res = await self.store.orders.update_one(filt, update)
+        except DuplicateKeyError as exc:  # the same number, saved on another request a moment ago
+            raise conflict("INVOICE_NUMBER_TAKEN", f"Number {number} is already used by another {label}") from exc
+        if res.matched_count == 0:
+            if cur is None:
+                raise conflict("INVOICE_EXISTS", f"This request already has a {label}; open it to change it")
+            raise conflict("VERSION_CONFLICT", f"The {label} changed meanwhile; reload it")
+        await self.attach_file(rid, f)
+        old = (cur or {}).get("fileId")
+        if old and old != f["id"]:
+            await self.store.orders.update_one({"id": rid, "files.id": old}, {"$set": {"files.$.replaced": True}})
+        return {
+            "invoice": invoice_view(rec, True, locked=payment_status(doc) == "PAID"),
+            "replacedFileId": old if old != f["id"] else None,
+        }
+
+    async def void_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        """Withdraw the current invoice of `kind`: it moves to `invoicesVoided` (its number stays taken) and its
+        PDF leaves the request's files. Once the request is marked paid only an administrator may (403)."""
+        doc = await self._load(rid)
+        cur = (doc.get("invoices") or {}).get(kind)
+        label = "commercial invoice" if kind == "commercial_invoice" else "invoice"
+        if cur is None:
+            raise not_found(f"This request has no {label}")
+        if int(cur.get("rev") or 1) != body["rev"]:
+            raise conflict("VERSION_CONFLICT", f"The {label} changed meanwhile; reload it")
+        if payment_status(doc) == "PAID" and not body.get("admin"):
+            raise forbidden(f"The request is marked paid: only an administrator can void the {label}")
+        t = now()
+        voided = {**cur, "kind": kind, "voided": {"by": body["by"], "at": t, "reason": body["reason"]}}
+        res = await self.store.orders.update_one(
+            {"id": rid, f"invoices.{kind}.rev": int(cur.get("rev") or 1)},
+            {"$unset": {f"invoices.{kind}": ""}, "$push": {"invoicesVoided": voided}, "$set": {"updatedAt": t}},
+        )
+        if res.matched_count == 0:
+            raise conflict("VERSION_CONFLICT", f"The {label} changed meanwhile; reload it")
+        if cur.get("fileId"):
+            await self.store.orders.update_one(
+                {"id": rid, "files.id": cur["fileId"]}, {"$set": {"files.$.voided": True}}
+            )
+        return {"voidedFileId": cur.get("fileId"), "number": cur.get("number"), "rev": cur.get("rev")}
+
+    async def next_invoice_number(self, kind: str) -> str | None:
+        """The builder's suggestion: the most recent invoice number of `kind` + 1 (skipping any already taken)."""
+        field_name = f"invoices.{kind}.createdAt"
+        cursor = self.store.orders.find({field_name: {"$exists": True}}, {f"invoices.{kind}.number": 1})
+        latest = await cursor.sort(field_name, -1).limit(1).to_list(1)
+        number = ((latest[0].get("invoices") or {}).get(kind) or {}).get("number") if latest else None
+        for _ in range(50):
+            if not number or not (number := bump_number(number)):
+                return None
+            if not await self.store.orders.find_one({"invoiceNumbers": invoice_number_key(kind, number)}, {"_id": 1}):
+                return number
+        return None
 
     async def stock_reserved(self, payload: dict[str, Any]) -> bool:
         doc = await self.store.orders.find_one({"id": payload["orderId"]})

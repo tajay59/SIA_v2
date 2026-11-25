@@ -1,4 +1,4 @@
-"""Collections owned by catalog-svc (BSD §5.5-5.7): `product`, the `xuser` view, `misc`."""
+"""Collections owned by catalog-svc (BSD §5.5-5.7, §5.12): `product`, the `xuser` view, `misc`, `announcements`."""
 
 from __future__ import annotations
 
@@ -71,6 +71,7 @@ class Store:
         self.db = db
         self.product = db["product"]
         self.misc = db["misc"]
+        self.announcements = db["announcements"]
 
     async def ensure_indexes(self) -> None:
         # BSD §7 validators first: the collections exist with their schema before any index or write.
@@ -99,6 +100,11 @@ class Store:
         await self.misc.create_index([("kind", 1), ("site", 1), ("location", 1)])
         await self.misc.create_index([("kind", 1), ("id", 1)])  # places list, sorted by (kind, id)
         await self.misc.create_index([("outbox.0", 1)], sparse=True)
+        a = self.announcements
+        await a.create_index("id", unique=True)
+        # TTL: MongoDB deletes a message once `expiresAt` has passed (the monitor runs about once a minute).
+        await a.create_index("expiresAt", expireAfterSeconds=0, name="announcement_ttl")
+        await a.create_index([("audience", 1), ("startsAt", 1)])
 
     async def ensure_view(self) -> None:
         """Create or redefine `xuser` (real MongoDB only; the mock has no views)."""

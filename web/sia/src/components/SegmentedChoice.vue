@@ -8,7 +8,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import ICheck from '~icons/material-symbols/check-rounded'
 
-const props = defineProps<{ name: string; label: string; options: { title: string; value: T }[] }>()
+const props = defineProps<{ name: string; label: string; options: { title: string; value: T }[]; scroll?: boolean }>()
 const model = defineModel<T>({ required: true })
 
 const root = ref<HTMLElement | null>(null)
@@ -37,7 +37,7 @@ watch([model, () => props.options.length], () => void nextTick(measure))
 </script>
 
 <template>
-  <div ref="root" class="seg" :class="{ inked: !!ink, ready }" role="radiogroup" :aria-label="label">
+  <div ref="root" class="seg" :class="{ inked: !!ink, ready, scroll }" role="radiogroup" :aria-label="label">
     <span v-if="ink" class="seg-ink" aria-hidden="true" :style="{ transform: `translateX(${ink.x}px)`, width: `${ink.w}px` }" />
     <label v-for="o in options" :key="String(o.value)" class="seg-btn" :class="{ on: model === o.value }">
       <input v-model="model" type="radio" class="seg-input" :name="name" :value="o.value" />
@@ -56,6 +56,16 @@ watch([model, () => props.options.length], () => void nextTick(measure))
   border-radius: 20px;
   overflow: hidden;
   isolation: isolate;
+}
+/* `scroll`: one row that scrolls sideways when the pane is too narrow (never a wrapped pill). */
+.seg.scroll {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.seg.scroll::-webkit-scrollbar {
+  display: none;
 }
 .seg-ink {
   position: absolute;

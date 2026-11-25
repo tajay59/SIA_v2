@@ -14,7 +14,7 @@ alerting:
 scrape_configs:
   - job_name: services
     dns_sd_configs:
-      - names: [hello-svc, identity-svc, catalog-svc, inventory-svc, order-svc, document-svc, notification-svc]
+      - names: [hello-svc, identity-svc, catalog-svc, catalog-push, inventory-svc, order-svc, document-svc, notification-svc]
         type: A
         port: 8000
   - job_name: node

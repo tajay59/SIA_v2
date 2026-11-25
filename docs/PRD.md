@@ -155,6 +155,7 @@ Priority: **Must** = launch blocker · **Should** = launch target · **Could** =
 | D2 | Uploads | As staff, I want to attach files (quotes, supplier invoices, proof of shipment) to a request. | Must | PDF and images only, 20 MB limit, stored under random UUID names on the local volume. |
 | D3 | Protected download | As a customer or staff member, I want to download a request's documents, and only if I am allowed to. | Must | Ownership or role checked first, then nginx serves the file via `X-Accel-Redirect`. |
 | D4 | Delete upload | As staff, I want to remove a wrongly uploaded file. | Should | Soft delete; recorded in the audit log. |
+| D5 | Invoices staff can correct | As staff, I want to open the request's invoice or commercial invoice, change it or void it, so a mistake never needs a second invoice beside the first. | Should | One current invoice and one commercial invoice per request (an automatic one is made on delivery / for a CIMH parcel leaving Barbados only when none exists). Saving issues the next revision (same or new number); the customer sees only the current PDF, staff keep every revision. Voiding asks for a reason, emails nobody and keeps the number used. Read-only once the request is marked paid (an administrator may still void it). Numbers are unique per kind; the builder suggests the next one. The invoice total is what the customer owes. |
 
 ### 5.6 Notifications (notification-svc)
 
@@ -163,6 +164,7 @@ Priority: **Must** = launch blocker · **Should** = launch target · **Could** =
 | N1 | Event emails | As a user, I want an email whenever my account or request changes status. | Must | Driven by Kafka events. Templated HTML with a plain-text fallback. |
 | N2 | Staff lists | As an admin, I want to manage email lists for `registration`, `order`, `invoice`, `cancellation` and low-stock alerts. | Must | Replaces `misc` "emails". |
 | N3 | Delivery reliability | As the platform, I must retry failed emails and alert operators when an email has permanently failed. | Must | Retry with backoff, then the dead-letter queue (DLQ). |
+| N4 | Announcements | As an admin, I want to post a message (product news and changes, price changes, general information) that appears at once, without a reload, at the top of every SHOP and SIA page, stays after a reload, and disappears when the time I set runs out. | Should | Owner 2026-11-23, plan `docs/plans/2026-11-23-announcements.md` (D1–D10). Tone Information / Alert (alerts can't be closed), audience SHOP / SIA / both, link to a web address or to the product it is about, start now or later, keep for 1 h–30 days or until a date (≤ 90 days); stored with a TTL; pushed over a WebSocket (`catalog-push`). |
 
 ### 5.7 SIA Mobile (Android)
 

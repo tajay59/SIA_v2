@@ -66,6 +66,13 @@ declare module 'vue-router/auto-routes' {
       { id: ParamValue<false> },
       | never
     >,
+    '/admin/announcements': RouteRecordInfo<
+      '/admin/announcements',
+      '/admin/announcements',
+      Record<never, never>,
+      Record<never, never>,
+      | never
+    >,
     '/admin/approvals': RouteRecordInfo<
       '/admin/approvals',
       '/admin/approvals',
@@ -286,6 +293,14 @@ declare module 'vue-router/auto-routes' {
         | never
       pathParamNames:
         | 'id'
+    }
+    'src/pages/admin/announcements.vue': {
+      routes:
+        | '/admin/announcements'
+      views:
+        | never
+      pathParamNames:
+        | never
     }
     'src/pages/admin/approvals.vue': {
       routes:

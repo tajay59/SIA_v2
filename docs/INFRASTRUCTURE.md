@@ -97,6 +97,7 @@ Every service: `restart: unless-stopped`, `read_only: true` (+ `tmpfs: /tmp`), `
 | certbot | `certbot/certbot` | 1 (cron loop) | 0.1 | 64 MB | edge | certs |
 | identity-svc | `ghcr.io/cimh/identity-svc@sha256:…` | 2 | 0.5 | 256 MB | app, data | — |
 | catalog-svc | `…/catalog-svc` | 2 | 0.5 | 256 MB | app, data | — |
+| catalog-push | `…/catalog-svc` (`build_push_app`) | 1 | 0.25 | 256 MB | app, data | — (announcement WebSockets, ADR-0016; scale with replicas, alert `PushSocketsNearCap`) |
 | inventory-svc | `…/inventory-svc` | 2 | 0.5 | 256 MB | app, data | — |
 | order-svc | `…/order-svc` | 2 | 0.5 | 256 MB | app, data | — |
 | document-svc | `…/document-svc` | 2 | 1.0 | 384 MB | app, data | `/srv/sia-data/protected` (rw) |

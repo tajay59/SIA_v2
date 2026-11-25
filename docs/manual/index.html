@@ -770,7 +770,11 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td><strong>catalog-svc</strong></td>
-<td>Products, search, Pro Bono items and limits, reference data (<code>misc</code>), image records</td>
+<td>Products, search, Pro Bono items and limits, reference data (<code>misc</code>), image records, announcements (<code>announcements</code>, TTL)</td>
+</tr>
+<tr>
+<td><strong>catalog-push</strong></td>
+<td>Same image as catalog-svc: holds the browsers' announcement WebSockets; a Redis poke after each admin change makes every worker re-read MongoDB and send the difference; reconcile every 30 s (ADR-0016)</td>
 </tr>
 <tr>
 <td><strong>inventory-svc</strong></td>
@@ -782,7 +786,7 @@ Get-ChildItem *.drawio | ForEach-Object {
 </tr>
 <tr>
 <td><strong>document-svc</strong></td>
-<td>PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events, the agreement preview staff see before sending a quote (never stored), virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes <code>document.*</code> itself</td>
+<td>PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events; staff open, revise and void the request's one invoice per kind (order-svc records which is current), the agreement preview staff see before sending a quote (never stored), virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes <code>document.*</code> itself</td>
 </tr>
 <tr>
 <td><strong>notification-svc</strong></td>
@@ -1377,6 +1381,8 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>; <code>rese
 <h3 id="stock-counts-per-product-inventory-svc">✚ <code>stock</code> (counts per product, inventory-svc)</h3>
 <p><code>id</code> (= product id) · <code>productName</code>, <code>type</code>, <code>threshold</code>, <code>active</code> (copied from catalog events) · <code>available</code>, <code>reserved</code>, <code>picked</code>, <code>assigned</code> · <code>low</code> · <code>outbox[]</code>.
 Updated <strong>in the same transaction</strong> as every scan, with counts recomputed from <code>storage</code>, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold &gt; 0 and available ≤ threshold; <code>stock.low</code> is sent when it turns true.</p>
+<h3 id="announcements-the-banner-on-every-page-catalog-svc">✚ <code>announcements</code> (the banner on every page, catalog-svc)</h3>
+<p>Admin messages shown at the top of every SHOP/SIA page: <code>id</code> (<code>ANN…</code>), <code>message</code> (plain text ≤ 280), <code>tone</code> INFO/ALERT, <code>audience</code> SHOP/SIA/BOTH, optional <code>link</code> (web address or <code>productId</code>), <code>dismissible</code> (never for alerts), <code>startsAt</code>, <code>expiresAt</code>, Actors, <code>version</code>. A <strong>TTL index on <code>expiresAt</code></strong> deletes a message when the admin's time runs out (≤ 90 days); every read also filters on <code>expiresAt</code>. Audit entries ride on the <code>misc</code> document <code>announcements</code>. See BSD §5.12.</p>
 <h3 id="orders-carts-and-requests"><code>orders</code> (carts and requests)</h3>
 <table>
 <thead>
@@ -1416,12 +1422,13 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 </tr>
 <tr>
 <td>Fulfilment</td>
-<td><code>purchaseOrders[]</code>, <code>approval</code> / <code>rejection</code> (PROBONO), <code>shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}</code>, <code>invoice{…}</code>, <code>files[]</code>, <code>cancellation{by, at, reason, auto}</code></td>
+<td><code>purchaseOrders[]</code>, <code>approval</code> / <code>rejection</code> (PROBONO), <code>shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}</code>, <code>invoice{…}</code>, <strong><code>invoices{invoice?, commercial_invoice?}</code></strong> (the one current invoice of each kind: number, rev, fileId, lines, fees, discount, shipping, total, source STAFF/AUTO/LEGACY, revisions[]), <code>invoicesVoided[]</code>, <code>invoiceNumbers[]</code>, <code>files[]</code> (replaced/voided invoice PDFs flagged), <code>cancellation{by, at, reason, auto}</code></td>
 </tr>
 </tbody>
 </table>
 <p>Key rules:
 - One cart per user (only carts carry <code>cartOf</code>; a sparse unique index). While the customer is suspended the cart carries <code>blocked: true</code> and answers 403 <code>ACCOUNT_SUSPENDED</code>.
+- One current invoice and one commercial invoice per request; each save is the next revision; a number belongs to one request per kind (<code>invoiceNumbers</code>, unique multikey index), voided ones included. The current invoice's total is what the customer owes.
 - Accounts with <code>isCimh</code> can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.</p>
@@ -2170,7 +2177,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>S</td>
 <td>Credential stuffing / brute force on <code>/auth/login</code></td>
 <td>H</td>
-<td>nginx 5 req/min/IP on auth; per-account lockout after 5 failures (15 min, increasing); Argon2id; breached-password check at sign-up/reset; generic error messages</td>
+<td>nginx 5 req/min/IP on auth; per-account lockout after 5 failures (15 min, increasing; wrong TOTP codes count, a reused right code does not: it only answers an exact match of a code valid seconds ago, <code>MFA_CODE_REUSED</code>, 2026-11-25); Argon2id; breached-password check at sign-up/reset; generic error messages</td>
 <td>✅</td>
 </tr>
 <tr>
@@ -2582,6 +2589,38 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>M</td>
 <td>HTTPS only (<code>cleartextTrafficPermitted=false</code>); certificate pinning (built: ISRG Root X1, X2 and Root YE, pin set expiring 2027-12-31 so a CA change can't lock staff out; pins are roots rather than intermediates because Let's Encrypt rotates intermediates; CIMH CA added if production uses one)</td>
 <td>✅ (TR-SEC-11)</td>
+</tr>
+<tr>
+<td>T-42</td>
+<td>S/I</td>
+<td>Cross-site WebSocket hijacking of the announcement socket</td>
+<td>M</td>
+<td>Origin must be SHOP/SIA (else HTTP 403); only announcements travel on it; <code>app=sia</code> needs a verified staff cookie, closed 4401 at token expiry</td>
+<td>✅ (2026-11-23)</td>
+</tr>
+<tr>
+<td>T-43</td>
+<td>D</td>
+<td>Socket exhaustion on catalog-push</td>
+<td>M</td>
+<td><code>limit_conn 20</code> per address, <code>PUSH_MAX_SOCKETS</code> per worker (1013 → polling), own container + memory limit, alert <code>PushSocketsNearCap</code></td>
+<td>✅ (2026-11-23)</td>
+</tr>
+<tr>
+<td>T-44</td>
+<td>T</td>
+<td>Script or phishing link in an announcement</td>
+<td>M</td>
+<td>Admin + MFA, audited; plain text only; links https, site path or a checked product; confirm before publishing; End now everywhere at once</td>
+<td>✅ (2026-11-23)</td>
+</tr>
+<tr>
+<td>T-45</td>
+<td>T/R</td>
+<td>An issued invoice silently changed or withdrawn</td>
+<td>M</td>
+<td>One current invoice per kind; every save a new revision (earlier PDFs kept, staff-only); audited; read-only once paid, then only an admin can void (with a reason); voided numbers stay used</td>
+<td>✅ (2026-11-24)</td>
 </tr>
 </tbody>
 </table>
@@ -4013,11 +4052,12 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>documents</td>
-<td><code>POST /files</code>, <code>GET /files/{id}</code> (X-Accel-Redirect), <code>DELETE /files/{id}</code>, <code>GET /requests/{id}/agreement-preview</code> (staff: the agreement before it is sent, marked as a preview, never stored), <code>GET /requests/{id}/invoice-draft</code>, <code>POST /requests/{id}/invoice-preview</code>, <code>POST /requests/{id}/invoices</code> (staff invoice builder, legacy SIA layout)</td>
+<td><code>POST /files</code>, <code>GET /files/{id}</code> (X-Accel-Redirect), <code>DELETE /files/{id}</code>, <code>GET/PUT/DELETE /requests/{id}/invoices/{kind}</code> (staff: the request's one invoice / commercial invoice, opened, revised or voided), <code>GET /requests/{id}/agreement-preview</code> (staff: the agreement before it is sent, marked as a preview, never stored), <code>GET /requests/{id}/invoice-draft</code>, <code>POST /requests/{id}/invoice-preview</code>, <code>POST /requests/{id}/invoices</code> (staff invoice builder, legacy SIA layout)</td>
 </tr>
 </tbody>
 </table>
 <p>The full catalogue with roles, and the <strong>legacy → v2 endpoint mapping</strong>, is in the <a href="../api/README.md#5-endpoint-catalogue">API Specification</a>.</p>
+<p><strong>Announcements</strong> (2026-11-23): <code>GET /api/catalog/v1/announcements?app=shop|sia</code> (live list), admin CRUD on <code>/admin/announcements</code> (If-Match on edit/end), and the WebSocket <code>/api/catalog/v1/announcements/stream</code> (catalog-push; <code>snapshot</code>, <code>upsert</code>, <code>remove</code>, <code>ping</code>; contract <code>docs/api/push.asyncapi.yaml</code>). Errors: <code>LINK_NOT_ALLOWED</code>, <code>TTL_OUT_OF_RANGE</code>, <code>STARTS_AFTER_EXPIRY</code>, <code>PRODUCT_NOT_FOUND</code>, <code>PRODUCT_NOT_ON_SHOP</code>.</p>
 <h2 id="106-error-codes-clients-should-handle">10.6 Error codes clients should handle</h2>
 <table>
 <thead>
@@ -4107,7 +4147,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>Login with a non-ACTIVE account</td>
-<td><code>ACCOUNT_PENDING_VERIFICATION</code> → Verify email · <code>ACCOUNT_PENDING_APPROVAL</code> → "Awaiting approval" · <code>ACCOUNT_REJECTED</code> / <code>ACCOUNT_SUSPENDED</code> → message with a contact link · <code>ACCOUNT_LOCKED</code> → message with the unlock time · <code>MFA_REQUIRED</code> → code step</td>
+<td><code>ACCOUNT_PENDING_VERIFICATION</code> → Verify email · <code>ACCOUNT_PENDING_APPROVAL</code> → "Awaiting approval" · <code>ACCOUNT_REJECTED</code> / <code>ACCOUNT_SUSPENDED</code> → message with a contact link · <code>ACCOUNT_LOCKED</code> → "Too many failed attempts. Try again in n minutes." (from <code>Retry-After</code>; shown since 2026-11-25) · <code>MFA_REQUIRED</code> → code step · on the code step <code>MFA_INVALID</code> → "That code is not valid", <code>MFA_CODE_REUSED</code> → "That code was just used. Wait for the next code" (field cleared; also on MFA setup)</td>
 </tr>
 <tr>
 <td>Role not allowed (e.g. customer opens SIA)</td>
@@ -4173,11 +4213,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Theme</td>
 <td>Light/dark toggle, remembered per device</td>
 </tr>
+<tr>
+<td>Announcements (SHOP + SIA)</td>
+<td>Admin messages (A-22) at the very top of every page, above the app bar and drawer (a layout slot, nothing covered): SHOP for everyone incl. signed-out visitors and sign-in pages, SIA for signed-in staff. Up to 3 rows, alerts first, more behind "n more". Each row: icon + word (Information / Alert) + text (2 lines, More) + optional link (a product opens its page in this app: SHOP <code>/catalogue/&lt;id&gt;</code>, SIA <code>/products/&lt;id&gt;</code>; a web address opens a new tab) + Close on information only (remembered in the browser until the message is edited). Arrives and leaves live (WebSocket; polling every 2 min if sockets fail); a reload shows it at once.</td>
+</tr>
 </tbody>
 </table>
 <h2 id="112-shop-screens">11.2 SHOP: screens</h2>
 <figure><a href="images/19-shop-sitemap.svg" target="_blank" title="Open full size"><img alt="SHOP navigation map" src="images/19-shop-sitemap.svg" loading="lazy"></a><figcaption>SHOP navigation map</figcaption></figure>
-<p><strong>Outstanding payments at sign-in</strong> (owner, 2026-11-23): when a customer signs in with delivered paid requests still waiting for a proof of payment, a dialog lists each (what, short ref, delivery date, agreed total; a row opens S-11) with <strong>Continue</strong> and <strong>Go to orders</strong> (→ S-10 <code>?status=payment</code>); once per account per tab session.</p>
+<p><strong>Outstanding payments at sign-in</strong> (owner, 2026-11-23): when a customer signs in with delivered paid requests still waiting for a proof of payment, a dialog lists each (what, short ref, delivery date, agreed total; a row opens S-11) with <strong>Continue</strong> and <strong>Go to orders</strong> (→ S-10 <code>?status=payment</code>); once per account per tab session. Plain head since 2026-11-24 (golden-ratio dialogs): "Payment due" beside <strong>Total owed</strong>; the same for <strong>Send proof of payment</strong> (beside <strong>Amount</strong>) and S-12's <strong>Send the signed agreement?</strong> (beside <strong>Total to sign</strong>).</p>
 <p><strong>Top bar:</strong> logo → S-01 · Catalogue · Pro Bono · search box → S-06 · Cart (badge; customers, and visitors who are sent to log in first; not CIMH accounts) → S-07 · <strong>Orders</strong> → S-10 (page name "Orders", owner 2026-11-16) · Account menu (Profile, Log out) or Log in / Sign up.</p>
 <table>
 <thead>
@@ -4268,8 +4312,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/requests/[id]</code></td>
 <td>Request detail</td>
 <td>customer (owner or same org)</td>
-<td>Shared <code>RequestSheet</code> (also beside the S-10 list). Short ref (full id in its tooltip) + sent date, title = what was requested, status chip; <strong>request path</strong> (Sent · Quote · Signed · Ordered · Shipped · Delivered; Pro Bono: Sent · Approved · Picking · Shipped · Delivered) filled to where it stands (hidden once closed); <strong>whose-move well</strong> (customer's turn = primary tone + action and quote expiry; waiting on CIMH = neutral; amber when the quote expires within 7 days; green accepted/delivered; red closed). "View and sign" (2026-11-17): while QUOTED the well says "Your quote is ready: BBD total" and what the agreement is (every item, where it comes from, its price; someone who can commit the organisation signs it; the signed copy comes back here), with <strong>View and sign</strong> (after a rejected signature: <strong>Send it again</strong> → S-12 <code>?task=send</code>) and, under the expiry, <strong>Already signed? Send the signed copy →</strong> (S-12 <code>?task=send</code>, for whoever comes back only with the signed copy) (View and sign has a soft primary halo and a ring every 2 s until the customer first presses it for this quote version, remembered in the browser; hover or focus pauses the ring; reduced motion = the halo only) and <strong>Cancel request</strong> (the server's <code>decline</code>) 16 px under it; after a rejected signature it says why and asks for a new copy; a quote sent before the change (no agreement) reads "CIMH is updating the quote". <strong>One of each</strong> (critique fix, 2026-11-18): <strong>while the requester's quote waits the page is a hand-off with no prices</strong> (the total once, in the well; the priced quote is read on S-12); a same-org viewer or a quote still waiting for its agreement sees the shared <code>QuoteTable</code> first (one row per item with where it comes from — CIMH stock or the supplier that ships it directly — unit price and total; estimated shipping per source; admin fee; the total named by state: <strong>Total to sign</strong> while QUOTED, <strong>Agreed total</strong> once signed, <strong>Quoted total</strong> on a closed request; the agreement PDF also says "Total to sign"); later the quote is a record after the items. Then Items (source per line once quoted; Pro Bono items marked Free, also on an all-Pro-Bono request), Delivery (address with the country by name; currency only on a legacy USD request; then <strong>one row per shipment</strong> (2026-11-19): who sent it — "Sent by CIMH" or "Sent directly by <supplier>" — carrier · date · note · <strong>Track <number> ↗</strong> on one line, then its items as "name × qty", and while lines are left a "Not shipped yet" row naming them) as ruled sections with h2 heads (h3 beside the S-10 list), and <strong>History</strong> folded at the end (dated changes in the path's words, reasons included; the status timeline is gone, so there is one progress model); a closed or rejected request gives its reason in the well; <strong>no Files section and no document preview</strong> (owner, 2026-11-18: before signing the quote files and the agreement are read on S-12; a split view and an inline preview were tried and removed); <strong>Papers once signed</strong> (critique fix 4, owner locked "page tiles" on the decision page): from ACCEPTED on a paid request (and on a Pro Bono request once CIMH has made a paper) a ruled <strong>Papers</strong> section under the well shows each paper as a small A4 sheet (page 1 at thumbnail size, <code>DocumentThumb</code>, drawn when it nears the screen) with its name and kind under it: Signed agreement, Invoice (a dashed "Not yet" sheet until delivery), Agreement as sent, CIMH quote, supplier quotes of the agreed version; a tile opens the full-size reader (<code>DocumentReader</code>: a dialog, full screen below 760 px at 200 % under 600 px, Close + name + zoom + Download in one head; closing returns to the tile). Cancel request at the foot before a quote. Own page: a "← Orders" link above the request (2026-11-19: the navy band held nothing else). Once signed or closed the quote is a folded record after the items (<strong>Quote · Agreed total BBD x</strong>, opens in place), so items are listed once; a delivered request's well points to the invoice (Pro Bono: the delivery note) under Papers. <strong>Payment</strong> (owner, 2026-11-23): a delivered PAID request without a proof of payment says <strong>Payment required: BBD total</strong> in a red tone (error wash, red button) with <strong>Send proof of payment</strong> (dialog: file input, PDF/JPG/PNG/WebP ≤ 20 MB, <strong>Send to CIMH</strong>; uploads <code>payment_proof</code>, staff are emailed); afterwards "Proof of payment sent" with <strong>Send another proof</strong>; once staff mark it paid, a green <strong>Paid</strong> well with the date; each proof is a Papers tile. Slim footer</td>
-<td><strong>View and sign</strong> (QUOTED) → S-12 · a Papers tile → reader dialog · <strong>Send the signed copy</strong> → S-12 <code>?task=send</code> · <strong>Cancel request</strong> ⧉ reason → ↺ · <strong>Track</strong> (per shipment) → carrier site (new tab)</td>
+<td>Shared <code>RequestSheet</code> (also beside the S-10 list). Short ref (full id in its tooltip) + sent date, title = what was requested, status chip; <strong>request path</strong> (Sent · Quote · Signed · Ordered · Shipped · Delivered; Pro Bono: Sent · Approved · Picking · Shipped · Delivered) filled to where it stands (hidden once closed; a horizontal Vuetify <code>v-timeline</code>); <strong>whose-move well</strong> (customer's turn = primary tone + action and quote expiry; waiting on CIMH = neutral; amber when the quote expires within 7 days; green accepted/delivered; red closed). "View and sign" (2026-11-17): while QUOTED the well says "Your quote is ready: BBD total" and what the agreement is (every item, where it comes from, its price; someone who can commit the organisation signs it; the signed copy comes back here), with <strong>View and sign</strong> (after a rejected signature: <strong>Send it again</strong> → S-12 <code>?task=send</code>) and, under the expiry, <strong>Already signed? Send the signed copy →</strong> (S-12 <code>?task=send</code>, for whoever comes back only with the signed copy) (View and sign has a soft primary halo and a ring every 2 s until the customer first presses it for this quote version, remembered in the browser; hover or focus pauses the ring; reduced motion = the halo only) and <strong>Cancel request</strong> (the server's <code>decline</code>) 16 px under it; after a rejected signature it says why and asks for a new copy; a quote sent before the change (no agreement) reads "CIMH is updating the quote". <strong>One of each</strong> (critique fix, 2026-11-18): <strong>while the requester's quote waits the page is a hand-off with no prices</strong> (the total once, in the well; the priced quote is read on S-12); a same-org viewer or a quote still waiting for its agreement sees the shared <code>QuoteTable</code> first (one row per item with where it comes from — CIMH stock or the supplier that ships it directly — unit price and total; estimated shipping per source; admin fee; the total named by state: <strong>Total to sign</strong> while QUOTED, <strong>Agreed total</strong> once signed, <strong>Quoted total</strong> on a closed request; the agreement PDF also says "Total to sign"); later the quote is a record after the items. Then Items (source per line once quoted; Pro Bono items marked Free, also on an all-Pro-Bono request), Delivery (address with the country by name; currency only on a legacy USD request; then <strong>one row per shipment</strong> (2026-11-19): who sent it — "Sent by CIMH" or "Sent directly by <supplier>" — carrier · date · note · <strong>Track <number> ↗</strong> on one line, then its items as "name × qty", and while lines are left a "Not shipped yet" row naming them) as ruled sections with h2 heads (h3 beside the S-10 list), and <strong>History</strong> folded at the end (a vertical <code>v-timeline</code>, newest first; dated changes in the path's words, reasons included; the status timeline is gone, so there is one progress model); a closed or rejected request gives its reason in the well; <strong>no Files section and no document preview</strong> (owner, 2026-11-18: before signing the quote files and the agreement are read on S-12; a split view and an inline preview were tried and removed); <strong>Papers once signed</strong> (critique fix 4, owner locked "page tiles" on the decision page): from ACCEPTED on a paid request (and on a Pro Bono request once CIMH has made a paper) a ruled <strong>Papers</strong> section under the well shows each paper as a small A4 sheet (page 1 at thumbnail size, <code>DocumentThumb</code>, drawn when it nears the screen) with its name and kind under it: Signed agreement, Invoice (a dashed "Not yet" sheet until delivery), Agreement as sent, CIMH quote, supplier quotes of the agreed version; a tile opens the full-size reader (<code>DocumentReader</code>: a dialog, full screen below 760 px at 200 % under 600 px, Close + name + zoom + Download in one head; closing returns to the tile). Cancel request at the foot before a quote. Own page: a "← Orders" link above the request (2026-11-19: the navy band held nothing else). Once signed or closed the quote is a folded record after the items (<strong>Quote · Agreed total BBD x</strong>, opens in place), so items are listed once; a delivered request's well points to the invoice (Pro Bono: the delivery note) under Papers. <strong>Payment</strong> (owner, 2026-11-23): a delivered PAID request without a proof of payment says <strong>Payment required: BBD total</strong> in a red tone (error wash, red button) with <strong>Send proof of payment</strong> (dialog: file input, PDF/JPG/PNG/WebP ≤ 20 MB, <strong>Send to CIMH</strong>; uploads <code>payment_proof</code>, staff are emailed); afterwards "Proof of payment sent" with <strong>Send another proof</strong>; once staff mark it paid, a green <strong>Paid</strong> well with the date; each proof is a Papers tile. Slim footer</td>
+<td><strong>View and sign</strong> (QUOTED) → S-12 · a Papers tile → reader dialog · <strong>Send the signed copy</strong> → S-12 <code>?task=send</code> · <strong>Cancel request</strong> ⧉ reason → ↺ · <strong>Track</strong> (per shipment) → carrier site (new tab) Orders list ↔ this page: a quiet cross-fade with a 4 px settle (no sideways slide; nothing replays for the request just shown)</td>
 </tr>
 <tr>
 <td>S-12</td>
@@ -4374,15 +4418,15 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Request desk (queue)</td>
 <td>staff</td>
 <td>Stage tabs with exact counts (one <code>GET /requests/counts</code> call, shared with the drawer and A-01; a tab seen in this visit shows its last list at once while it refreshes) (Open (open statuses + delivered paid requests not yet paid, <code>payment=outstanding</code>), New, Quoting, Waiting for signature, Signature to check, Pick &amp; purchase, Shipped, Payment due (delivered paid requests not marked paid, proof sent or not, <code>payment=unpaid</code>; their status cell = Delivered as an icon with a tooltip + a red "Payment required" chip; owner 2026-11-23), Closed (finished, and a delivered paid request only once paid: <code>payment=settled</code>), All); search; More filters (one console panel: statuses as toggle chips in Open and Closed groups with "Only open/closed"; type, year sent (last 3 years + Earlier) and order as segmented buttons; organisation picker; Clear in the head) for statuses, type, year, organisation, sort (default <strong>latest change first</strong>: newest status change on top, matching the right-hand column, <code>sort=recent</code>, owner 2026-11-23; also newest sent, waiting longest, oldest); queue + detail panels like A-01 (row: id, customer/org, next step, status, waiting with overdue &gt; 5 days) Queue rows show the person's name, a Pro Bono badge when it is one and the organisation (no item name; owner 2026-11-16), <code>shortRef</code> (full id in a tooltip on hover) as the reference.</td>
-<td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03</td>
+<td>Row selects (detail panel acts); id link / Open full request → A-03; phones: tap → A-03. Desk → A-03 is a quiet hand-off (desk fades out, the page settles 4 px; owner 2026-11-24); back from A-03 (its <strong>Orders</strong> link or the browser's Back) returns to the same tab and filters with the same request selected and the list shown at once</td>
 </tr>
 <tr>
 <td>A-03</td>
 <td><code>/requests/[id]</code></td>
 <td>Request (staff)</td>
 <td>staff</td>
-<td>Customer + org, lines (with <code>cimhAvailable</code>, From = CIMH stock or the supplier, reservation, held from the moment the quote is sent), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code> While QUOTED the customer acts next, so Revise quote is an outlined (secondary) button; Pro Bono requests have no Invoiced step. Title = what was requested; under it customer · organisation · <code>shortRef</code> (full id on hover and copied by the button). Files panel without its own card (<code>RequestFiles bare</code>); timeline "By" shows the part before @ for actors without a name. <strong>Payment</strong> (2026-11-23): a delivered PAID request's Next step reads "Waiting for the customer to pay" or, once a proof is in, "Check the proof of payment, then mark it paid"; <strong>Mark paid</strong> asks first (amount, the proofs as links, optional note) → "Paid <date>".</td>
-<td><code>start-quoting</code> ↺ → A-04 · <code>send-quote</code> (from A-04) · <strong>Verify agreement</strong> (view signed PDF ⧉) → <code>purchase-orders</code> ⧉ (supplier, PO no., lines, ☑ agreement verified) ↺ · <code>reject-agreement</code> ⧉ reason ↺ · <code>approve</code> / <code>reject</code> (Pro Bono) ↺ · <strong>Pick</strong> → A-10 (prefilled) · <code>ship</code> ⧉ <strong>Record shipment</strong> (one parcel: sent from CIMH stock or one supplier, its unshipped lines ticked — CIMH lines only once every unit is picked; carrier FedEx/DHL/UPS/Hand/Other with name + https link; tracking unless Hand; note, cost, date, notify) ↺, repeated per parcel; the request is SHIPPED when the last line is in one · <strong>Shipments</strong> panel: each parcel (source, carrier, tracking link, date, cost, items) with <strong>Correct</strong> ⧉ (same fields, source and lines fixed, email again only on request) ↺ · <code>deliver</code> ⧉ ↺ · <code>cancel</code> ⧉ ↺</td>
+<td>Section heads (Request, Items, Quote, Shipments, Purchase orders, Files, Timeline) on the Action Wash with the title in primary, like the desk's "Selected request" head (owner 2026-11-24). On its own page the request has no outer frame: header, panels and Next step share the page edges, in line with the Orders bar above (owner 2026-11-24). Customer + org, lines (with <code>cimhAvailable</code>, From = CIMH stock or the supplier, reservation, held from the moment the quote is sent), timeline, documents, <strong>action panel</strong> driven by <code>allowedActions</code> While QUOTED the customer acts next, so Revise quote is an outlined (secondary) button; Pro Bono requests have no Invoiced step. Title = what was requested; under it customer · organisation · <code>shortRef</code> (full id on hover and copied by the button). Files panel without its own card (<code>RequestFiles bare</code>); timeline "By" shows the part before @ for actors without a name. <strong>Payment</strong> (2026-11-23): a delivered PAID request's Next step reads "Waiting for the customer to pay" or, once a proof is in, "Check the proof of payment, then mark it paid"; <strong>Mark paid</strong> asks first (amount, the proofs as links, optional note) → "Paid <date>".</td>
+<td><code>start-quoting</code> ↺ → A-04 · <code>send-quote</code> (from A-04) · <strong>Verify and purchase</strong> ⧉ (golden-ratio dialog, owner 2026-11-24: plain head (no wash) with organisation, quote version, the full order id + copy and Agreed total at 22.65 px; numbered sections with 17.8 px heads and hairlines; 1 Signature: the signed copy as a file row with Open, one check "Every page is there, dated and signed by an authorised person", Reject the signature… beside it; 2 Purchase orders: a table without rules, From (supplier, its items) and PO number, CIMH stock last as "none needed"; 1 Signature: open the signed copy ⧉, tick "complete and signed by an authorised person", or Reject the signature… ⧉ reason; 2 Purchase orders: PO number per supplier, items listed, CIMH stock lines shown as needing none; a press with something missing marks it and focuses it) → <code>purchase-orders</code> ↺ · <code>reject-agreement</code> ⧉ reason ↺ · <code>approve</code> / <code>reject</code> (Pro Bono) ↺ · <strong>Pick</strong> → A-10 (prefilled) · <code>ship</code> ⧉ <strong>Record shipment</strong> (2026-11-24 redesign, like Verify and purchase: plain head with the customer, the full order id + copy and Ships to; golden-ratio dialog system, see Verify and purchase; 1 Parcel: sent from CIMH stock or one supplier, its unshipped lines ticked — CIMH lines only once every unit is picked; 2 Carrier: FedEx/DHL/UPS/Hand/Other tiles, tracking unless Hand (Hand = who delivered/collected), Other = name + https link; 3 Date and cost: ship date, <strong>shipping cost required</strong> (BBD, 0.00 allowed; owner 2026-11-24; the API requires it too, M-08 included), note; footer: email the customer switch; a press with something missing marks it and focuses it) ↺, repeated per parcel; the request is SHIPPED when the last line is in one · <strong>Shipments</strong> panel: each parcel (source, carrier, tracking link, date, cost, items) with <strong>Correct</strong> ⧉ (same fields, source and lines fixed, email again only on request) ↺ · <code>deliver</code> ⧉ ↺ · <code>cancel</code> ⧉ ↺ · <strong>One invoice and one commercial invoice per request</strong> (2026-11-24, plan <code>2026-11-24-invoice-crud</code>): the buttons read <strong>Create invoice</strong> while there is none, <strong>Invoice <number></strong> once there is (opens it), <strong>View invoice</strong> once the request is marked paid; the same for the commercial invoice (shown too once one exists). Opening an existing one: title = its number, "Revision n" (+ "Made automatically from the request" for one made on delivery / for a parcel), <strong>Earlier copies</strong> (each revision opens in the file preview), the saved PDF on the left ("The copy the customer has.") until something changes, then the live preview ("saving issues revision n+1"); footer <strong>Delete invoice…</strong> (danger, apart; reason dialog: the customer no longer sees it, nobody is emailed, the number stays used) · <strong>Email the corrected copy to</strong> Customer / Staff (unticked) · Back · <strong>Save changes</strong> (only once something changed) → the next revision; the earlier PDF stays for staff. Paid = read-only, only an administrator sees <strong>Void invoice…</strong>. An invoice made before invoices kept their lines (LEGACY) opens with the request's lines and a note; saving gives it lines. A number already used by another invoice of the kind (voided ones included) is refused at the number field; a new invoice's number starts as the next in the series. Someone saving first: a notice with <strong>Reload</strong>. Next step notes a CIMH parcel leaving Barbados whose items the commercial invoice doesn't list (none is made for a second parcel). <strong>Create invoice</strong> / <strong>Create commercial invoice</strong> ⧉ invoice builder: live PDF preview left (legacy SIA template, marked "Preview · not sent"); panel right (2026-11-24, golden-ratio type and spacing): number + date, Billed to, the lines as a borderless table (Item · Qty · Price · Amount, a field per cell), Add line, Undo changes once edited, a totals ledger set right with fees, discount and shipping typed in place; footer: Email to Customer / Staff checkboxes → stored on the request, emailed as ticked ↺</td>
 </tr>
 <tr>
 <td>A-04</td>
@@ -4529,6 +4573,14 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>Record link → A-17 / A-18 record</td>
 </tr>
 <tr>
+<td>A-22</td>
+<td><code>/admin/announcements</code></td>
+<td>Announcements</td>
+<td>admin</td>
+<td>List beside the record (owner's pick, 2026-11-23; frequent, quick use): search + Shown on filter + New; list Live now (alerts first) / Starting later with mono meta (tone · audience · ends in); record: message (280), the preview right under it (the real banner on SHOP/SIA page sketches, light and dark; pages not reached named in one line), tone, shown on, keep for (1 h · 1 day · 1 week · 30 days · Until…; editing adds Current end), starts (now / later), closable (off for alerts), link (a product from the catalogue, or a web address)</td>
+<td>Publish / Schedule / Save ⧉ · End now ⧉ red · leave with unsaved edits ⧉</td>
+</tr>
+<tr>
 <td>A-21</td>
 <td><code>/login</code> · <code>/signup</code> · <code>/profile</code></td>
 <td>Login / Sign up / Profile</td>
@@ -4605,7 +4657,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>M-08</td>
 <td><code>orders/{id}/ship</code></td>
 <td>Ship</td>
-<td>Records CIMH's parcel: the picked CIMH-stock / Pro Bono lines not yet shipped; carrier (FedEx, DHL, UPS, Hand), tracking (camera scan of the label barcode), note, date. Supplier parcels and Other carriers are recorded in SIA on the web</td>
+<td>Records CIMH's parcel: the picked CIMH-stock / Pro Bono lines not yet shipped; carrier (FedEx, DHL, UPS, Hand), tracking (camera scan of the label barcode), note, date, <strong>shipping cost</strong> (required since 2026-11-24; BBD, 0.00 when nothing; Ship stays disabled until it is a number). Supplier parcels and Other carriers are recorded in SIA on the web</td>
 <td>Ship → M-06</td>
 </tr>
 <tr>
@@ -5387,7 +5439,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td>18 / 26</td>
 <td>600</td>
 <td>0</td>
-<td>Card titles, dialog titles</td>
+<td>Card titles (dialog titles: see Dialogs below)</td>
 </tr>
 <tr>
 <td><code>body-lg</code></td>
@@ -5447,6 +5499,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 </tbody>
 </table>
+<p><strong>Dialogs (SHOP + SIA, owner 2026-11-24): a golden-ratio system</strong> of their own, set in web-app <code>base.css</code> so every <code>v-dialog</code> follows it: type 11 px uppercase captions (14/√φ) · 14 px body and fields · 17.8 px section heads (14·√φ) · 22.65 px title and key figure (14·φ); spacing Fibonacci 8 · 13 · 21 · 34 (21 px edge, 13 px on phones); heads split φ : 1 (title, what and reference · one key figure such as Agreed total, Total owed, Amount) on the plain surface over a hairline, never a navy or washed band; fields with 8 px corners (pages keep pills); a checkbox, radio or switch 13 px from its words. Task dialogs use the <code>dlg-head</code> / <code>dlg-title</code> / <code>dlg-what</code> / <code>dlg-sub</code> / <code>dlg-key</code> / <code>dlg-cap</code> / <code>dlg-figure</code> classes.</p>
 <p>Rules:
 - Use sentence case everywhere, no Title Case.
 - Keep line length at most 72 characters for prose.
@@ -5679,8 +5732,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <tbody>
 <tr>
 <td><strong>Status timeline</strong></td>
-<td>S-11, A-03</td>
-<td>Vertical list. Each step has a dot (status tone), the status word, date/time, the actor, and the reason if any. Current step bold; future steps hollow and muted</td>
+<td>S-11, A-03, A-17</td>
+<td>Vuetify <code>v-timeline</code> everywhere (2026-11-24). A-03 (<code>RequestTimeline</code>, web-app): across the panel when every step gets 132 px, else down it; done = success dot with a tick, current = primary dot with a soft ring, closed = error dot with a cross, not reached = hollow ring; the line is success up to the current step; date/time under each step; the full history (who, why) stays a table below. S-11: the request path (horizontal, 16 px nodes, primary) and History (vertical, newest first on a filled node). A-17 Status history: vertical, status chip + actor + reason, date under. Lines are solid colours (Vuetify's segments overlap; a translucent line shows dashes)</td>
 </tr>
 <tr>
 <td><strong>Quote comparison</strong></td>
@@ -5691,6 +5744,11 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><strong>Task checklist</strong></td>
 <td>S-12</td>
 <td>Ruled list of three tasks (Check the quote · Get it signed · Send the signed copy), one open at a time on a primary wash, any reachable. Each task has a node (to do = outline ring with its number, open = primary ring + halo, done = primary fill + ✓) on one wire down the node column that fills as tasks are done. Ticks are kept in the browser, so a return opens the first task not done. Wide screens: the open task's document beside the list (sticky), one head per document, on a desk ground</td>
+</tr>
+<tr>
+<td><strong>Announcement banner</strong></td>
+<td>Every SHOP and SIA page (A-22)</td>
+<td>Full-width rows above the app bar (Vuetify layout slot, measured height, <code>density="default"</code>): Information = primary wash 14 % + full 1 px edge at 45 % + info icon; Alert = warning wash 22 % + warning icon; the word ("Information:" / "Alert:") always bold before the text. 14/20, 2 lines then More; link underlined (a product link opens it in this app); Close only on information. Content on SHOP's 1200 px column, SIA full width. Slides down 180 ms, fades out 140 ms; reduced motion = fade. Admin preview = the same row on SHOP/SIA page sketches, light and dark</td>
 </tr>
 <tr>
 <td><strong>Request header</strong></td>
@@ -6926,6 +6984,15 @@ export const cimhDark = {
 <td>256 MB</td>
 <td>app, data</td>
 <td>—</td>
+</tr>
+<tr>
+<td>catalog-push</td>
+<td><code>…/catalog-svc</code> (<code>build_push_app</code>)</td>
+<td>1</td>
+<td>0.25</td>
+<td>256 MB</td>
+<td>app, data</td>
+<td>— (announcement WebSockets; scale with replicas)</td>
 </tr>
 <tr>
 <td>inventory-svc</td>

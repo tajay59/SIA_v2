@@ -87,7 +87,7 @@ function toError(res: FetchResult<unknown>): ApiError {
   return new ApiError(res.response.status, problem, Number.isFinite(retry) && retry > 0 ? retry : undefined)
 }
 
-const NO_REFRESH_CODES = new Set(['INVALID_CREDENTIALS', 'TOKEN_REUSE', 'MFA_INVALID'])
+const NO_REFRESH_CODES = new Set(['INVALID_CREDENTIALS', 'TOKEN_REUSE', 'MFA_INVALID', 'MFA_CODE_REUSED'])
 
 /**
  * Run a client call and return its data or throw `ApiError`.

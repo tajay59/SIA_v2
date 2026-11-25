@@ -164,7 +164,14 @@ def main() -> int:
         check(r.status_code == 200, f"pick {u[-8:]} through order-svc -> inventory", r)
     unit = c.get(f"{INV}/units/{held[0]}", headers=staff).json()
     check(unit["picked"] and unit["orderId"] == rid, "inventory recorded the pick for the request")
-    box = {"source": "CIMH", "lineIds": ["L1"], "carrier": "HAND", "note": "Collected", "date": "2026-11-09"}
+    box = {
+        "source": "CIMH",
+        "lineIds": ["L1"],
+        "carrier": "HAND",
+        "note": "Collected",
+        "cost": "0.00",
+        "date": "2026-11-09",
+    }
     r = act(rid, "shipments", staff, box)
     check(r.status_code == 200 and r.json()["status"] == "SHIPPED", "shipped (hand delivery)", r)
     r = act(rid, "deliver", staff, {"invoiceNumber": f"SMOKE-{run}"})

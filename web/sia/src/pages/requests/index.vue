@@ -16,6 +16,7 @@ import RequestView from '../../components/RequestView.vue'
 import RequestQueue from '../../components/RequestQueue.vue'
 import SegmentedChoice from '../../components/SegmentedChoice.vue'
 import ICheck from '~icons/material-symbols/check-rounded'
+import { deskMemory, type SeenList } from '../../desk-memory'
 import { ALL_STATUS, BTN, CLOSED_STATUS, OPEN_STATUS } from '../../request-queue'
 import { type CountKey, countLabel, useWorkCounts } from '../../work-counts'
 
@@ -203,9 +204,10 @@ const list = useCursorList<RequestSummary>((cursor) =>
   ) as Promise<{ items: RequestSummary[]; nextCursor: string | null }>,
 )
 const loadedAt = ref<Date | null>(null)
-// Tabs seen in this visit (2026-11-23): going back to one shows its last list at once while it refreshes behind.
-// Keyed by the filters; the newest 12 are kept. A tab never seen shows the skeleton, never another tab's rows.
-const seen = new Map<string, { items: RequestSummary[]; nextCursor: string | null }>()
+// Tabs seen in this browser tab (2026-11-23): going back to one shows its last list at once while it refreshes
+// behind. Keyed by the filters; the newest 12 are kept. A tab never seen shows the skeleton, never another tab's
+// rows. Kept in `deskMemory` (2026-11-24), so a return from a request's own page shows the list at once too.
+const seen = deskMemory.seen as Map<string, SeenList<RequestSummary>>
 const filterKey = () => JSON.stringify(serialize(filters.value))
 async function reload() {
   const key = filterKey()
@@ -222,6 +224,7 @@ function showSeen() {
   list.nextCursor.value = hit?.nextCursor ?? null
   list.loaded.value = !!hit
 }
+showSeen()
 onMounted(reload)
 watch(filterKey, () => {
   if (!onDesk()) return
@@ -234,11 +237,28 @@ function refreshAll() {
 }
 
 const items = computed(() => (list.loaded.value ? list.items.value : null))
-const selectedId = ref<string | null>(null)
+// The summary shown beside the queue. Starts on the request last selected here, or the one just looked at on its
+// own page (deskMemory), so coming back keeps it; the first row only when that request is not in this list.
+const selectedId = ref<string | null>(deskMemory.selected)
 const selected = computed(() => items.value?.find((r) => r.id === selectedId.value) ?? null)
-watch(items, (rows) => {
-  if (rows && !rows.some((r) => r.id === selectedId.value)) selectedId.value = rows[0]?.id ?? null
+watch(
+  items,
+  (rows) => {
+    if (rows && !rows.some((r) => r.id === selectedId.value)) selectedId.value = rows[0]?.id ?? null
+  },
+  { immediate: true },
+)
+watch(selectedId, (id) => {
+  if (id) deskMemory.selected = id
 })
+// Where "Orders" on a request's own page returns to: this tab, these filters, and `?open=` if one was open.
+watch(
+  () => route.query,
+  (q) => {
+    if (onDesk()) deskMemory.query = { ...q }
+  },
+  { immediate: true },
+)
 
 // ---- A-03 beside the list (`?open=<id>`): the queue narrows, the full request takes the rest.
 const openId = computed(() => str(route.query, 'open') || null)
@@ -277,7 +297,7 @@ const time = computed(() =>
 </script>
 
 <template>
-  <div class="desk">
+  <div class="desk request-desk">
     <div class="toolbar">
       <v-text-field
         v-model="search"

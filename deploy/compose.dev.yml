@@ -177,6 +177,24 @@ services:
     mem_limit: 256m
     cpus: 0.5
 
+  # Announcement sockets (plan 2026-11-23): same image, only the stream + live list. No PUSH_ORIGINS: the
+  # Origin must match the Host the Vite proxy forwards (any dev/preview port).
+  catalog-push:
+    image: cimh/catalog-svc:dev
+    <<: *hardening
+    command: ["gunicorn", "catalog_svc.main:build_push_app()", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000", "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      PUSH_RECONCILE_SECONDS: "10"
+      LOG_LEVEL: DEBUG
+    ports: ["127.0.0.1:18007:8000"]
+    depends_on:
+      catalog-svc: { condition: service_healthy }
+    mem_limit: 128m
+    cpus: 0.25
+
   media-files:
     image: nginx:1.27-alpine
     volumes:

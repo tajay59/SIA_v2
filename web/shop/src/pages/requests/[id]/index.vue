@@ -6,17 +6,22 @@
  * and the agreement are read on View and sign (S-12).
  */
 import { mdiArrowLeft } from '@mdi/js'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useDisplay } from 'vuetify'
 import RequestSheet from '../../../components/RequestSheet.vue'
 
 definePage({ meta: { guard: 'customer', title: 'Request' } })
 const route = useRoute('/requests/[id]/')
+// Back to Orders with this request open beside the list (wide screens; narrower, ?open= would come straight back here).
+const { width } = useDisplay()
+const back = computed(() => (width.value >= 1100 ? { path: '/requests', query: { open: route.params.id } } : '/requests'))
 </script>
 
 <template>
   <div class="request-page">
     <div class="body">
-      <router-link to="/requests" class="back"><v-icon :icon="mdiArrowLeft" size="18" aria-hidden="true" />Orders</router-link>
+      <router-link :to="back" class="back"><v-icon :icon="mdiArrowLeft" size="18" aria-hidden="true" />Orders</router-link>
       <RequestSheet :id="route.params.id" :level="1" set-title />
     </div>
   </div>

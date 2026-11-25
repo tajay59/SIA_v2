@@ -241,6 +241,9 @@ export interface paths {
          * @description Every priced line of the request (`invoice`) or only its CIMH-stock lines (`commercial_invoice`; supplier items
          *     ship direct and are invoiced by the supplier); Pro Bono lines at 0.00. Description = "<model number> - <name>".
          *     Fees = the admin fee (invoice only); shipping = the costs recorded on the parcels (invoice only).
+         *     `number` = the number given at Mark delivered (invoice only), else null; `suggestedNumber` = the latest number
+         *     of this kind on any request + 1 (its last digits counted on, skipping numbers already used), null when there
+         *     is none to count from. The builder offers `number ?? suggestedNumber`.
          */
         get: {
             parameters: {
@@ -264,6 +267,7 @@ export interface paths {
                         "application/json": {
                             kind: components["schemas"]["InvoiceKind"];
                             number?: string | null;
+                            suggestedNumber?: string | null;
                             lines: components["schemas"]["InvoiceLine"][];
                             fees: string;
                             discount: string;
@@ -352,10 +356,14 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Create a staff-built invoice or commercial invoice (staff, admin)
-         * @description Renders the PDF, stores it, attaches it to the request (kind `invoice` / `commercial_invoice`) and publishes
-         *     `document.generated` with `notify` (emailCustomer / emailStaff), so notification-svc emails the customer and/or
-         *     the staff `invoice` list. Audited. Can be repeated (a corrected invoice is a new file).
+         * Create the request's invoice or commercial invoice (staff, admin)
+         * @description A request has at most one current invoice and one current commercial invoice. Renders the PDF (rev 1), stores
+         *     it, has order-svc record it as the current one (attached to the request as kind `invoice` /
+         *     `commercial_invoice`) and publishes `document.generated` with `notify` (emailCustomer / emailStaff) and `rev`,
+         *     so notification-svc emails the customer and/or the staff `invoice` list. Audited. 409 INVOICE_EXISTS when the
+         *     request already has one of this kind (change it with PUT); 409 INVOICE_NUMBER_TAKEN when another request's
+         *     invoice of the same kind uses the number (voided ones included; compared case-blind, spaces collapsed). A
+         *     refused create leaves no file.
          */
         post: {
             parameters: {
@@ -372,23 +380,165 @@ export interface paths {
                 };
             };
             responses: {
-                /** @description The stored file */
+                /** @description The stored file and the invoice as recorded */
                 201: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content: {
-                        "application/json": Record<string, never>;
+                        "application/json": components["schemas"]["InvoiceSaved"];
                     };
                 };
                 401: components["responses"]["Unauthorized"];
                 403: components["responses"]["Forbidden"];
                 404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
                 422: components["responses"]["Unprocessable"];
                 503: components["responses"]["Unavailable"];
             };
         };
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{requestId}/invoices/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: string;
+                kind: components["schemas"]["InvoiceKind"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The request's current invoice of this kind, as the builder reopens it (staff, admin)
+         * @description 404 when the request has none (the builder then starts from `invoice-draft`). `ETag` = the revision, sent back
+         *     as `If-Match` to change or void it. `lines` is null for an invoice made before invoices kept their lines
+         *     (`source` LEGACY): the builder starts from the draft and saving issues the next revision.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: string;
+                    kind: components["schemas"]["InvoiceKind"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The current invoice */
+                200: {
+                    headers: {
+                        ETag: components["headers"]["ETag"];
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Invoice"];
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        /**
+         * Change the current invoice (staff, admin)
+         * @description Issues the next revision: a new PDF (same or new number) becomes the current one; the earlier PDF leaves the
+         *     customer's papers (customers get 404 for it) and stays downloadable for staff. `document.generated` carries
+         *     `rev` (> 1 = a corrected invoice) and `notify`. `If-Match` = the revision being changed (428 without it,
+         *     409 VERSION_CONFLICT when someone saved first). 409 INVOICE_LOCKED once the request is marked paid;
+         *     409 INVOICE_NUMBER_TAKEN as for create. `kind` in the body must match the path (422).
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description The invoice revision being changed (its ETag, e.g. `"2"`). Missing = 428 PRECONDITION_REQUIRED. */
+                    "If-Match"?: components["parameters"]["InvoiceRev"];
+                };
+                path: {
+                    requestId: string;
+                    kind: components["schemas"]["InvoiceKind"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["InvoiceIn"];
+                };
+            };
+            responses: {
+                /** @description The new PDF and the invoice as recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["InvoiceSaved"];
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+                428: components["responses"]["PreconditionRequired"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
+        post?: never;
+        /**
+         * Void the current invoice (staff, admin; admin only once the request is marked paid)
+         * @description The invoice leaves the customer's papers and the amount owed falls back to the signed total; its number stays
+         *     used; nobody is emailed; audited with the reason. Staff can still open the voided PDF. After a void, a new
+         *     invoice of this kind can be created (and none is generated automatically). 403 for staff once the request is
+         *     marked paid (an administrator may).
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description The invoice revision being changed (its ETag, e.g. `"2"`). Missing = 428 PRECONDITION_REQUIRED. */
+                    "If-Match"?: components["parameters"]["InvoiceRev"];
+                };
+                path: {
+                    requestId: string;
+                    kind: components["schemas"]["InvoiceKind"];
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        reason: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Voided */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+                428: components["responses"]["PreconditionRequired"];
+                503: components["responses"]["Unavailable"];
+            };
+        };
         options?: never;
         head?: never;
         patch?: never;
@@ -524,6 +674,47 @@ export interface components {
     schemas: {
         /** @enum {string} */
         InvoiceKind: "invoice" | "commercial_invoice";
+        InvoiceRevision: {
+            rev: number;
+            fileId: string;
+            number?: string | null;
+            total?: string | null;
+            by?: components["schemas"]["Actor"];
+            at?: string | null;
+        };
+        /** @description The current invoice of one kind on a request (staff view; order-svc's record). */
+        Invoice: {
+            kind: components["schemas"]["InvoiceKind"];
+            /** @description null on an older invoice whose number is unknown */
+            number?: string | null;
+            rev: number;
+            /** @description The current PDF */
+            fileId: string;
+            date?: string | null;
+            /** @description Lines + fees + shipping - discount; null when the lines were not kept (LEGACY) */
+            total?: string | null;
+            /**
+             * @description AUTO = made on delivery / for a parcel; LEGACY = made before invoices kept their lines
+             * @enum {string}
+             */
+            source: "STAFF" | "AUTO" | "LEGACY";
+            /** @description The request is marked paid (read-only; only an administrator can void it) */
+            locked: boolean;
+            lines?: components["schemas"]["InvoiceLine"][] | null;
+            fees?: string | null;
+            discount?: string | null;
+            shipping?: string | null;
+            createdAt?: string | null;
+            updatedAt?: string | null;
+            /** @description Every PDF issued */
+            revisions: components["schemas"]["InvoiceRevision"][];
+            /** @description Bill-to (invoice) or ship-to (commercial invoice), one row per line */
+            recipient: string[];
+        };
+        InvoiceSaved: components["schemas"]["File"] & {
+            /** @description The invoice as order-svc recorded it (staff view */
+            invoice: Record<string, never>;
+        };
         Money: string;
         InvoiceLine: {
             lineId?: string | null;
@@ -559,6 +750,10 @@ export interface components {
             uploadedAt: components["schemas"]["Timestamp"];
             /** @description Quote version of a generated agreement / CIMH quote, or the one a signed agreement was uploaded for */
             quoteVersion?: number | null;
+            /** @description Invoice / commercial invoice only: its number */
+            number?: string | null;
+            /** @description Invoice / commercial invoice only: its revision */
+            rev?: number | null;
         };
         Actor: {
             id: string;
@@ -659,13 +854,36 @@ export interface components {
                 "application/problem+json": components["schemas"]["Problem"];
             };
         };
+        /** @description Malformed request. */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description `If-Match` missing (code PRECONDITION_REQUIRED); send the version you last read. */
+        PreconditionRequired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
     };
     parameters: {
+        /** @description The invoice revision being changed (its ETag, e.g. `"2"`). Missing = 428 PRECONDITION_REQUIRED. */
+        InvoiceRev: string;
         /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
         CsrfToken: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /** @description Current resource version, e.g. `"7"`. */
+        ETag: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;

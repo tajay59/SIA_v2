@@ -1,15 +1,20 @@
 <script setup lang="ts">
 /**
  * Record or correct one shipment (A-03, J-06 / J-07). A request ships in parcels: CIMH stock (picked here) and
- * each supplier's direct shipment. Choose where the parcel comes from, its lines (every unshipped line of that
- * source is ticked), the carrier (OTHER = name + the carrier's https tracking link), tracking (not for hand
- * delivery), date, optional cost and note, and whether to email the customer. Editing keeps source and lines.
+ * each supplier's direct shipment. Graphite Console dialog, same anatomy as Verify and purchase: a washed head band
+ * (what, which request with its full id + copy, where it goes), three seamed step panels whose washed heads say where
+ * each step stands (1 Parcel: where it comes from + its lines; 2 Carrier: carrier + tracking, or who delivered it by
+ * hand; 3 Date and cost: ship date, shipping cost (required, owner 2026-11-24; CIMH's records only), note), and a
+ * footer with the customer email switch beside the action. Record is never disabled for missing input: a press marks
+ * what is missing and moves the cursor there (checkForm). Editing keeps source and lines (shown, not changed).
  * Emits the request body; the parent sends it and closes on success.
  */
 import {
   CARRIERS,
   type Carrier,
   carrierLabel,
+  checkForm,
+  countryName,
   DateField,
   type OpenSource,
   openSources,
@@ -19,26 +24,37 @@ import {
   type ShipmentPatch,
   ShortRef,
 } from '@cimh/web-app'
-import { mdiAirplane, mdiDotsHorizontalCircleOutline, mdiHandExtendedOutline, mdiPackageVariantClosed, mdiTruckDeliveryOutline } from '@mdi/js'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, markRaw, reactive, ref, watch } from 'vue'
+import { useDisplay } from 'vuetify'
+import IDone from '~icons/material-symbols/check-circle-rounded'
+import IPending from '~icons/material-symbols/radio-button-unchecked'
+import IStock from '~icons/material-symbols/inventory-2-rounded'
+import IDirect from '~icons/material-symbols/local-shipping-rounded'
+import IFlight from '~icons/material-symbols/flight-rounded'
+import IPackage from '~icons/material-symbols/package-2-rounded'
+import IHand from '~icons/material-symbols/front-hand-rounded'
+import IMore from '~icons/material-symbols/more-horiz'
+import { BTN } from '../request-queue'
 
 const open = defineModel<boolean>({ default: false })
 const props = defineProps<{ request: OrderRequest; shipment?: Shipment | null; busy?: boolean }>()
 const emit = defineEmits<{ submit: [body: ShipmentInput]; update: [id: string, body: ShipmentPatch] }>()
+const { xs } = useDisplay()
 
-const ICON: Record<Carrier, string> = {
-  FEDEX: mdiAirplane,
-  DHL: mdiTruckDeliveryOutline,
-  UPS: mdiPackageVariantClosed,
-  HAND: mdiHandExtendedOutline,
-  OTHER: mdiDotsHorizontalCircleOutline,
-}
-const MONEY = /^\d{1,12}\.\d{2}$/
+const ICON = {
+  FEDEX: markRaw(IFlight),
+  DHL: markRaw(IDirect),
+  UPS: markRaw(IPackage),
+  HAND: markRaw(IHand),
+  OTHER: markRaw(IMore),
+} satisfies Record<Carrier, unknown>
+const COST = /^\d{1,12}(\.\d{1,2})?$/
 const localToday = () => {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+const formRef = ref()
 const editing = computed(() => !!props.shipment)
 const sources = computed<OpenSource[]>(() => openSources(props.request))
 const sourceKey = ref('')
@@ -53,19 +69,20 @@ const form = reactive({
   date: localToday(),
   notifyCustomer: true,
 })
-const tried = ref(false)
 
-function pickSource(key: string) {
-  sourceKey.value = key
-  picked.value = (sources.value.find((s) => s.key === key)?.lines ?? []).map((l) => l.lineId)
-}
 const source = computed(() => sources.value.find((s) => s.key === sourceKey.value) ?? null)
 // A line that comes from CIMH stock ships only once every unit is picked.
 const short = (ln: OpenSource['lines'][number]) => source.value?.source === 'CIMH' && (ln.picked?.length ?? 0) < ln.qty
 
+function pickSource(key: string) {
+  sourceKey.value = key
+  picked.value = (source.value?.lines ?? []).filter((l) => !short(l)).map((l) => l.lineId)
+  formRef.value?.resetValidation?.()
+}
+
 watch(open, (v) => {
   if (!v) return
-  tried.value = false
+  formRef.value?.resetValidation?.()
   const s = props.shipment
   if (s) {
     Object.assign(form, {
@@ -80,7 +97,7 @@ watch(open, (v) => {
     })
     return
   }
-  // Every new parcel starts blank (the last one's tracking or note must never carry over); carrier stays as a guess.
+  // Every new parcel starts blank (the last one's tracking, cost or note must never carry over); carrier stays as a guess.
   Object.assign(form, { carrierName: '', tracking: '', trackingLink: '', note: '', cost: '', date: localToday(), notifyCustomer: true })
   if (form.carrier === 'HAND' || form.carrier === 'OTHER') form.carrier = 'DHL'
   // Start on a source that can ship now (supplier parcels, or CIMH stock once picked).
@@ -89,33 +106,65 @@ watch(open, (v) => {
 })
 
 const hand = computed(() => form.carrier === 'HAND')
-const trackingHint = computed(() => (form.carrier === 'OTHER' ? 'As printed on the waybill' : `Typed from the ${carrierLabel({ carrier: form.carrier })} waybill`))
 const other = computed(() => form.carrier === 'OTHER')
-const problems = computed(() => {
-  const out: string[] = []
-  if (!editing.value) {
-    if (!source.value) out.push('Choose where the parcel comes from')
-    else if (!picked.value.length) out.push('Tick the items in this parcel')
-    else if (source.value.lines.some((l) => picked.value.includes(l.lineId) && short(l))) out.push('Pick every unit of the ticked CIMH items first')
-  }
-  if (other.value && !form.carrierName.trim()) out.push('Name the carrier')
-  if (!hand.value && !form.tracking.trim()) out.push('Enter the tracking number')
-  if (other.value && !/^https:\/\/\S+$/.test(form.trackingLink.trim())) out.push('Paste the carrier’s tracking link (https://…)')
-  if (!form.date) out.push('Pick the ship date')
-  if (form.cost && !MONEY.test(form.cost)) out.push('Write the cost with 2 decimals, e.g. 45.00')
-  return out
-})
+const carrierName = computed(() => (other.value ? form.carrierName.trim() || 'Other carrier' : carrierLabel({ carrier: form.carrier })))
+const trackingHint = computed(() => (other.value ? 'As printed on the waybill' : `Typed from the ${carrierName.value} waybill`))
 
-function submit() {
-  tried.value = true
-  if (problems.value.length || props.busy) return
+// Head band facts.
+const who = computed(() => props.request.organisationName || props.request.customerName)
+const shipTo = computed(() => {
+  const a = props.request.shipTo
+  if (!a) return null
+  return [a.city, countryName(a.country) || a.country].filter(Boolean).join(', ')
+})
+const fixedSource = computed(() => {
+  const s = props.shipment
+  if (!s) return null
+  return s.source === 'SUPPLIER' ? s.supplier || 'Supplier' : 'CIMH stock'
+})
+const parcelLines = computed(() =>
+  editing.value ? props.request.lines.filter((l) => props.shipment!.lineIds.includes(l.lineId)) : (source.value?.lines ?? []),
+)
+const tickedQty = computed(() => parcelLines.value.filter((l) => editing.value || picked.value.includes(l.lineId)).reduce((n, l) => n + l.qty, 0))
+const itemWord = (n: number) => (n === 1 ? 'item' : 'items')
+
+// Step states, said in the head of each panel.
+const parcelDone = computed(() => editing.value || picked.value.length > 0)
+const carrierDone = computed(() => {
+  if (other.value && (!form.carrierName.trim() || !/^https:\/\/\S+$/.test(form.trackingLink.trim()))) return false
+  return hand.value || !!form.tracking.trim()
+})
+const costDone = computed(() => !!form.date && COST.test(form.cost.trim()))
+
+// Rules (checkForm marks them all on a press and focuses the first).
+const required = (what: string) => (v: string) => !!v?.trim() || what
+const linesRule = () => {
+  if (editing.value) return true
+  if (!source.value) return 'Nothing is left to ship on this request'
+  if (picked.value.length) return true
+  return source.value.lines.every(short) ? 'Pick every unit of these items first' : 'Tick the items in this parcel'
+}
+const linkRule = (v: string) => /^https:\/\/\S+$/.test(v?.trim() ?? '') || 'Paste the carrier’s tracking link (https://…)'
+const costRule = (v: string) => {
+  const t = v?.trim() ?? ''
+  if (!t) return 'Enter the shipping cost (0.00 if it cost nothing)'
+  return COST.test(t) || 'Write the cost as a number, e.g. 45.00'
+}
+const dateRule = (v: string) => !!v || 'Pick the ship date'
+const money = (t: string) => {
+  const [a, b = ''] = t.trim().split('.')
+  return `${a}.${(b + '00').slice(0, 2)}`
+}
+
+async function submit() {
+  if (props.busy || !(await checkForm(formRef.value))) return
   const common = {
     carrier: form.carrier,
     carrierName: other.value ? form.carrierName.trim() : null,
     tracking: hand.value ? null : form.tracking.trim() || null,
     trackingLink: other.value ? form.trackingLink.trim() : null,
     note: form.note.trim() || null,
-    cost: form.cost || null,
+    cost: money(form.cost),
     date: form.date,
     notifyCustomer: form.notifyCustomer,
   }
@@ -125,130 +174,333 @@ function submit() {
 </script>
 
 <template>
-  <v-dialog v-model="open" max-width="600" scrollable :persistent="busy">
-    <v-card class="ship" rounded="lg">
-      <v-card-item>
-        <v-card-title class="t-h3">{{ editing ? 'Correct shipment' : 'Record shipment' }}</v-card-title>
-        <v-card-subtitle class="sub">
-          <span class="console-mono"><ShortRef :id="request.id" /></span>
-          <template v-if="request.organisationName || request.customerName"> · {{ request.organisationName || request.customerName }}</template>
-          <template v-if="shipment"> · {{ shipment.source === 'SUPPLIER' ? shipment.supplier : 'CIMH stock' }} · {{ carrierLabel(shipment) }}</template>
-        </v-card-subtitle>
-      </v-card-item>
-      <v-divider />
+  <v-dialog v-model="open" max-width="680" :fullscreen="xs" scrollable :persistent="busy" aria-labelledby="sd-title">
+    <v-card class="sd" :rounded="xs ? 0 : 'lg'">
+      <header class="sd-head">
+        <div class="sd-who">
+          <h2 id="sd-title" class="sd-title">{{ editing ? 'Correct shipment' : 'Record shipment' }}</h2>
+          <p v-if="who || fixedSource" class="sd-sub">
+            {{ who }}<template v-if="who && fixedSource"> · </template><template v-if="fixedSource">{{ fixedSource }} · {{ carrierLabel(shipment!) }}</template>
+          </p>
+          <!-- The id on its own line, so it shows in full unless the screen itself is too narrow (ShortRef fit). -->
+          <p class="sd-ref console-mono"><ShortRef :id="request.id" fit copy /></p>
+        </div>
+        <dl v-if="shipTo" class="sd-to">
+          <dt class="cap">Ships to</dt>
+          <dd>{{ shipTo }}</dd>
+        </dl>
+      </header>
 
-      <v-card-text>
-        <form id="ship-form" class="form" novalidate @submit.prevent="submit">
-          <template v-if="!editing">
-            <fieldset class="group">
-              <legend class="lbl">Sent from</legend>
-              <div class="tiles">
-                <label v-for="s in sources" :key="s.key" class="tile" :class="{ on: sourceKey === s.key }">
-                  <input type="radio" name="ship-source" :value="s.key" :checked="sourceKey === s.key" @change="pickSource(s.key)" />
-                  <span class="tile-name">{{ s.label }}</span>
-                  <span class="tile-sub">{{ s.source === 'SUPPLIER' ? 'Ships direct' : 'Picked here' }} · {{ s.lines.length }} {{ s.lines.length === 1 ? 'item' : 'items' }}</span>
-                </label>
+      <v-card-text class="sd-body">
+        <v-form ref="formRef" class="sd-form" @submit.prevent="submit">
+          <!-- 1 · the parcel: where it comes from and what is in it -->
+          <section class="step" :class="{ done: parcelDone }" aria-labelledby="sd-parcel">
+            <header class="step-head">
+              <h3 id="sd-parcel" class="step-title"><span class="step-n console-mono" aria-hidden="true">1</span>Parcel</h3>
+              <span class="step-state">
+                <v-icon :icon="parcelDone ? IDone : IPending" size="16" />
+                <span v-if="editing">Fixed</span>
+                <span v-else><span class="console-mono">{{ picked.length }}</span> of <span class="console-mono">{{ parcelLines.length }}</span> {{ itemWord(parcelLines.length) }} ticked</span>
+              </span>
+            </header>
+
+            <div class="step-body flush">
+              <!-- Sent from: one row per source still to ship (or the fixed one when correcting). -->
+              <div v-if="editing" class="src fixed">
+                <v-icon :icon="shipment!.source === 'SUPPLIER' ? IDirect : IStock" size="20" class="src-icon" />
+                <span class="src-text">
+                  <span class="src-name">{{ fixedSource }}</span>
+                  <span class="src-sub">{{ shipment!.source === 'SUPPLIER' ? 'Ships direct to the customer' : 'Picked here' }} · source and items stay as recorded</span>
+                </span>
               </div>
-            </fieldset>
+              <fieldset v-else-if="sources.length" class="group">
+                <legend class="cap lbl">Sent from</legend>
+                <div class="srcs">
+                  <label v-for="s in sources" :key="s.key" class="src" :class="{ on: sourceKey === s.key }">
+                    <input type="radio" name="ship-source" :value="s.key" :checked="sourceKey === s.key" @change="pickSource(s.key)" />
+                    <v-icon :icon="s.source === 'SUPPLIER' ? IDirect : IStock" size="20" class="src-icon" />
+                    <span class="src-text">
+                      <span class="src-name">{{ s.label }}</span>
+                      <span class="src-sub">{{ s.source === 'SUPPLIER' ? 'Ships direct to the customer' : 'Picked here' }} · {{ s.lines.length }} {{ itemWord(s.lines.length) }}</span>
+                    </span>
+                    <v-icon :icon="sourceKey === s.key ? IDone : IPending" size="18" class="src-mark" />
+                  </label>
+                </div>
+              </fieldset>
 
-            <fieldset v-if="source" class="group">
-              <legend class="lbl">In this parcel</legend>
-              <ul class="lines">
-                <li v-for="ln in source.lines" :key="ln.lineId">
-                  <v-checkbox v-model="picked" :value="ln.lineId" density="compact" hide-details :disabled="short(ln)">
-                    <template #label>
-                      <span class="ln-name">{{ ln.product.name }}</span>
-                      <span class="ln-qty">qty {{ ln.qty }}</span>
-                      <span v-if="short(ln)" class="ln-short">{{ ln.picked?.length ?? 0 }} of {{ ln.qty }} picked</span>
-                    </template>
-                  </v-checkbox>
-                </li>
-              </ul>
-            </fieldset>
-          </template>
+              <v-input :model-value="picked" name="ship-lines" :rules="[linesRule]" hide-details="auto" class="lines-input">
+                <div id="ship-lines" class="lines-wrap">
+                  <p class="cap lbl">In this parcel</p>
+                  <ul class="lines">
+                    <li v-for="ln in parcelLines" :key="ln.lineId" :class="{ short: !editing && short(ln) }">
+                      <span v-if="editing" class="ln-fixed">
+                        <span class="qty console-mono">{{ ln.qty }}×</span>
+                        <span class="ln-name">{{ ln.product.name }}</span>
+                      </span>
+                      <v-checkbox v-else v-model="picked" :value="ln.lineId" color="primary" density="compact" hide-details :disabled="short(ln)">
+                        <template #label>
+                          <span class="qty console-mono">{{ ln.qty }}×</span>
+                          <span class="ln-name">{{ ln.product.name }}</span>
+                          <span v-if="short(ln)" class="ln-short">
+                            <span class="console-mono">{{ ln.picked?.length ?? 0 }}</span> of <span class="console-mono">{{ ln.qty }}</span> picked · pick the rest first
+                          </span>
+                        </template>
+                      </v-checkbox>
+                    </li>
+                    <li v-if="!parcelLines.length" class="none">Every item on this request is already in a parcel.</li>
+                  </ul>
+                </div>
+              </v-input>
+            </div>
+          </section>
 
-          <fieldset class="group">
-            <legend class="lbl">Carrier</legend>
-            <v-radio-group v-model="form.carrier" hide-details class="carriers">
-              <div class="tiles carriers-grid">
-                <label v-for="c in CARRIERS" :key="c.value" class="tile row" :class="{ on: form.carrier === c.value }">
-                  <v-icon :icon="ICON[c.value]" size="20" />
-                  <v-radio :label="c.title" :value="c.value" density="compact" hide-details />
-                </label>
+          <!-- 2 · carrier and tracking -->
+          <section class="step" :class="{ done: carrierDone }" aria-labelledby="sd-carrier">
+            <header class="step-head">
+              <h3 id="sd-carrier" class="step-title"><span class="step-n console-mono" aria-hidden="true">2</span>Carrier</h3>
+              <span class="step-state">
+                <v-icon :icon="carrierDone ? IDone : IPending" size="16" />
+                <span>{{ carrierName }}<template v-if="!hand"> · {{ form.tracking.trim() ? 'tracking entered' : 'no tracking yet' }}</template></span>
+              </span>
+            </header>
+            <div class="step-body">
+              <fieldset class="group">
+                <legend class="sr-only">Carrier</legend>
+                <div class="carriers">
+                  <label v-for="c in CARRIERS" :key="c.value" class="carrier" :class="{ on: form.carrier === c.value }">
+                    <input v-model="form.carrier" type="radio" name="ship-carrier" :value="c.value" :aria-label="c.title" />
+                    <v-icon :icon="ICON[c.value]" size="22" />
+                    <span class="carrier-name">{{ c.title }}</span>
+                  </label>
+                </div>
+              </fieldset>
+
+              <div v-if="other" class="two">
+                <v-text-field v-model="form.carrierName" label="Carrier name" name="ship-carrier-name" autocomplete="off" :rules="[required('Name the carrier')]" hide-details="auto" />
+                <v-text-field v-model="form.tracking" label="Tracking number" name="ship-tracking" class="mono-input" autocomplete="off" :hint="trackingHint" persistent-hint :rules="[required('Enter the tracking number')]" hide-details="auto" />
               </div>
-            </v-radio-group>
-          </fieldset>
+              <v-text-field
+                v-else-if="!hand"
+                v-model="form.tracking"
+                label="Tracking number"
+                name="ship-tracking"
+                class="mono-input"
+                :hint="trackingHint"
+                persistent-hint
+                autocomplete="off"
+                :rules="[required('Enter the tracking number')]"
+                hide-details="auto"
+              />
+              <v-text-field
+                v-if="other"
+                v-model="form.trackingLink"
+                label="Tracking link"
+                name="ship-link"
+                hint="The customer's Track button opens this page"
+                persistent-hint
+                inputmode="url"
+                autocomplete="off"
+                :rules="[linkRule]"
+                hide-details="auto"
+              />
+              <v-text-field
+                v-if="hand"
+                v-model="form.note"
+                label="Delivered by / collected by"
+                name="ship-note"
+                hint="No tracking number for a hand delivery: say who took it"
+                persistent-hint
+                hide-details="auto"
+              />
+            </div>
+          </section>
 
-          <v-text-field v-if="other" v-model="form.carrierName" label="Carrier name" autocomplete="off" />
-          <v-text-field
-            v-if="!hand"
-            v-model="form.tracking"
-            label="Tracking number"
-            class="mono-input"
-            :hint="trackingHint"
-            persistent-hint
-            autocomplete="off"
-          />
-          <v-text-field
-            v-if="other"
-            v-model="form.trackingLink"
-            label="Tracking link"
-            hint="The customer's Track button opens this page"
-            persistent-hint
-            inputmode="url"
-            autocomplete="off"
-          />
-          <v-text-field v-model="form.note" :label="hand ? 'Delivered by / collected by' : 'Note (optional)'" />
-
-          <div class="two">
-            <DateField v-model="form.date" label="Ship date" />
-            <v-text-field v-model="form.cost" label="Shipping cost (optional)" placeholder="0.00" inputmode="decimal" class="mono-input" hint="For CIMH's records; the customer never sees it" persistent-hint />
-          </div>
-
-          <v-switch
-            v-model="form.notifyCustomer"
-            color="primary"
-            inset
-            hide-details
-            :label="editing ? 'Email the customer the corrected details' : 'Email the customer the shipping details'"
-          />
-
-          <ul v-if="tried && problems.length" class="problems" role="alert">
-            <li v-for="p in problems" :key="p">{{ p }}</li>
-          </ul>
-        </form>
+          <!-- 3 · date, cost and a note -->
+          <section class="step" :class="{ done: costDone }" aria-labelledby="sd-cost">
+            <header class="step-head">
+              <h3 id="sd-cost" class="step-title"><span class="step-n console-mono" aria-hidden="true">3</span>Date and cost</h3>
+              <span class="step-state">
+                <v-icon :icon="costDone ? IDone : IPending" size="16" />
+                <span v-if="COST.test(form.cost.trim())">BBD <span class="console-mono">{{ money(form.cost) }}</span></span>
+                <span v-else>Cost not entered</span>
+              </span>
+            </header>
+            <div class="step-body">
+              <div class="two">
+                <DateField v-model="form.date" label="Ship date" name="ship-date" :rules="[dateRule]" hide-details="auto" />
+                <v-text-field
+                  v-model="form.cost"
+                  label="Shipping cost"
+                  name="ship-cost"
+                  prefix="BBD"
+                  placeholder="0.00"
+                  inputmode="decimal"
+                  class="mono-input"
+                  autocomplete="off"
+                  hint="For CIMH's records; the customer never sees it"
+                  persistent-hint
+                  :rules="[costRule]"
+                  hide-details="auto"
+                  @blur="COST.test(form.cost.trim()) && (form.cost = money(form.cost))"
+                />
+              </div>
+              <v-text-field v-if="!hand" v-model="form.note" label="Note (optional)" name="ship-note" hide-details="auto" />
+            </div>
+          </section>
+        </v-form>
       </v-card-text>
 
-      <v-divider />
-      <v-card-actions class="acts">
-        <v-spacer />
-        <v-btn class="m3" variant="text" :disabled="busy" @click="open = false">Back</v-btn>
-        <v-btn class="m3" type="submit" form="ship-form" color="primary" variant="flat" :loading="busy">
-          {{ editing ? 'Save changes' : 'Record shipment' }}
-        </v-btn>
-      </v-card-actions>
+      <footer class="sd-foot">
+        <v-switch
+          v-model="form.notifyCustomer"
+          color="primary"
+          inset
+          hide-details
+          density="compact"
+          class="sd-mail"
+          :label="editing ? 'Email the customer the corrected details' : 'Email the customer the shipping details'"
+        />
+        <div class="foot-acts">
+          <v-btn class="m3" variant="text" :disabled="busy" @click="open = false">Back</v-btn>
+          <v-btn class="m3" color="primary" variant="flat" :prepend-icon="BTN.ship" :loading="busy" @click="submit">
+            {{ editing ? 'Save changes' : 'Record shipment' }}
+          </v-btn>
+        </div>
+      </footer>
     </v-card>
   </v-dialog>
 </template>
 
 <style scoped>
-.ship {
+/* Golden-ratio dialog (owner 2026-11-24, as Verify and purchase): 11 px captions · 14 px body · 17.8 px section
+   heads · 22.65 px title; spacing 8 · 13 · 21 · 34 (21 = the gutter, 34 between steps, with a hairline). Plain
+   surface head, no washed bands. */
+.sd {
+  --gutter: 21px;
+  --f1: 8px;
+  --f2: 13px;
+  --f3: 21px;
+  --f4: 34px;
   background: rgb(var(--v-theme-surface));
-}
-.ship :deep(.v-divider) {
-  opacity: 1;
-  border-color: rgb(var(--v-theme-seam));
-}
-.sub {
-  white-space: normal;
-  opacity: 1; /* Vuetify fades subtitles below 4.5:1 */
-  color: rgb(var(--v-theme-on-surface-variant));
-}
-.form {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding-top: var(--sp-2);
+  font-size: 14px;
+}
+.cap {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.618;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(var(--v-theme-secondary));
+}
+/* Head: who and which request φ : where it goes 1, a hairline under it. */
+.sd-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.618fr) minmax(0, 1fr);
+  align-items: end;
+  gap: var(--f3);
+  padding: var(--f3) var(--gutter);
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.sd-who {
+  min-width: 0;
+}
+.sd-title {
+  margin: 0 0 var(--f1);
+  font-size: 22.65px;
+  line-height: 1.236;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.sd-sub,
+.sd-ref {
+  margin: 0;
+  color: rgb(var(--v-theme-secondary));
+  overflow-wrap: anywhere;
+}
+.sd-ref {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  font-size: 13px;
+}
+.sd-to {
+  margin: 0;
+  text-align: right;
+  min-width: 0;
+}
+.sd-to dd {
+  margin: 0;
+  font-size: 17.8px;
+  line-height: 1.382;
+  font-weight: 600;
+  text-wrap: balance;
+}
+.sd-body {
+  padding: var(--f3) var(--gutter) var(--f4) !important;
+}
+.sd-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--f3);
+}
+/* Steps: a section head (17.8 px) with where the step stands on the right; 13 px to its content; 34 px and a
+   hairline before the next step. */
+.step {
+  min-width: 0;
+}
+.step + .step {
+  padding-top: var(--f4);
+  border-top: 1px solid rgb(var(--v-theme-seam));
+}
+.step-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 2px var(--f2);
+}
+.step-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--f1);
+  margin: 0;
+  font-size: 17.8px;
+  line-height: 1.382;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.step-n {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-secondary));
+}
+.step-state {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 6px;
+  color: rgb(var(--v-theme-secondary));
+  min-width: 0;
+}
+.step-state .v-icon {
+  color: rgb(var(--v-theme-secondary));
+  flex: none;
+}
+.step.done .step-state {
+  color: rgb(var(--v-theme-on-surface));
+}
+.step.done .step-state .v-icon {
+  color: rgb(var(--v-theme-success));
+}
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--f2);
+  padding-top: var(--f2);
 }
 .group {
   border: 0;
@@ -257,118 +509,277 @@ function submit() {
   min-width: 0;
 }
 .lbl {
-  font-size: 13px;
-  font-weight: 500;
-  color: rgb(var(--v-theme-on-surface));
-  margin-bottom: var(--sp-2);
   padding: 0;
+  margin: 0 0 var(--f1);
 }
-.carriers :deep(.v-selection-control-group) {
-  display: block;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: var(--sp-2);
-}
-.carriers-grid {
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-}
-.tile {
-  position: relative;
+
+/* Sent from: ruled choice rows (a radio list), the chosen one in the primary tint. */
+.srcs {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--sp-2) var(--sp-3);
+  gap: var(--f1);
+  padding: 0;
+}
+.src {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--f2);
+  min-height: 52px;
+  padding: var(--f1) var(--f2);
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 8px;
   cursor: pointer;
-  color: rgb(var(--v-theme-secondary));
   transition:
-    border-color 150ms,
-    background-color 150ms,
-    color 150ms;
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out);
 }
-.tile.row {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-3);
+.src.fixed {
+  margin: 0;
+  cursor: default;
+  background: rgb(var(--v-theme-background));
 }
-.tile input[type='radio'] {
+.src input {
   position: absolute;
-  opacity: 0;
+  z-index: 1; /* above the positioned v-icon, so a press anywhere on the tile picks it */
   inset: 0;
+  opacity: 0;
   margin: 0;
   cursor: pointer;
 }
-.tile:has(input:focus-visible) {
+.src:hover:not(.fixed) {
+  border-color: rgb(var(--v-theme-primary));
+}
+.src:has(input:focus-visible) {
   outline: 2px solid rgb(var(--v-theme-primary));
   outline-offset: 2px;
 }
-.tile:hover {
-  border-color: rgb(var(--v-theme-primary));
-}
-.tile.on {
+.src.on {
   border-color: rgb(var(--v-theme-primary));
   background: rgb(var(--v-theme-primary-subtle));
+}
+.src-icon {
+  color: rgb(var(--v-theme-secondary));
+  flex: none;
+}
+.src.on .src-icon,
+.src.on .src-mark {
   color: rgb(var(--v-theme-primary));
 }
-.tile-name {
+.src-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.src-name {
   font-weight: 600;
-  color: rgb(var(--v-theme-on-surface));
+  overflow-wrap: anywhere;
 }
-.tile-sub {
-  font-size: 13px;
-  color: rgb(var(--v-theme-on-surface-variant));
+.src-sub {
+  color: rgb(var(--v-theme-secondary));
 }
-.tile :deep(.v-label) {
-  color: rgb(var(--v-theme-on-surface));
-  opacity: 1;
-  font-weight: 500;
+.src-mark {
+  flex: none;
+  color: rgb(var(--v-theme-secondary));
+}
+
+/* The parcel's lines: a ruled list on the content edges; the tick boxes line up with the text above. */
+.lines-input {
+  min-width: 0;
+}
+.lines-input :deep(.v-input__control) {
+  display: block;
+}
+.lines-input :deep(.v-input__details) {
+  padding: 4px 0 0;
+}
+.lines-wrap {
+  width: 100%;
+  min-width: 0;
 }
 .lines {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-top: 1px solid rgb(var(--v-theme-seam));
 }
 .lines li {
-  border-bottom: 1px solid rgb(var(--v-theme-seam));
+  border-top: 1px solid rgb(var(--v-theme-seam));
+  padding: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.lines li.short {
+  background: rgb(var(--v-theme-background));
+}
+.lines li.none,
+.ln-fixed {
+  padding: var(--f1) 0;
+  font-size: 14px;
+}
+.lines li.none {
+  color: rgb(var(--v-theme-secondary));
+}
+.ln-fixed {
+  display: flex;
+  gap: var(--f1);
 }
 .lines :deep(.v-label) {
   display: flex;
   flex-wrap: wrap;
-  gap: 0 var(--sp-2);
+  align-items: baseline;
+  gap: 0 var(--f1);
   opacity: 1;
   color: rgb(var(--v-theme-on-surface));
+  padding: var(--f1) 0 var(--f1) 9px; /* 13 px from the box to the words */
 }
-.ln-qty {
-  color: rgb(var(--v-theme-on-surface-variant));
+/* The box's touch area is wider than the box: pull it out so the box itself sits on the edge. */
+.lines :deep(.v-selection-control__wrapper) {
+  margin-inline-start: -8px;
+}
+.lines :deep(.v-selection-control--disabled .v-label) {
+  opacity: 1;
+}
+.qty {
+  min-width: 3ch;
+  text-align: right;
+  color: rgb(var(--v-theme-secondary));
   font-variant-numeric: tabular-nums;
 }
-.ln-short {
-  color: rgb(var(--v-theme-warning-ink, var(--v-theme-on-surface-variant)));
-  font-size: 13px;
+.ln-name {
+  font-weight: 500;
 }
+.ln-short {
+  flex-basis: 100%;
+  padding-left: calc(3ch + var(--f1) + 9px);
+  color: rgb(var(--v-theme-warning-ink, var(--v-theme-on-surface-variant)));
+}
+
+/* Carrier: one row of five, icon over name; on phones the tiles wrap and stretch (3 + 2, no empty cell). */
+.carriers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--f1);
+}
+.carrier {
+  position: relative;
+  flex: 1 1 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 68px;
+  padding: var(--f1) 4px;
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  color: rgb(var(--v-theme-secondary));
+  transition:
+    border-color 150ms var(--ease-out),
+    background-color 150ms var(--ease-out),
+    color 150ms var(--ease-out);
+}
+.carrier input {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.carrier:hover {
+  border-color: rgb(var(--v-theme-primary));
+}
+.carrier:has(input:focus-visible) {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+.carrier.on {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgb(var(--v-theme-primary-subtle));
+  color: rgb(var(--v-theme-primary));
+}
+.carrier-name {
+  line-height: 1.382;
+  font-weight: 600;
+  color: rgb(var(--v-theme-on-surface));
+  text-wrap: balance;
+}
+
 .two {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-3);
+  gap: var(--f2);
+  align-items: start;
 }
-.problems {
-  margin: 0;
-  padding-left: var(--sp-4);
-  color: rgb(var(--v-theme-error));
-  font-size: 14px;
+.mono-input :deep(input) {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
 }
-.acts {
-  padding: var(--sp-3) var(--sp-4);
-  gap: var(--sp-2);
+
+.sd-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--f2);
+  padding: var(--f2) var(--gutter);
+  border-top: 1px solid rgb(var(--v-theme-seam));
 }
-@media (max-width: 599px) {
+.sd-mail {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.sd-mail :deep(.v-label) {
+  opacity: 1;
+  padding-inline-start: var(--f2);
+  color: rgb(var(--v-theme-on-surface));
+}
+.foot-acts {
+  display: flex;
+  gap: var(--f1);
+  flex: none;
+}
+
+@media (max-width: 599.98px) {
+  .sd {
+    --gutter: var(--f2);
+  }
+  .sd-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--f1);
+  }
+  .sd-to {
+    text-align: left;
+    max-width: none;
+    display: flex;
+    align-items: baseline;
+    gap: var(--f1);
+  }
   .two {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .sd-foot {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .foot-acts {
+    justify-content: flex-end;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .src,
+  .carrier {
+    transition: none;
   }
 }
 </style>

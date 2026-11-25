@@ -249,7 +249,7 @@ export async function siaGo(page: Page, name: string, _group?: 'Reports' | 'Admi
  * saves a screenshot, for looking at a change by eye.
  */
 export async function auditDialog(page: Page, name: string): Promise<void> {
-  await expect(page.getByRole('dialog')).toBeVisible()
+  await expect(page.getByRole('dialog').last()).toBeVisible() // the topmost, when one dialog opens another
   await settle(page)
   const result = await new AxeBuilder({ page })
     .include('.v-dialog.v-overlay--active .v-overlay__content') // the dialog only: an open toast is an overlay too

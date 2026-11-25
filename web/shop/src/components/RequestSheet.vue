@@ -1,5 +1,5 @@
 <template>
-  <div class="sheet" :class="{ switching }" :style="{ '--dir': dir }" :inert="switching || undefined" :aria-busy="switching || undefined">
+  <div class="sheet" :class="{ switching, settled, 'own-page': level === 1 }" :style="{ '--dir': dir }" :inert="switching || undefined" :aria-busy="switching || undefined">
     <div v-if="missing" class="missing">
       <p class="t-body">This request doesn't exist or isn't shared with you.</p>
     </div>
@@ -8,35 +8,50 @@
       <header class="head">
         <p class="ref">
           {{ request.type === 'PROBONO' ? 'Pro Bono request' : 'Request' }}
-          <ShortRef :id="request.id" />
+          <ShortRef :id="request.id" fit copy />
           · sent {{ formatDate(request.submittedAt) }}
         </p>
         <div class="title-row">
           <component :is="`h${level}`" ref="heading" tabindex="-1" class="title">{{ title }}</component>
-          <StatusChip :status="request.status" />
+          <span class="title-side">
+            <StatusChip :status="request.status" />
+            <!-- Beside the list: the whole request on its own page (shareable, room for the papers). -->
+            <v-btn v-if="level === 2" :to="`/requests/${request.id}`" variant="outlined" size="small" :append-icon="mdiArrowRight">Open full page</v-btn>
+          </span>
         </div>
       </header>
 
-      <!-- The request path: one rule, one node per stage, filled to where it stands. -->
-      <ol
+      <!-- The request path: a Vuetify v-timeline across the sheet, one node per stage, the line filled to where it
+           stands. Its items render divs, so the list semantics come from roles. -->
+      <v-timeline
         v-if="!closed"
+        role="list"
+        aria-label="Request progress"
         class="path"
         :class="{ 'your-turn': well?.tone === 'turn' || well?.tone === 'warn' || well?.tone === 'due' }"
-        :style="{ '--n': stages.length, '--fill': Math.max(0, stageAt) / (stages.length - 1) }"
-        aria-label="Request progress"
+        :style="{ '--at': Math.max(0, stageAt) }"
+        direction="horizontal"
+        align="center"
+        side="end"
+        density="compact"
+        line-thickness="3"
+        truncate-line="both"
       >
-        <li
+        <v-timeline-item
           v-for="(s, i) in stages"
           :key="s.label"
+          role="listitem"
           class="stage"
-          :style="{ '--i': i, '--at': Math.max(0, stageAt) }"
+          :style="{ '--i': i }"
           :class="{ done: i < stageAt || (finished && i === stageAt), current: i === stageAt && !finished }"
           :aria-current="i === stageAt ? 'step' : undefined"
+          :dot-color="i < stageAt || finished ? 'primary' : undefined"
+          :icon="i < stageAt || finished ? mdiCheck : undefined"
+          fill-dot
         >
-          <span class="dot"><v-icon v-if="i < stageAt || finished" :icon="mdiCheck" size="12" /></span>
           <span class="stage-label">{{ s.label }}</span>
-        </li>
-      </ol>
+        </v-timeline-item>
+      </v-timeline>
 
       <section v-if="well" class="well" :class="well.tone" aria-label="Where it stands">
         <div class="well-text">
@@ -209,12 +224,21 @@
           <span class="history-n">{{ changes.length }} {{ changes.length === 1 ? 'change' : 'changes' }}</span>
           <v-icon :icon="mdiChevronDown" size="20" class="history-chev" aria-hidden="true" />
         </summary>
-        <ol class="changes">
-          <li v-for="(h, i) in changes" :key="i">
-            <span class="ch-when tnum">{{ formatDateTime(h.at) }}</span>
+        <!-- Newest first, as a Vuetify v-timeline: the latest change on a filled node, earlier ones hollow. -->
+        <v-timeline role="list" aria-label="History" class="changes" side="end" density="compact" align="start" truncate-line="both" line-thickness="2">
+          <v-timeline-item
+            v-for="(h, i) in changes"
+            :key="i"
+            role="listitem"
+            class="change"
+            :class="{ latest: i === 0 }"
+            :dot-color="i === 0 ? 'primary' : undefined"
+            fill-dot
+          >
             <span class="ch-what">{{ changeText(h) }}<template v-if="h.reason"><span class="ch-why">: {{ h.reason }}</span></template></span>
-          </li>
-        </ol>
+            <span class="ch-when tnum">{{ formatDateTime(h.at) }}</span>
+          </v-timeline-item>
+        </v-timeline>
       </details>
 
       <!-- While a quote waits, Cancel request sits beside View and sign in the well; otherwise it is here. -->
@@ -235,6 +259,11 @@
     </div>
   </div>
 </template>
+
+<script lang="ts">
+/** The request the last sheet showed (any level), so the list ↔ own page change can tell it is the same one. */
+let lastShown = ''
+</script>
 
 <script setup lang="ts">
 /**
@@ -269,6 +298,7 @@ import {
   ReasonDialog,
   requestTitle,
   shipmentSender,
+  shopDir,
   ShortRef,
   StatusChip,
   useNotify,
@@ -328,6 +358,18 @@ watch(
   { immediate: true },
 )
 const switching = computed(() => !!request.value && request.value.id !== props.id)
+// Orders list ↔ this request's own page (shopDir 'quiet') showing the request that was just on screen: the page
+// cross-fades, so the path fill and the well don't replay. Another request opened afterwards plays as usual.
+const settledId = ref(shopDir.value === 'quiet' && props.id === lastShown ? props.id : '')
+watch(
+  () => props.id,
+  (id) => {
+    lastShown = id
+    if (id !== settledId.value) settledId.value = ''
+  },
+  { immediate: true },
+)
+const settled = computed(() => !!settledId.value && request.value?.id === settledId.value)
 
 const can = (a: string) => request.value?.allowedActions?.includes(a as never) ?? false
 const mine = computed(() => request.value?.customer === session.account?.id)
@@ -546,7 +588,17 @@ const papers = computed<Paper[]>(() => {
   const signed = signedState ? byId(ag?.signedFileId) : undefined
   if (signed) out.push({ key: signed.id, id: signed.id, mime: signed.mime, label: 'Signed agreement', kind: `Yours${signed.uploadedAt ? `, sent ${formatDate(signed.uploadedAt)}` : ''}${typeNote(signed.mime)}` })
   const invoices = files.filter((f) => INVOICES.includes(f.kind))
-  for (const f of invoices) out.push({ key: f.id, id: f.id, mime: f.mime, label: FILE_KIND_LABELS[f.kind], kind: `From CIMH${typeNote(f.mime)}` })
+  // One current invoice and commercial invoice: named by number; a corrected one says so (earlier copies never show).
+  const current = (f: (typeof files)[number]) => {
+    const rec = f.kind === 'invoice' || f.kind === 'commercial_invoice' ? r.invoices?.[f.kind] : undefined
+    return rec?.fileId === f.id ? rec : undefined
+  }
+  for (const f of invoices) {
+    const rec = current(f)
+    const label = rec?.number ? `${FILE_KIND_LABELS[f.kind]} ${rec.number}` : FILE_KIND_LABELS[f.kind]
+    const kind = rec && rec.rev > 1 ? `From CIMH, corrected (revision ${rec.rev})` : 'From CIMH'
+    out.push({ key: f.id, id: f.id, mime: f.mime, label, kind: `${kind}${typeNote(f.mime)}` })
+  }
   for (const f of files.filter((f) => f.kind === 'payment_proof'))
     out.push({ key: f.id, id: f.id, mime: f.mime, label: 'Proof of payment', kind: `Yours${f.uploadedAt ? `, sent ${formatDate(f.uploadedAt)}` : ''}${typeNote(f.mime)}` })
   if (signedState && !invoices.some((f) => f.kind === 'invoice') && r.status !== 'DELIVERED')
@@ -635,24 +687,51 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
     transform: translateY(calc(var(--dir, 1) * 10px));
   }
 }
-.path::after {
-  animation: path-fill var(--fill-ms) var(--ease) 120ms backwards;
+/* On its own page the page transition (App.vue page-quiet) is the arrival: no second rise. The same request
+   just seen beside the list (or on its page) arrives settled: no fill, no well entrance. */
+.own-page .content,
+.settled .content,
+.settled .stage :deep(.v-timeline-divider__before),
+.settled .stage :deep(.v-timeline-divider__after),
+.settled .stage :deep(.v-timeline-divider__dot),
+.settled .stage.current .stage-label,
+.settled .well {
+  animation: none !important;
+}
+.settled .path.your-turn .stage.current :deep(.v-timeline-divider__dot)::after {
+  animation-delay: 400ms;
+}
+.settled .well-cta {
+  animation-delay: 400ms;
+}
+/* The fill runs node to node along the timeline's line segments: the half after node i-1, then the half
+   before node i, each a share of --fill-ms, so it reaches node i when that node lights. */
+.path {
+  --step: calc(var(--fill-ms) * 0.8 / max(var(--at), 1));
+}
+.stage.done :deep(.v-timeline-divider__after) {
+  animation: path-fill calc(var(--step) / 2) linear backwards;
+  animation-delay: calc(120ms + var(--step) * var(--i));
+}
+.stage.done :deep(.v-timeline-divider__before),
+.stage.current :deep(.v-timeline-divider__before) {
+  animation: path-fill calc(var(--step) / 2) linear backwards;
+  animation-delay: calc(120ms + var(--step) * (var(--i) - 0.5));
 }
 @keyframes path-fill {
   from {
-    transform: scaleX(0);
+    background-size: 0% 100%;
   }
 }
 /* A dot lights when the fill reaches it: its delay is its share of the fill. */
-.stage.done .dot,
-.stage.current .dot {
+.stage.done :deep(.v-timeline-divider__dot),
+.stage.current :deep(.v-timeline-divider__dot) {
   animation: dot-light 260ms var(--ease) backwards;
-  animation-delay: calc(120ms + var(--fill-ms) * var(--i) / max(var(--at), 1) * 0.8);
+  animation-delay: calc(120ms + var(--step) * var(--i));
 }
 @keyframes dot-light {
   from {
-    background: rgb(var(--v-theme-surface));
-    border-color: rgba(var(--v-border-color), 0.45);
+    opacity: 0.5;
     transform: scale(0.7);
   }
 }
@@ -665,10 +744,7 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   }
 }
 /* The customer's turn: the current stage breathes (ring swells and fades), like the cart's active step. */
-.path.your-turn .stage.current .dot {
-  position: relative;
-}
-.path.your-turn .stage.current .dot::after {
+.path.your-turn .stage.current :deep(.v-timeline-divider__dot)::after {
   content: '';
   position: absolute;
   inset: -7px;
@@ -757,60 +833,65 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   flex: none;
   margin-top: 4px;
 }
-
-/* ---- the request path: same grammar as the cart's, small and on the page ground */
-.path {
-  --dot: 16px;
-  list-style: none;
-  margin: var(--sp-6) 0 var(--sp-5, 20px);
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
-  position: relative;
-}
-.path::before,
-.path::after {
-  content: '';
-  position: absolute;
-  top: calc(var(--dot) / 2 - 1.5px);
-  left: calc(50% / var(--n));
-  width: calc(100% - 100% / var(--n));
-  height: 3px;
-  border-radius: 2px;
-  background: rgba(var(--v-border-color), 0.2);
-}
-.path::after {
-  background: rgb(var(--v-theme-primary));
-  transform-origin: left center;
-  transform: scaleX(var(--fill));
-  transition: transform 560ms cubic-bezier(0.16, 1, 0.3, 1);
-}
-.stage {
-  position: relative;
-  z-index: 1;
+.title-side {
+  flex: none;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: var(--sp-2);
+}
+
+/* ---- the request path (Vuetify v-timeline): same grammar as the cart's, small and on the page ground.
+   16 px nodes, a 3 px line in equal columns; labels close under the nodes. */
+.path {
+  margin: var(--sp-6) 0 var(--sp-5, 20px);
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: 0 !important;
+}
+.path :deep(.v-timeline-item__body) {
+  padding: var(--sp-2) 0 0 !important;
   text-align: center;
 }
-.dot {
-  display: grid;
-  place-items: center;
-  width: var(--dot);
-  height: var(--dot);
-  border-radius: 50%;
+.path :deep(.v-timeline-divider__dot) {
+  width: 16px;
+  height: 16px;
+  position: relative;
   background: rgb(var(--v-theme-surface));
-  border: 2px solid rgba(var(--v-border-color), 0.45);
+  box-shadow: inset 0 0 0 2px rgba(var(--v-border-color), 0.45);
+}
+.path :deep(.v-timeline-divider__inner-dot) {
+  background: transparent;
+}
+.path :deep(.v-timeline-divider__inner-dot .v-icon) {
+  font-size: 12px;
+  width: 12px;
+  height: 12px;
+}
+.stage.done :deep(.v-timeline-divider__dot) {
+  box-shadow: none;
+}
+.stage.done :deep(.v-timeline-divider__inner-dot) {
+  background: rgb(var(--v-theme-primary));
   color: rgb(var(--v-theme-on-primary));
 }
-.stage.done .dot {
-  background: rgb(var(--v-theme-primary));
-  border-color: rgb(var(--v-theme-primary));
+.stage.current :deep(.v-timeline-divider__dot) {
+  box-shadow:
+    inset 0 0 0 4px rgb(var(--v-theme-primary)),
+    0 0 0 4px rgba(var(--v-theme-primary), 0.16);
 }
-.stage.current .dot {
-  border: 4px solid rgb(var(--v-theme-primary));
-  box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.16);
+/* Solid line colours: Vuetify's segments overlap between items, so a translucent line showed darker dashes. */
+.path :deep(.v-timeline-divider__before),
+.path :deep(.v-timeline-divider__after) {
+  background-color: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 20%, rgb(var(--v-theme-background)));
+  border-radius: 2px;
+}
+/* The line is primary into and out of every done stage and into the current one: drawn as segments. */
+.stage.done :deep(.v-timeline-divider__before),
+.stage.done :deep(.v-timeline-divider__after),
+.stage.current :deep(.v-timeline-divider__before) {
+  background-image: linear-gradient(rgb(var(--v-theme-primary)), rgb(var(--v-theme-primary)));
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
 }
 .stage-label {
   font-size: 13px;
@@ -1066,20 +1147,39 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   margin-bottom: var(--sp-1);
 }
 .changes {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  margin: var(--sp-2) 0 var(--sp-1);
+  row-gap: var(--sp-3) !important;
 }
-.changes li {
-  display: grid;
-  grid-template-columns: 11.5rem minmax(0, 1fr);
-  gap: var(--sp-4);
-  padding: var(--sp-2) 0;
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+.change :deep(.v-timeline-item__body) {
+  display: flex;
+  flex-direction: column;
+  padding-inline-start: var(--sp-3) !important;
   font-size: 14px;
   line-height: 20px;
 }
+/* 12 px nodes: the latest change filled primary, earlier ones a hollow ring (3:1 on the ground). */
+.change :deep(.v-timeline-divider__dot) {
+  width: 12px;
+  height: 12px;
+  margin-top: 4px;
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgba(var(--v-theme-on-surface), 0.45);
+}
+.change :deep(.v-timeline-divider__inner-dot) {
+  background: transparent;
+}
+.change.latest :deep(.v-timeline-divider__dot) {
+  box-shadow: none;
+}
+.change.latest :deep(.v-timeline-divider__inner-dot) {
+  background: rgb(var(--v-theme-primary));
+}
+.change :deep(.v-timeline-divider__before),
+.change :deep(.v-timeline-divider__after) {
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 20%, rgb(var(--v-theme-background)));
+}
 .ch-when {
+  font-size: 13px;
   color: rgb(var(--v-theme-on-surface-variant));
 }
 .ch-what {
@@ -1245,25 +1345,27 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
     clip-path: inset(50%);
     white-space: nowrap;
   }
-  .stage.current {
-    z-index: 2;
-  }
+  /* The one label shown runs past its column; at either end it hangs inward from the node, not off the sheet. */
   .stage.current .stage-label {
     white-space: nowrap;
   }
-  .stage:first-child.current {
-    align-items: flex-start;
+  .stage:first-child.current :deep(.v-timeline-item__body) {
+    justify-self: start;
+    text-align: start;
   }
-  .stage:last-child.current {
-    align-items: flex-end;
+  .stage:last-child.current :deep(.v-timeline-item__body) {
+    justify-self: end;
+    text-align: end;
   }
   .items li {
     grid-template-columns: 48px minmax(0, 1fr) auto;
     gap: var(--sp-3);
   }
-  .changes li {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
+  /* The source line ("From …, shipped directly") wraps under the quantity instead of taking the name's room
+     (an auto column sized to the whole sentence left the name one letter wide at 360 px). */
+  .item-end {
+    max-width: 9rem;
+    text-align: end;
   }
   .tiles {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1281,16 +1383,13 @@ async function run(kind: 'decline' | 'cancel', reason: string) {
   .well {
     animation-name: fade-in;
   }
-  .path::after,
-  .stage.done .dot,
-  .stage.current .dot,
+  .stage :deep(.v-timeline-divider__before),
+  .stage :deep(.v-timeline-divider__after),
+  .stage :deep(.v-timeline-divider__dot),
   .stage.current .stage-label,
-  .path.your-turn .stage.current .dot::after,
+  .path.your-turn .stage.current :deep(.v-timeline-divider__dot)::after,
   .well-cta {
     animation: none;
-  }
-  .path::after {
-    transition: none;
   }
 }
 @keyframes fade-in {

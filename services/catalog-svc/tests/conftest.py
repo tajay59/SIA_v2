@@ -33,6 +33,8 @@ def verifier() -> TokenVerifier:
     return TokenVerifier(JwksCache(jwks), issuer="i", audience="a")
 
 
+# Tokens are minted when this module loads and reused all run: an hour, so a slow full run (coverage, ~6 min)
+# never sends expired ones (they were 5 min; order-svc's late tests got 401s, 2026-11-25).
 def token(role: str, sub: str = "USR1", email: str = "x@example.org", mfa: bool = True) -> dict[str, str]:
     now = int(time.time())
     claims = {
@@ -43,7 +45,7 @@ def token(role: str, sub: str = "USR1", email: str = "x@example.org", mfa: bool 
         "email": email,
         "jti": f"j-{sub}-{role}",
         "iat": now,
-        "exp": now + 300,
+        "exp": now + 3600,
         "mfa": mfa,
     }
     return {"Authorization": "Bearer " + jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})}

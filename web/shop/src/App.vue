@@ -5,9 +5,9 @@
  * bottom navigation (Menu, Catalogue, Pro Bono, Requests); footer on every page but the sign-in pages.
  * The sign-in pages (login, sign-up, verify, password) show only their card: no top bar, bottom bar or
  * footer; the logo links home. Customers and visitors get the cart (with a count; visitors log in first)
- * in both bars, as in legacy.
+ * in both bars, as in legacy. Admin announcements sit above everything (AnnouncementBar).
  */
-import { AppNotifier, shopDir, useCart, useSession, useThemeMode } from '@cimh/web-app'
+import { AnnouncementBar, AppNotifier, shopDir, useCart, useSession, useThemeMode } from '@cimh/web-app'
 import logo from '@cimh/web-app/assets/brand/stores-wordmark.svg'
 import logoWhite from '@cimh/web-app/assets/brand/stores-wordmark-dark.svg'
 import {
@@ -68,6 +68,8 @@ async function logout() {
 <template>
   <v-app>
     <a href="#main" class="skip-link">Skip to content</a>
+    <!-- Announcements (plan 2026-11-23): every page, sign-in pages and signed-out visitors included. -->
+    <AnnouncementBar app="shop" />
     <v-app-bar v-if="mdAndUp && !signInPage" flat border="b" height="72" color="surface">
       <div class="bar">
         <router-link to="/" class="brand" aria-label="CIMH Stores home">
@@ -238,6 +240,7 @@ async function logout() {
 
 /* Page motion between SHOP pages (direction from web-app auth-motion.ts `shopDir`): the old page fades out
    fast, the new one slides in a short way and settles. Only opacity and transform; bars and footer stay. */
+/* (page-quiet below: Orders list ↔ one request.) */
 .page-fwd-leave-active,
 .page-back-leave-active {
   transition: opacity 90ms ease-in;
@@ -258,9 +261,25 @@ async function logout() {
   opacity: 0;
   transform: translate3d(-16px, 0, 0);
 }
+/* Orders list ↔ one request (shopDir 'quiet'): the same papers seen two ways, so no sideways travel. A short
+   cross-fade with a 4 px settle; the list's rows and the sheet's entrance stay still on this arrival. */
+.page-quiet-leave-active {
+  transition: opacity 70ms ease-in;
+}
+.page-quiet-leave-to {
+  opacity: 0;
+}
+.page-quiet-enter-active {
+  transition: opacity 180ms ease-out, transform 240ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.page-quiet-enter-from {
+  opacity: 0;
+  transform: translate3d(0, 4px, 0);
+}
 @media (prefers-reduced-motion: reduce) {
   .page-fwd-enter-from,
-  .page-back-enter-from {
+  .page-back-enter-from,
+  .page-quiet-enter-from {
     transform: none;
   }
 }

@@ -118,6 +118,9 @@ paths:
         Every priced line of the request (`invoice`) or only its CIMH-stock lines (`commercial_invoice`; supplier items
         ship direct and are invoiced by the supplier); Pro Bono lines at 0.00. Description = "<model number> - <name>".
         Fees = the admin fee (invoice only); shipping = the costs recorded on the parcels (invoice only).
+        `number` = the number given at Mark delivered (invoice only), else null; `suggestedNumber` = the latest number
+        of this kind on any request + 1 (its last digits counted on, skipping numbers already used), null when there
+        is none to count from. The builder offers `number ?? suggestedNumber`.
       parameters:
         - { name: kind, in: query, required: true, schema: { $ref: '#/components/schemas/InvoiceKind' } }
       responses:
@@ -131,6 +134,7 @@ paths:
                 properties:
                   kind: { $ref: '#/components/schemas/InvoiceKind' }
                   number: { type: [string, 'null'] }
+                  suggestedNumber: { type: [string, 'null'] }
                   lines: { type: array, items: { $ref: '#/components/schemas/InvoiceLine' } }
                   fees: { type: string }
                   discount: { type: string }
@@ -167,24 +171,108 @@ paths:
     parameters: [ { name: requestId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } } ]
     post:
       tags: [files]
-      summary: Create a staff-built invoice or commercial invoice (staff, admin)
+      summary: Create the request's invoice or commercial invoice (staff, admin)
       description: |
-        Renders the PDF, stores it, attaches it to the request (kind `invoice` / `commercial_invoice`) and publishes
-        `document.generated` with `notify` (emailCustomer / emailStaff), so notification-svc emails the customer and/or
-        the staff `invoice` list. Audited. Can be repeated (a corrected invoice is a new file).
+        A request has at most one current invoice and one current commercial invoice. Renders the PDF (rev 1), stores
+        it, has order-svc record it as the current one (attached to the request as kind `invoice` /
+        `commercial_invoice`) and publishes `document.generated` with `notify` (emailCustomer / emailStaff) and `rev`,
+        so notification-svc emails the customer and/or the staff `invoice` list. Audited. 409 INVOICE_EXISTS when the
+        request already has one of this kind (change it with PUT); 409 INVOICE_NUMBER_TAKEN when another request's
+        invoice of the same kind uses the number (voided ones included; compared case-blind, spaces collapsed). A
+        refused create leaves no file.
       requestBody:
         required: true
         content:
           application/json: { schema: { $ref: '#/components/schemas/InvoiceIn' } }
       responses:
         '201':
-          description: The stored file
+          description: The stored file and the invoice as recorded
           content:
-            application/json: { schema: { type: object } }
+            application/json: { schema: { $ref: '#/components/schemas/InvoiceSaved' } }
         '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
         '403': { $ref: './common.yaml#/components/responses/Forbidden' }
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+
+  /requests/{requestId}/invoices/{kind}:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, minLength: 1, maxLength: 64 } }
+      - { name: kind, in: path, required: true, schema: { $ref: '#/components/schemas/InvoiceKind' } }
+    get:
+      tags: [files]
+      summary: The request's current invoice of this kind, as the builder reopens it (staff, admin)
+      description: |
+        404 when the request has none (the builder then starts from `invoice-draft`). `ETag` = the revision, sent back
+        as `If-Match` to change or void it. `lines` is null for an invoice made before invoices kept their lines
+        (`source` LEGACY): the builder starts from the draft and saving issues the next revision.
+      responses:
+        '200':
+          description: The current invoice
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Invoice' } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+    put:
+      tags: [files]
+      summary: Change the current invoice (staff, admin)
+      description: |
+        Issues the next revision: a new PDF (same or new number) becomes the current one; the earlier PDF leaves the
+        customer's papers (customers get 404 for it) and stays downloadable for staff. `document.generated` carries
+        `rev` (> 1 = a corrected invoice) and `notify`. `If-Match` = the revision being changed (428 without it,
+        409 VERSION_CONFLICT when someone saved first). 409 INVOICE_LOCKED once the request is marked paid;
+        409 INVOICE_NUMBER_TAKEN as for create. `kind` in the body must match the path (422).
+      parameters:
+        - { $ref: '#/components/parameters/InvoiceRev' }
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/InvoiceIn' } }
+      responses:
+        '200':
+          description: The new PDF and the invoice as recorded
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvoiceSaved' } }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '428': { $ref: './common.yaml#/components/responses/PreconditionRequired' }
+        '503': { $ref: './common.yaml#/components/responses/Unavailable' }
+    delete:
+      tags: [files]
+      summary: Void the current invoice (staff, admin; admin only once the request is marked paid)
+      description: |
+        The invoice leaves the customer's papers and the amount owed falls back to the signed total; its number stays
+        used; nobody is emailed; audited with the reason. Staff can still open the voided PDF. After a void, a new
+        invoice of this kind can be created (and none is generated automatically). 403 for staff once the request is
+        marked paid (an administrator may).
+      parameters:
+        - { $ref: '#/components/parameters/InvoiceRev' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties: { reason: { type: string, minLength: 3, maxLength: 500 } }
+      responses:
+        '204': { description: Voided }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+        '428': { $ref: './common.yaml#/components/responses/PreconditionRequired' }
         '503': { $ref: './common.yaml#/components/responses/Unavailable' }
 
   /internal/labels:
@@ -202,7 +290,7 @@ paths:
               properties:
                 productId: { type: string, minLength: 1, maxLength: 64 }
                 productName: { type: [string, 'null'], maxLength: 200 }
-                barcodes: { type: array, minItems: 1, maxItems: 200, items: { type: string, minLength: 1, maxLength: 80 } }
+                barcodes: { type: array, minItems: 1, maxItems: 200, items: { type: string, minLength: 1, maxLength: 80, pattern: '^[^\x00-\x1f\x7f]+$' } }
       responses:
         '201': { description: 'Stored (staff download it with GET /files/{id})', content: { application/json: { schema: { $ref: '#/components/schemas/File' } } } }
         '403': { $ref: './common.yaml#/components/responses/Forbidden' }
@@ -220,8 +308,53 @@ paths:
         '503': { description: Not ready, content: { application/json: { schema: { $ref: './common.yaml#/components/schemas/Health' } } } }
 
 components:
+  parameters:
+    InvoiceRev:
+      name: If-Match
+      in: header
+      required: false
+      description: The invoice revision being changed (its ETag, e.g. `"2"`). Missing = 428 PRECONDITION_REQUIRED.
+      schema: { type: string, pattern: '^(W/)?"?[0-9]{1,9}"?$', example: '"2"' }
   schemas:
     InvoiceKind: { type: string, enum: [invoice, commercial_invoice] }
+    InvoiceRevision:
+      type: object
+      required: [rev, fileId]
+      properties:
+        rev: { type: integer, minimum: 1 }
+        fileId: { type: string }
+        number: { type: [string, 'null'] }
+        total: { type: [string, 'null'] }
+        by: { $ref: './common.yaml#/components/schemas/Actor' }
+        at: { type: [string, 'null'] }
+    Invoice:
+      type: object
+      description: The current invoice of one kind on a request (staff view; order-svc's record).
+      required: [kind, rev, fileId, source, locked, revisions, recipient]
+      properties:
+        kind: { $ref: '#/components/schemas/InvoiceKind' }
+        number: { type: [string, 'null'], description: null on an older invoice whose number is unknown }
+        rev: { type: integer, minimum: 1 }
+        fileId: { type: string, description: The current PDF }
+        date: { type: [string, 'null'] }
+        total: { type: [string, 'null'], description: 'Lines + fees + shipping - discount; null when the lines were not kept (LEGACY)' }
+        source: { type: string, enum: [STAFF, AUTO, LEGACY], description: 'AUTO = made on delivery / for a parcel; LEGACY = made before invoices kept their lines' }
+        locked: { type: boolean, description: The request is marked paid (read-only; only an administrator can void it) }
+        lines: { type: [array, 'null'], items: { $ref: '#/components/schemas/InvoiceLine' } }
+        fees: { type: [string, 'null'] }
+        discount: { type: [string, 'null'] }
+        shipping: { type: [string, 'null'] }
+        createdAt: { type: [string, 'null'] }
+        updatedAt: { type: [string, 'null'] }
+        revisions: { type: array, items: { $ref: '#/components/schemas/InvoiceRevision' }, description: Every PDF issued, oldest first (the last is current) }
+        recipient: { type: array, items: { type: string }, description: 'Bill-to (invoice) or ship-to (commercial invoice), one row per line' }
+    InvoiceSaved:
+      allOf:
+        - $ref: '#/components/schemas/File'
+        - type: object
+          required: [invoice]
+          properties:
+            invoice: { type: object, description: The invoice as order-svc recorded it (staff view, without `recipient`) }
     Money: { type: string, pattern: '^\d{1,12}(\.\d{1,2})?$' }
     InvoiceLine:
       type: object
@@ -260,3 +393,5 @@ components:
         uploadedBy: { $ref: './common.yaml#/components/schemas/Actor' }
         uploadedAt: { $ref: './common.yaml#/components/schemas/Timestamp' }
         quoteVersion: { type: [integer, 'null'], description: 'Quote version of a generated agreement / CIMH quote, or the one a signed agreement was uploaded for' }
+        number: { type: [string, 'null'], description: 'Invoice / commercial invoice only: its number' }
+        rev: { type: [integer, 'null'], description: 'Invoice / commercial invoice only: its revision' }

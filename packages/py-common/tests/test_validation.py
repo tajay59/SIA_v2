@@ -13,7 +13,7 @@ from cimh_common.validation import apply_validators, document, enum, levels, nul
 # CLAUDE.md "Target architecture": a service touches only the collections it owns.
 OWNED = {
     "identity_svc": {"accounts", "temp", "organisations", "auditlog"},
-    "catalog_svc": {"product", "misc"},
+    "catalog_svc": {"product", "misc", "announcements"},
     "inventory_svc": {"storage", "history", "stock"},
     "order_svc": {"orders"},
 }

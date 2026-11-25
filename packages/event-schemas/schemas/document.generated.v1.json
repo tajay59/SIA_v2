@@ -66,6 +66,27 @@
             "fileId": {
               "type": "string"
             },
+            "number": {
+              "type": "string",
+              "description": "Invoice number of an invoice / commercial invoice"
+            },
+            "rev": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Invoice / commercial invoice revision: 1 when first issued, higher for a corrected invoice that replaces the earlier one"
+            },
+            "notify": {
+              "type": "object",
+              "description": "Staff-built (or corrected) invoice / commercial invoice only: who notification-svc emails. Absent on automatic invoices",
+              "properties": {
+                "customer": {
+                  "type": "boolean"
+                },
+                "staff": {
+                  "type": "boolean"
+                }
+              }
+            },
             "kind": {
               "type": "string",
               "enum": [

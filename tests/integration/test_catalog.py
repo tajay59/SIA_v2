@@ -29,7 +29,7 @@ async def _jwks() -> dict[str, Any]:
 def _staff() -> dict[str, str]:
     now = int(time.time())
     claims = {"iss": "i", "aud": "a", "sub": "USRS", "role": "staff", "email": "s@cimh.edu.bb", "jti": "j",
-              "iat": now, "exp": now + 300, "mfa": True}  # fmt: skip
+              "iat": now, "exp": now + 3600, "mfa": True}  # fmt: skip
     return {"Authorization": "Bearer " + jwt.encode(claims, KEY, algorithm="EdDSA", headers={"kid": "k1"})}
 
 

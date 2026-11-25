@@ -236,6 +236,32 @@
 ::view-transition-new(request-pane) {
   animation: 240ms 60ms var(--ease-out) both console-fade-in;
 }
+/* Quiet hand-off (request-motion.ts `quietRequestMove`): desk -> the request's own page. No panel morphs
+   across the screen; the desk dims out where it is, then the page settles 4 px into place. Two names, so
+   neither moves towards the other's box (one shared name slid the desk up as it faded). */
+:root.vt-quiet .console-panels > .request-queue,
+:root.vt-quiet .console-panels > .request-detail,
+:root.vt-quiet .req-page > .frame {
+  view-transition-name: none;
+}
+:root.vt-quiet .request-desk {
+  view-transition-name: request-desk-out;
+}
+:root.vt-quiet .req-page {
+  view-transition-name: request-page-in;
+}
+::view-transition-old(request-desk-out) {
+  animation: 80ms linear both console-fade-out;
+}
+::view-transition-new(request-page-in) {
+  animation: 180ms 60ms var(--ease-out) both console-settle-in;
+}
+@keyframes console-settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
 ::view-transition-old(root) {
   animation-duration: 120ms;
 }
@@ -310,3 +336,5 @@
 ::view-transition-new(product-new) {
   animation: 220ms 90ms var(--ease-out) both console-fade-in;
 }
+
+/* Dialogs: the golden-ratio system lives in web-app base.css (shared with SHOP since 2026-11-24). */

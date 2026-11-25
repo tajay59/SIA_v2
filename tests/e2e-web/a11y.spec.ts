@@ -106,7 +106,7 @@ test.describe('accessibility (axe)', () => {
     await page.getByRole('textbox', { name: '6-digit code' }).fill(totp(admin.key))
     await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible()
     const found: string[] = []
-    for (const path of ['/admin/approvals', '/admin/accounts', '/admin/organisations', '/admin/settings', '/admin/audit']) {
+    for (const path of ['/admin/approvals', '/admin/accounts', '/admin/organisations', '/admin/settings', '/admin/audit', '/admin/announcements']) {
       await audit(page, `${SIA}${path}`, found)
     }
     expect(found, found.join('\n')).toEqual([])

@@ -136,7 +136,7 @@ class ShipmentIn(BaseModel):
     tracking: str | None = Field(default=None, max_length=100)
     trackingLink: str | None = Field(default=None, max_length=500)
     note: str | None = Field(default=None, max_length=300)
-    cost: MoneyStr | None = None
+    cost: MoneyStr  # required (owner 2026-11-24): what CIMH paid to send this parcel; 0.00 when nothing
     date: date
     notifyCustomer: bool = True
 
@@ -504,3 +504,65 @@ async def attach(
 ) -> Response:
     await svc(request).attach_file(requestId, body.model_dump())
     return Response(status_code=204)
+
+
+# ---------------------------------------------------------------- invoices (document-svc renders, order-svc records)
+
+InvoiceKind = Literal["invoice", "commercial_invoice"]
+InvoiceMoney = Annotated[str, Field(pattern=r"^\d{1,12}(\.\d{1,2})?$")]
+
+
+class ActorIn(Strict):
+    id: Id
+    name: str = Field(max_length=200)
+    role: str = Field(max_length=20)
+
+
+class InvoiceLineIn(Strict):
+    lineId: Id | None = None
+    description: str = Field(min_length=1, max_length=300)
+    qty: int = Field(ge=1, le=100_000)
+    unitPrice: InvoiceMoney
+
+
+class InvoiceRecordIn(Strict):
+    rev: int | None = Field(default=None, ge=1, le=10_000)  # None = a new invoice; else the revision it replaces
+    number: str = Field(min_length=1, max_length=50)
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    lines: list[InvoiceLineIn] = Field(min_length=1, max_length=200)
+    fees: InvoiceMoney = "0.00"
+    discount: InvoiceMoney = "0.00"
+    shipping: InvoiceMoney = "0.00"
+    source: Literal["STAFF", "AUTO"] = "STAFF"
+    by: ActorIn
+    file: FileIn
+
+
+class InvoiceVoidIn(Strict):
+    rev: int = Field(ge=1, le=10_000)
+    reason: str = Field(min_length=3, max_length=500)
+    by: ActorIn
+    admin: bool = False
+
+
+@router.put("/internal/requests/{requestId}/invoices/{kind}", tags=["internal"])
+async def record_invoice(
+    requestId: str, kind: InvoiceKind, body: InvoiceRecordIn, request: Request,
+    me: Principal = Depends(require_document_svc),
+) -> dict[str, Any]:  # fmt: skip
+    return await svc(request).record_invoice(requestId, kind, body.model_dump())
+
+
+@router.post("/internal/requests/{requestId}/invoices/{kind}/void", tags=["internal"])
+async def void_invoice(
+    requestId: str, kind: InvoiceKind, body: InvoiceVoidIn, request: Request,
+    me: Principal = Depends(require_document_svc),
+) -> dict[str, Any]:  # fmt: skip
+    return await svc(request).void_invoice(requestId, kind, body.model_dump())
+
+
+@router.get("/internal/invoice-numbers/next", tags=["internal"])
+async def next_invoice_number(
+    request: Request, kind: Annotated[InvoiceKind, Query()], me: Principal = Depends(require_document_svc)
+) -> dict[str, Any]:
+    return {"number": await svc(request).next_invoice_number(kind)}

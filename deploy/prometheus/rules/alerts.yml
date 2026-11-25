@@ -81,6 +81,14 @@ groups:
         labels: { severity: critical }
         annotations: { summary: "Outbox of {{ $labels.collection }} not published for {{ $value | humanizeDuration }}: is its outbox relay running?" }
 
+      - alert: PushSocketsNearCap
+        # catalog-push (announcements): a worker at 90 % of PUSH_MAX_SOCKETS starts refusing new tabs soon (they
+        # fall back to polling). Add a catalog-push replica.
+        expr: sum by (instance) (push_sockets) >= 0.9 * max by (instance) (push_sockets_max)
+        for: 5m
+        labels: { severity: warning }
+        annotations: { summary: "catalog-push {{ $labels.instance }} holds {{ $value }} sockets (90 % of its cap)" }
+
   - name: data
     rules:
       - alert: ReplicaSetMemberDown

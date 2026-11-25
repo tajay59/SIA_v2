@@ -60,7 +60,10 @@ async function confirm() {
     await call(() => identity.POST('/auth/mfa/confirm', { body: { totp: code.value } }))
     emit('enabled')
   } catch (e) {
-    if (e instanceof ApiError && (e.status === 422 || e.status === 401)) {
+    if (e instanceof ApiError && e.code === 'MFA_CODE_REUSED') {
+      error.value = 'That code was just used. Wait for the next code (it changes every 30 seconds).'
+      code.value = ''
+    } else if (e instanceof ApiError && (e.status === 422 || e.status === 401)) {
       error.value = 'That code is not valid. Wait for the next one and try again.'
       code.value = ''
     } else notify.report(e)

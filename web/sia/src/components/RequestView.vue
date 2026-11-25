@@ -5,18 +5,18 @@
  *   wide   = request on the left, sticky "Next step" panel on the right;
  *   narrow = "Next step" first, then the request (actions never sit at the bottom of a long page).
  * Next step: the actions allowed now (`allowedActions`, the server stays the authority); Cancel is isolated
- * below a seam. Dialogs: verify the signed agreement, then record purchase orders (product names, not line
- * ids); record a shipment per parcel (CIMH stock, each supplier's direct shipment) and correct one; mark
+ * below a seam. Dialogs: verify the signed agreement, then record purchase orders (`PurchaseDialog`); record a shipment per parcel (CIMH stock, each supplier's direct shipment) and correct one; mark
  * delivered; reasons for reject / cancel.
  */
 import ShipmentDialog from './ShipmentDialog.vue'
+import PurchaseDialog, { type PurchaseBody } from './PurchaseDialog.vue'
 import InvoiceDialog from './InvoiceDialog.vue'
+import FilePreviewDialog from './FilePreviewDialog.vue'
 import {
   act,
   ApiError,
   carrierLabel,
   editShipment,
-  fileUrl,
   getRequest,
   openSources,
   type InvoiceKind,
@@ -35,12 +35,11 @@ import {
 } from '@cimh/web-app'
 import { formatDate, formatMoney } from '@cimh/web-ui'
 import { mdiArrowRight, mdiClose } from '@mdi/js'
-import ICopy from '~icons/material-symbols/content-copy-rounded'
 import INote from '~icons/material-symbols/chat-rounded'
 import IDone from '~icons/material-symbols/check-circle-rounded'
 import IPending from '~icons/material-symbols/radio-button-unchecked'
 import INotNeeded from '~icons/material-symbols/do-not-disturb-on-outline-rounded'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { BTN, expiresSoon, fmtDate, TONE_ICON, waited, why } from '../request-queue'
 import { shortUnit } from '../history'
 
@@ -55,6 +54,12 @@ const r = ref<OrderRequest | null>(null)
 const missing = ref(false)
 const failed = ref(false)
 const busy = ref<string | null>(null)
+const previewFile = ref<{ id: string; title: string } | null>(null)
+const previewOpen = ref(false)
+function preview(id: string, title: string) {
+  previewFile.value = { id, title }
+  previewOpen.value = true
+}
 
 async function load() {
   failed.value = false
@@ -95,6 +100,28 @@ const canInvoice = computed(() => !!r.value && INVOICEABLE.has(r.value.status))
 const canCommercial = computed(
   () => canInvoice.value && (r.value!.type === 'PROBONO' || (r.value!.lines ?? []).some((l) => l.source === 'CIMH')),
 )
+// One current invoice and one commercial invoice per request (plan 2026-11-24-invoice-crud): the buttons open it
+// when it exists (named by its number), otherwise start one.
+const invoices = computed(() => r.value?.invoices ?? {})
+const showCommercial = computed(() => canCommercial.value || !!invoices.value.commercial_invoice)
+function invoiceLabel(kind: InvoiceKind): string {
+  const rec = invoices.value[kind]
+  const noun = kind === 'invoice' ? 'invoice' : 'commercial invoice'
+  if (!rec) return `Create ${noun}`
+  if (rec.locked) return `View ${noun}`
+  return rec.number ? `${kind === 'invoice' ? 'Invoice' : 'Commercial invoice'} ${rec.number}` : `Open ${noun}`
+}
+// CIMH parcels leaving Barbados with lines the commercial invoice doesn't list (none is made for a second parcel:
+// staff add its lines in the builder).
+const uncovered = computed(() => {
+  const rec = invoices.value.commercial_invoice
+  if (!rec?.lines || !r.value || (r.value.shipTo?.country ?? 'BB') === 'BB') return []
+  const listed = new Set(rec.lines.map((l) => l.lineId).filter(Boolean))
+  return (r.value.shipments ?? [])
+    .map((s, i) => ({ n: i + 1, s }))
+    .filter(({ s }) => s.source === 'CIMH' && s.lineIds.some((id) => !listed.has(id)))
+    .map(({ n }) => n)
+})
 const invoiceOpen = ref(false)
 const invoiceKind = ref<InvoiceKind>('invoice')
 function openInvoice(kind: InvoiceKind) {
@@ -119,14 +146,6 @@ async function run(key: string, path: Parameters<typeof act>[1], body: unknown, 
   }
 }
 
-async function copyId() {
-  try {
-    await navigator.clipboard.writeText(props.id)
-    notify.toast('Request id copied', 'success')
-  } catch {
-    /* clipboard blocked: the id stays selectable */
-  }
-}
 
 // ---- reasons
 type ReasonKind = 'reject-agreement' | 'reject' | 'cancel'
@@ -195,33 +214,16 @@ const signed = computed(() => r.value?.agreement?.signedFileId ?? null)
 type PurchaseOrder = { supplier: string; poNumber: string; lineIds?: string[] }
 const purchaseOrders = computed(() => (r.value?.purchaseOrders ?? []) as unknown as PurchaseOrder[])
 
-// ---- verify the signed agreement, then purchase orders
+// ---- verify the signed agreement, then purchase orders (PurchaseDialog builds one row per supplier)
 const poOpen = ref(false)
-const po = reactive({ verified: false, rows: [] as { supplier: string; poNumber: string; lineIds: string[] }[] })
-function openPo() {
-  const x = r.value
-  if (!x) return
-  const supplierLines = new Set(x.lines.filter((l) => l.source === 'SUPPLIER').map((l) => l.lineId))
-  const latest = Math.max(0, ...(x.quotes ?? []).map((q) => q.version))
-  const bySupplier = new Map<string, string[]>()
-  const taken = new Set<string>() // a line belongs to one supplier only
-  for (const q of x.quotes ?? []) {
-    if (q.version !== latest) continue
-    for (const l of q.lines) {
-      if (!supplierLines.has(l.lineId) || taken.has(l.lineId)) continue
-      taken.add(l.lineId)
-      const name = q.supplier ?? ''
-      bySupplier.set(name, [...(bySupplier.get(name) ?? []), l.lineId])
-    }
-  }
-  po.verified = false
-  po.rows = [...bySupplier].map(([supplier, lineIds]) => ({ supplier, poNumber: '', lineIds }))
-  poOpen.value = true
-}
-const poValid = computed(() => po.verified && po.rows.every((x) => x.supplier.trim() && x.poNumber.trim() && x.lineIds.length))
-async function submitPo() {
-  const body = { agreementVerified: po.verified, purchaseOrders: po.rows.map((x) => ({ ...x, supplier: x.supplier.trim(), poNumber: x.poNumber.trim() })) }
+const openPo = () => (poOpen.value = true)
+async function submitPo(body: PurchaseBody) {
   if (await run('po', '/requests/{requestId}/purchase-orders', body, 'Signature verified; purchasing')) poOpen.value = false
+}
+/** "Not right?" in the dialog: close it and ask for the reason the customer is emailed. */
+function rejectFromPo() {
+  poOpen.value = false
+  reasonFor.value = 'reject-agreement'
 }
 
 // ---- ship / deliver (dates in local time: Barbados is UTC-4, so toISOString would give tomorrow after 20:00)
@@ -300,8 +302,7 @@ async function submitDeliver() {
           <p class="id-line">
             <span class="customer">{{ [r.organisationName, r.customerName].filter(Boolean).join(' · ') }}</span>
             <span aria-hidden="true">·</span>
-            <span class="console-mono"><ShortRef :id="r.id" /></span>
-            <v-btn variant="text" size="x-small" :icon="ICopy" aria-label="Copy request id" @click="copyId" />
+            <span class="console-mono"><ShortRef :id="r.id" fit copy /></span>
           </p>
         </div>
         <div class="rv-meta">
@@ -347,7 +348,7 @@ async function submitDeliver() {
               </v-btn>
               <template v-if="can('purchase-orders')">
                 <v-btn class="m3" color="primary" :prepend-icon="BTN.verify" :disabled="!!busy" @click="openPo">Verify and purchase</v-btn>
-                <v-btn v-if="signed" :href="fileUrl(signed)" target="_blank" variant="outlined" class="m3" :prepend-icon="BTN.signed">Signed agreement</v-btn>
+                <v-btn v-if="signed" variant="outlined" @click="preview(signed, 'Signed agreement')" class="m3" :prepend-icon="BTN.signed">Signed agreement</v-btn>
               </template>
               <v-btn
                 v-if="can('approve')"
@@ -365,10 +366,16 @@ async function submitDeliver() {
               <v-btn v-if="can('reject-agreement')" variant="outlined" class="m3" :disabled="!!busy" @click="reasonFor = 'reject-agreement'">Reject signature</v-btn>
             </div>
             <div v-if="canInvoice" class="invoice-acts">
-              <v-btn variant="outlined" class="m3" :prepend-icon="BTN.invoice" @click="openInvoice('invoice')">Create invoice</v-btn>
-              <v-btn v-if="canCommercial" variant="outlined" class="m3" :prepend-icon="BTN.customs" @click="openInvoice('commercial_invoice')">
-                Create commercial invoice
+              <v-btn variant="outlined" class="m3" :prepend-icon="BTN.invoice" data-testid="invoice-button" @click="openInvoice('invoice')">
+                {{ invoiceLabel('invoice') }}
               </v-btn>
+              <v-btn v-if="showCommercial" variant="outlined" class="m3" :prepend-icon="BTN.customs" data-testid="commercial-invoice-button" @click="openInvoice('commercial_invoice')">
+                {{ invoiceLabel('commercial_invoice') }}
+              </v-btn>
+              <p v-if="uncovered.length" class="uncovered t-caption">
+                Commercial invoice {{ invoices.commercial_invoice?.number ?? '' }} doesn't list every item in
+                {{ uncovered.length === 1 ? `parcel ${uncovered[0]}` : `parcels ${uncovered.join(', ')}` }}. Open it to add them.
+              </p>
             </div>
             <div v-if="can('reject') || can('cancel')" class="danger-zone">
               <v-btn v-if="can('reject')" variant="outlined" class="m3 m3-danger" :prepend-icon="BTN.reject" :disabled="!!busy" @click="reasonFor = 'reject'">Reject request</v-btn>
@@ -509,34 +516,17 @@ async function submitDeliver() {
         @submit="submitReason"
       />
 
-      <v-dialog v-model="poOpen" max-width="640" scrollable>
-        <v-card title="Verify the agreement, then record purchase orders">
-          <v-card-text class="dlg">
-            <section class="dlg-step">
-              <h3 class="console-title">1 · Check the signature</h3>
-              <v-btn v-if="signed" :href="fileUrl(signed)" target="_blank" variant="outlined" class="m3" :prepend-icon="BTN.signed">Open the signed agreement</v-btn>
-              <p v-else class="t-caption muted">No signed agreement is attached.</p>
-              <v-checkbox v-model="po.verified" label="The signed agreement is complete and signed by an authorised person" hide-details />
-            </section>
-            <section class="dlg-step" :class="{ off: !po.verified }">
-              <h3 class="console-title">2 · Purchase orders</h3>
-              <p v-if="!po.rows.length" class="t-body muted">Every item comes from CIMH stock: no purchase order is needed.</p>
-              <div v-for="(row, i) in po.rows" :key="i" class="po-row">
-                <v-text-field v-model="row.supplier" label="Supplier" :placeholder="row.supplier ? undefined : 'Supplier name'" hide-details density="compact" :disabled="!po.verified" />
-                <v-text-field v-model="row.poNumber" label="PO number" hide-details density="compact" :disabled="!po.verified" />
-                <p class="po-lines">{{ row.lineIds.map((id) => `${lineQty(id)}× ${lineName(id)}`).join(' · ') }}</p>
-              </div>
-            </section>
-          </v-card-text>
-          <v-card-actions>
-            <v-spacer />
-            <v-btn variant="text" @click="poOpen = false">Back</v-btn>
-            <v-btn color="primary" variant="flat" class="m3" :disabled="!poValid" :loading="busy === 'po'" @click="submitPo">Start purchasing</v-btn>
-          </v-card-actions>
-        </v-card>
-      </v-dialog>
+      <PurchaseDialog
+        v-model="poOpen"
+        :request="r"
+        :busy="busy === 'po'"
+        :can-reject="can('reject-agreement')"
+        @submit="submitPo"
+        @preview="preview"
+        @reject="rejectFromPo"
+      />
 
-      <InvoiceDialog v-model="invoiceOpen" :request="r" :kind="invoiceKind" @created="load" />
+      <InvoiceDialog v-model="invoiceOpen" :request="r" :kind="invoiceKind" @changed="load" />
       <ShipmentDialog v-model="shipOpen" :request="r" :shipment="editing" :busy="busy === 'ship'" @submit="submitShip" @update="updateShip" />
 
       <v-dialog v-model="paidOpen" max-width="480">
@@ -549,7 +539,7 @@ async function submitDeliver() {
             <p v-if="proofs.length" class="paid-proofs">
               Proof of payment:
               <template v-for="(f, i) in proofs" :key="f.id">
-                <a :href="fileUrl(f.id)" target="_blank" rel="noopener">{{ f.name }}</a><template v-if="i < proofs.length - 1">, </template>
+                <button type="button" class="proof-link" aria-haspopup="dialog" @click="preview(f.id, 'Proof of payment')">{{ f.name }}</button><template v-if="i < proofs.length - 1">, </template>
               </template>
             </p>
             <p v-else class="paid-proofs muted">The customer has not sent a proof of payment.</p>
@@ -575,6 +565,7 @@ async function submitDeliver() {
           </v-card-actions>
         </v-card>
       </v-dialog>
+      <FilePreviewDialog v-model="previewOpen" :request="r" :file-id="previewFile?.id ?? null" :title="previewFile?.title" />
     </template>
   </article>
 </template>
@@ -673,6 +664,20 @@ async function submitDeliver() {
   /* Open request = a graphite bar (theme ink at 7% over the surface): neutral, but clearly not the summary panel. */
   border-bottom: 1px solid color-mix(in srgb, rgb(var(--v-theme-on-surface)) 16%, rgb(var(--v-theme-surface)));
   background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 7%, rgb(var(--v-theme-surface)));
+}
+/* Own page: no frame around the request, so the header and the panels share the page's edges (the line of the
+   Orders bar above). The graphite bar stays for the request opened beside the queue. */
+.rv:not(.embedded) .rv-head {
+  padding: 0 0 var(--sp-3);
+  background: none;
+  border-bottom-color: rgb(var(--v-theme-seam));
+}
+.rv:not(.embedded) .rv-grid {
+  padding: var(--sp-4) 0 0;
+}
+.rv:not(.embedded) .state,
+.rv:not(.embedded) .skel {
+  padding-inline: 0;
 }
 .who {
   display: flex;
@@ -795,6 +800,11 @@ async function submitDeliver() {
   padding-top: var(--sp-3);
   border-top: 1px solid rgb(var(--v-theme-seam));
 }
+.uncovered {
+  flex-basis: 100%;
+  margin: 0;
+  color: rgb(var(--v-theme-on-surface-variant));
+}
 .danger-zone {
   display: flex;
   flex-wrap: wrap;
@@ -828,6 +838,15 @@ async function submitDeliver() {
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
   min-width: 0;
+}
+/* Section heads (Request, Items, Quote, Shipments, Purchase orders, Files, Timeline) carry the Action Wash, like
+   the desk's "Selected request" head, so the eye finds each section at a glance (owner 2026-11-24). */
+.panel > .console-head {
+  background: rgb(var(--v-theme-primary-subtle));
+  border-radius: 3px 3px 0 0;
+}
+.panel > .console-head .console-title {
+  color: rgb(var(--v-theme-primary));
 }
 .pad {
   padding: var(--sp-3) var(--sp-4);
@@ -1044,44 +1063,7 @@ async function submitDeliver() {
   }
 }
 
-.dlg {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-4);
-}
-.dlg-step {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--sp-2);
-}
-.dlg-step.off {
-  opacity: 0.6;
-}
-.po-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-2);
-  width: 100%;
-}
-.po-lines {
-  grid-column: 1 / -1;
-  font-size: 13px;
-  color: rgb(var(--v-theme-secondary));
-}
-.two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--sp-3);
-}
-.mono-input :deep(input) {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
-}
 @media (max-width: 599.98px) {
-  .po-row,
-  .two {
-    grid-template-columns: 1fr;
-  }
   .pos li {
     grid-template-columns: 1fr auto;
   }
@@ -1105,5 +1087,21 @@ async function submitDeliver() {
   margin: 0 0 var(--sp-4);
   font-size: 14px;
   overflow-wrap: anywhere;
+}
+/* Reads as a link in the sentence; opens the file in a dialog on the page (never another tab). */
+.proof-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: rgb(var(--v-theme-primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.proof-link:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 </style>

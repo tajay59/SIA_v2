@@ -766,6 +766,227 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Live announcements for an app (anyone for SHOP; staff for SIA)
+         * @description Messages whose `startsAt ≤ now < expiresAt` for the app's audience (`shop`: SHOP + BOTH, `sia`: SIA + BOTH),
+         *     alerts first, then newest. Not cached (`Cache-Control: no-store`). Also the client's polling fallback.
+         */
+        get: {
+            parameters: {
+                query?: {
+                    app?: "shop" | "sia";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Live messages */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["Announcement"][];
+                        };
+                    };
+                };
+                401: components["responses"]["Unauthorized"];
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/announcements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Live and scheduled announcements (admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Not yet expired, newest start first */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            items: components["schemas"]["AnnouncementAdmin"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Publish an announcement (admin)
+         * @description Pushed to open pages at once (or at `startsAt`). Audited. An ALERT is never closable.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AnnouncementInput"];
+                };
+            };
+            responses: {
+                /** @description Created */
+                201: {
+                    headers: {
+                        ETag: components["headers"]["ETag"];
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnnouncementAdmin"];
+                    };
+                };
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/announcements/{announcementId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                announcementId: string;
+            };
+            cookie?: never;
+        };
+        /** One announcement (admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    announcementId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Announcement */
+                200: {
+                    headers: {
+                        ETag: components["headers"]["ETag"];
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnnouncementAdmin"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        /** End now (admin; deletes it and removes it from every open page) */
+        delete: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    announcementId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Ended */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        options?: never;
+        head?: never;
+        /** Edit an announcement (admin); resend `ttl` to shorten or extend it */
+        patch: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    announcementId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["AnnouncementPatch"];
+                };
+            };
+            responses: {
+                /** @description Updated */
+                200: {
+                    headers: {
+                        ETag: components["headers"]["ETag"];
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnnouncementAdmin"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        trace?: never;
+    };
     "/internal/products/summaries": {
         parameters: {
             query?: never;
@@ -1165,6 +1386,88 @@ export interface components {
             /** @default 180 */
             cartInactivityDays: number;
         };
+        /**
+         * @description Either a web address or a product. A product link (owner 2026-11-23: a banner about a product change opens
+         *     that product) carries only the id; each app builds its own page: SHOP `/catalogue/{productId}`, SIA
+         *     `/products/{productId}`.
+         */
+        AnnouncementLink: {
+            label: string;
+            /** @description https:// address or a path on this site starting with / (never //, never http:) */
+            url?: string;
+            productId?: string;
+        };
+        /**
+         * @description A web address with a label, or a product (label optional: defaults to the product name). The product must
+         *     be active, and on SHOP when the audience includes SHOP (422 PRODUCT_NOT_FOUND / PRODUCT_NOT_ON_SHOP).
+         */
+        AnnouncementLinkInput: {
+            label?: string;
+            url?: string;
+            productId?: string;
+        } & (unknown | unknown);
+        /** @description Either a preset counted from the start, or an end time (at most 90 days from now). */
+        AnnouncementTtl: {
+            /** @enum {string} */
+            preset?: "1h" | "1d" | "7d" | "30d";
+            /** Format: date-time */
+            until?: string;
+        } & (unknown | unknown);
+        Announcement: {
+            /** @example ANN0123456789abcdef0123456789abcdef */
+            id: string;
+            /** @description Plain text */
+            message: string;
+            /** @enum {string} */
+            tone: "INFO" | "ALERT";
+            /** @enum {string} */
+            audience: "SHOP" | "SIA" | "BOTH";
+            link: components["schemas"]["AnnouncementLink"] | null;
+            /** @description Viewers may close it (always false for ALERT) */
+            dismissible: boolean;
+            /** Format: date-time */
+            startsAt: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** @description Changes on every edit; a closed banner shows again after an edit */
+            version: number;
+        };
+        AnnouncementAdmin: components["schemas"]["Announcement"] & {
+            /** Format: date-time */
+            createdAt?: string;
+            /** Format: date-time */
+            updatedAt?: string;
+            createdBy?: components["schemas"]["Actor"];
+            updatedBy?: components["schemas"]["Actor"];
+        };
+        AnnouncementInput: {
+            message: string;
+            /** @enum {string} */
+            tone: "INFO" | "ALERT";
+            /** @enum {string} */
+            audience: "SHOP" | "SIA" | "BOTH";
+            link?: components["schemas"]["AnnouncementLinkInput"];
+            /** @default true */
+            dismissible: boolean;
+            /**
+             * Format: date-time
+             * @description Default now
+             */
+            startsAt?: string;
+            ttl: components["schemas"]["AnnouncementTtl"];
+        };
+        AnnouncementPatch: {
+            message?: string;
+            /** @enum {string} */
+            tone?: "INFO" | "ALERT";
+            /** @enum {string} */
+            audience?: "SHOP" | "SIA" | "BOTH";
+            link?: components["schemas"]["AnnouncementLinkInput"] | null;
+            dismissible?: boolean;
+            /** Format: date-time */
+            startsAt?: string;
+            ttl?: components["schemas"]["AnnouncementTtl"];
+        };
         Place: {
             /** @enum {string} */
             kind: "site" | "location" | "shelf";
@@ -1218,6 +1521,12 @@ export interface components {
                 message: string;
             }[];
         };
+        Actor: {
+            id: string;
+            name: string;
+            /** @description user | staff | admin | service */
+            role: string;
+        };
         Health: {
             /** @enum {string} */
             status: "ok" | "degraded";
@@ -1256,6 +1565,15 @@ export interface components {
         };
         /** @description Resource does not exist or is not visible to the caller. */
         NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/problem+json": components["schemas"]["Problem"];
+            };
+        };
+        /** @description Missing, expired or revoked token. */
+        Unauthorized: {
             headers: {
                 [name: string]: unknown;
             };

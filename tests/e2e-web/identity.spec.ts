@@ -107,6 +107,19 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await expect(row).toHaveCount(0)
   })
 
+  test('a code used a moment ago is told apart from a wrong one (2026-11-25)', async ({ page }) => {
+    await nextTotpWindow()
+    const code = totp(mfaKey)
+    await siaLogin(page, adminEmail)
+    await typeCode(page, code)
+    await expect(page.getByRole('heading', { name: /^Good (morning|afternoon|evening)/ })).toBeVisible()
+    // Signed out and back in with the same code (same 30 s window): refused, and the page says to wait for the next.
+    await page.context().clearCookies()
+    await siaLogin(page, adminEmail)
+    await typeCode(page, code)
+    await expect(page.getByText('That code was just used. Wait for the next code (it changes every 30 seconds).')).toBeVisible()
+  })
+
   test('approved member logs in and reaches My requests (S-16 → S-10)', async ({ page }) => {
     await page.goto(`${SHOP}/requests`)
     await expect(page).toHaveURL(/\/login\?returnTo=(%2F|\/)requests/)
@@ -190,4 +203,19 @@ test.describe('global behaviour', () => {
     await page.goto(`${SHOP}/no-such-page`)
     await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible()
   })
+})
+
+test('a locked account says when it unlocks (2026-11-25)', async ({ page }) => {
+  const email = await activeCimhAccount(`locked`)
+  await page.goto(`${SIA}/login`)
+  await page.getByLabel('Email').fill(email)
+  for (let i = 0; i < 5; i++) {
+    await page.getByLabel('Password', { exact: true }).fill('Not-the-password-1!')
+    await page.getByRole('button', { name: 'Log in' }).click()
+    await expect(page.getByText('Email or password is incorrect.')).toBeVisible()
+  }
+  // The fifth failure locked it: now even the right password is refused, with the time left (15 min lock).
+  await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+  await page.getByRole('button', { name: 'Log in' }).click()
+  await expect(page.getByText('Too many failed attempts. Try again in 15 minutes.')).toBeVisible()
 })
