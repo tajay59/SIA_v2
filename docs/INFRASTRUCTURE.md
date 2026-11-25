@@ -165,6 +165,7 @@ rs.initiate({
 ### 5.4 nginx
 - Sites: `store`, `sia`, `staging-*`; snippets: `security-headers.conf` (CSP, HSTS, etc.), `rate-limits.conf` (TRD TR-SEC-5), `api-upstreams.conf` (Docker DNS `resolver 127.0.0.11 valid=10s`), `protected-files.conf` (`location /_protected/ { internal; alias /srv/sia-data/protected/; }`).
 - Caching: hashed SPA assets `immutable` 1 y; `index.html` no-cache; `/media/products/` 30 d.
+- Compression (2026-11-25, Lighthouse): gzip (level 5, ≥ 1 KB; JS, CSS, HTML, JSON, SVG, fonts) on the SPA locations only, production template and staging gateway; the main SHOP bundle goes 661 → 225 KB. Not on `/api/`: responses carrying tokens beside user-supplied text would invite BREACH, and API answers are small. Each app ships a `robots.txt` (SHOP: catalogue open, cart/requests/account/API closed; SIA: everything closed, plus `noindex`).
 - **Built (P9, pen test F-01):** `deploy/nginx/` (`templates/sites.conf.template` rendered from `env/prod.env`; `snippets/` security headers, proxy, shared API routes incl. `/_protected/`), `certs.sh` (first certificate), `test-config.sh` (`nginx -t` in CI). `/internal/*` refused on the decoded URI; `X-Real-IP` always overwritten; services' duplicate headers hidden; certbot renews every 12 h, nginx reloads every 6 h. Prometheus serves under `/ops/prometheus/` (route prefix).
 
 ### 5.5 ClamAV

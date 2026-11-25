@@ -7,7 +7,7 @@ import VueRouter from 'vue-router/vite'
 // Same Content-Security-Policy as staging/production (deploy/staging-lite/gateway.conf), so the browser
 // tests catch violations before deployment.
 const csp =
-  "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self' ws://localhost:* wss://localhost:*"
+  "default-src 'self'; script-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; connect-src 'self' ws://localhost:* wss://localhost:*"
 const proxy = {
   // Announcement socket (catalog-push, 18007); listed first so it wins over /api/catalog.
   '/api/catalog/v1/announcements/stream': { target: process.env.PUSH_URL ?? 'http://localhost:18007', ws: true, changeOrigin: false },

@@ -1,0 +1,3 @@
+# SIA is the CIMH staff app: nothing here is for search engines.
+User-agent: *
+Disallow: /

@@ -2249,7 +2249,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>I</td>
 <td>Session theft via XSS</td>
 <td>H</td>
-<td>No <code>v-html</code> with user data (lint rule); strict CSP (<code>script-src 'self'</code>, no inline); HttpOnly cookies; DOMPurify for any rich text</td>
+<td>No <code>v-html</code> with user data (lint rule); strict CSP (<code>script-src 'self'</code>, no inline, no eval; named explicitly since 2026-11-25, and Zod runs <code>jitless</code> so it never probes <code>new Function</code>, which Chrome reported as a violation on every page); HttpOnly cookies; DOMPurify for any rich text</td>
 <td>🛠</td>
 </tr>
 <tr>
@@ -5075,7 +5075,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>S-03</td>
-<td>"Gallery band" (impeccable 2026-11-16, owner's pick of three): breadcrumb (catalogue › family); a full-width band shows the part first (photo on a white plate, counter, thumbnails along its foot, arrows; ends on the logo-blue rule); <strong>no photo</strong> = the catalogue's navy field with a large nameplate (make + model, else model number, else "No photo yet"; never the heading). Then one request bar: name, make, mono model number, badges (stock, Pro Bono limit), units per pack, quantity + <strong>Add to cart</strong> (Pro Bono note: CIMH approves, no quote); the bar pins under the app bar once the band scrolls away (phones: name + Add to cart). Description</td>
+<td>"Gallery band" (impeccable 2026-11-16, owner's pick of three): <strong>Loading</strong> (2026-11-25, Lighthouse): the page's own shape (crumb, a band as tall as the real one, the bar) and at least one screen tall, so nothing moves when the product arrives (the footer used to show under a short skeleton and jump: layout shift 0.53 → 0). breadcrumb (catalogue › family); a full-width band shows the part first (photo on a white plate, counter, thumbnails along its foot, arrows; ends on the logo-blue rule); <strong>no photo</strong> = the catalogue's navy field with a large nameplate (make + model, else model number, else "No photo yet"; never the heading). Then one request bar: name, make, mono model number, badges (stock, Pro Bono limit), units per pack, quantity + <strong>Add to cart</strong> (Pro Bono note: CIMH approves, no quote); the bar pins under the app bar once the band scrolls away (phones: name + Add to cart). Description</td>
 </tr>
 <tr>
 <td>A-05, A-06, A-07</td>
@@ -7222,6 +7222,7 @@ rs.initiate({
 <ul>
 <li>Sites: <code>store</code>, <code>sia</code>, <code>staging-*</code>; snippets: <code>security-headers.conf</code> (CSP, HSTS, etc.), <code>rate-limits.conf</code> (TRD TR-SEC-5), <code>api-upstreams.conf</code> (Docker DNS <code>resolver 127.0.0.11 valid=10s</code>), <code>protected-files.conf</code> (<code>location /_protected/ { internal; alias /srv/sia-data/protected/; }</code>).</li>
 <li>Caching: hashed SPA assets <code>immutable</code> 1 y; <code>index.html</code> no-cache; <code>/media/products/</code> 30 d.</li>
+<li>Compression (2026-11-25, Lighthouse): gzip (level 5, ≥ 1 KB; JS, CSS, HTML, JSON, SVG, fonts) on the SPA locations only, production template and staging gateway; the main SHOP bundle goes 661 → 225 KB. Not on <code>/api/</code>: responses carrying tokens beside user-supplied text would invite BREACH, and API answers are small. Each app ships a <code>robots.txt</code> (SHOP: catalogue open, cart/requests/account/API closed; SIA: everything closed, plus <code>noindex</code>).</li>
 </ul>
 <h3 id="55-clamav">5.5 ClamAV</h3>
 <p><code>clamd</code> container on <code>data</code>; document-svc streams uploads via <code>INSTREAM</code>; <code>freshclam</code> daily; alert if signatures older than 48 h. Uploads fail closed (503) while clamd is down. Staging-lite runs without ClamAV (<code>SCAN_ENABLED=false</code>, not enough memory on the shared box).</p>
