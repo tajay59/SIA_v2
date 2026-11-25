@@ -1,6 +1,6 @@
 # Lighthouse: results, fixes done, fixes to come
 
-Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 built in PR #55 (`perf/lighthouse-fixes`), CI was running, not merged** · Owner request 2026-11-25
+Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 merged (#55) and on staging; 5-A measured (§5.1); next: fix 6, then 3** · Owner request 2026-11-25
 
 Working plan, not part of the manual. Picks up where the session left off: read §6 first.
 
@@ -101,7 +101,7 @@ Best practices stays 93 after the fixes: only the two 401s are left (fix 6).
 
 | # | Fix | Why | Size / risk |
 |---|---|---|---|
-| A | **Merge #55, then re-run Lighthouse on staging's public pages** (`https://store.hashiz.store/`, `/catalogue`, a product, `/pro-bono`; `https://sia.hashiz.store/login`). Read-only page loads only; never sign up or create data there (it holds the real legacy data). | Compression only shows once nginx serves the files: this is the real phone performance number. | Small. Merging deploys the new gateway config to staging (CI reloads the gateway after `nginx -t`). |
+| A | **Done 2026-11-25 (§5.1).** ~~Merge #55, then re-run Lighthouse on staging's public pages~~ (`https://store.hashiz.store/`, `/catalogue`, a product, `/pro-bono`; `https://sia.hashiz.store/login`). Read-only page loads only; never sign up or create data there (it holds the real legacy data). | Compression only shows once nginx serves the files: this is the real phone performance number. | Small. Merging deploys the new gateway config to staging (CI reloads the gateway after `nginx -t`). |
 | 6 | **No 401s for signed-out visitors:** e.g. an identity endpoint that answers 200 `{ account: null }` for "am I signed in?" (or skip `/auth/refresh` when no session is known), so the console stays clean. | Last item keeping Best practices at 93 on every page. | Small; contract change (identity OpenAPI) + web-app `session.ts`/`api.ts`. |
 | 3 | **Smaller first load:** check whether all of Vuetify's CSS ships (`vuetify/styles` vs per-component styles with `vite-plugin-vuetify` `autoImport` + `styles: 'sass'`/`configFile`), split rarely used code out of the main chunk (pdf.js is already separate; check what else lands in `index-*.js`, e.g. via `rollup-plugin-visualizer`), lazy-load heavy components below the fold. | Main JS ~60 % unused on the first page; 370–415 KB render-blocking CSS. The biggest remaining phone cost once compression is on. | Medium; touches build config and possibly the look (verify with the Playwright suite + screenshots). Decide after A. |
 | B | **Brotli / precompressed assets:** build `.gz`/`.br` next to each asset (e.g. `vite-plugin-compression`) and serve them with `gzip_static` (brotli needs an nginx module not in the stock image). | A further ~15–20 % below gzip, and no compression CPU per request. | Small–medium. Optional after A. |
@@ -110,10 +110,30 @@ Best practices stays 93 after the fixes: only the two 401s are left (fix 6).
 
 SIA's SEO score (58) is correct for a staff app and should stay.
 
-## 6. State at the end of the session (2026-11-25)
+### 5.1 Staging after #55 (5-A, 2026-11-25)
 
-- **PR #55** open (`perf/lighthouse-fixes`, commit `1b1ef3b`); a background CI watch was running when the session ended. Next: `gh pr checks 55` → if the 6 required checks pass, `gh pr merge 55 --squash` (owner had not yet said to merge #55), then wait for the `main` run's "deploy staging" job, then do 5-A.
-- **This file is not committed** (written after the PR was opened). Commit it on `perf/lighthouse-fixes` (pushes to #55) or with the next change.
+Read-only page loads of the public pages, Lighthouse 12.6.0, one at a time.
+
+| Page | Phone: Perf · BP · SEO · FCP · LCP · CLS | Desktop: Perf · BP · SEO · LCP · CLS |
+|---|---|---|
+| SHOP home | 59 · 96 · 100 · 6.3 s · 7.2 s · 0 | 91 · 96 · 100 · 1.4 s · 0.001 |
+| SHOP catalogue | 60 · 96 · 100 · 6.4 s · 7.7 s · 0 | 90 · 96 · 100 · 1.4 s · 0 |
+| SHOP product | 60 · 96 · 100 · 6.0 s · 6.8 s · 0 | 93 · 96 · 100 · 1.2 s · 0.014 |
+| SHOP Pro Bono | 59 · 96 · 100 · 6.4 s · 6.9 s · 0 | 91 · 96 · 100 · 1.3 s · 0.011 |
+| SIA sign-in | n/a | 90 · 96 · 58 · 1.4 s · 0 |
+
+Accessibility 100 everywhere. Best practices 96: only the two 401s (fix 6) remain.
+
+- **Compression works on staging:** a real Chromium receives the SHOP main JS as 225 KB (660 KB raw) and the CSS as 59 KB (369 KB raw), `Content-Encoding: gzip` + `Vary`.
+- **The phone performance scores above are pessimistic, because this PC's ESET SSL filter interferes.** It intercepts HTTPS from any Chrome that `chrome-launcher` starts (installed Chrome 157 and Playwright's Chromium 158 alike; certificate issuer "ESET SSL Filter CA") and hands the page the files **uncompressed**, so Lighthouse loads 660 + 369 KB and simulates the phone on that. Chromium started by Playwright itself is not filtered (gzip arrives); Lighthouse could not attach to that one (hangs, as in §1). Honest phone numbers need a machine without ESET (or ESET's SSL filtering off for chrome.exe), or PageSpeed Insights (sends the public URL to Google: owner to decide).
+- What the reports still show, whatever the encoding: the 369 KB CSS blocks rendering (est. 1.95 s on a phone), ~386 KB of the main JS is unused on the first page, and the LCP image (home slide) is found only after the JS runs. These are fix 3 (and C), unchanged.
+- **Found: the shared staging edge gzips API answers.** `printit-nginx` (not ours) sets `gzip on; gzip_proxied any` at the http level for every site, so `/api/` JSON left staging gzipped (BREACH, the thing fix 1 avoided), before and after #55. Production is not affected (gzip is switched on only in the SPA locations; off by default elsewhere). Fix: `gzip off;` in our edge site's 443 server (`deploy/staging-lite/edge-site.conf`, branch `fix/staging-edge-no-api-gzip`); sia-gateway's own gzip of the web app files passes through untouched. Installing it touches the shared edge (backup, `nginx -t`, reload; no certbot): owner to approve.
+
+## 6. State at the end of the session (2026-11-25, second session)
+
+- **#55 merged** (squash) and deployed to staging; this plan is on `main` with it. 5-A done (§5.1).
+- **Branch `fix/staging-edge-no-api-gzip`** (from `main`): `edge-site.conf` `gzip off;` + this update. Not yet installed on kw-server (owner approval: shared edge). After merging: copy the merged file from the server's checkout or `scp` it, back up `/srv/edge-sites/cimh-stores-staging.conf`, `docker exec printit-nginx nginx -t`, reload, then check `curl -sD- -o /dev/null -H 'Accept-Encoding: gzip' https://store.hashiz.store/api/catalog/v1/products?limit=1` has no `content-encoding` while `/assets/index-*.js` still has gzip.
+- **Next:** fix 6 (no 401s for signed-out visitors), then fix 3 (smaller first load). Measure phones without ESET (see §5.1).
 - PR #54 (announcements + invoice CRUD) is merged and on staging: order-svc's `invoices` upgrade made 35 records, 0 number clashes; the staging edge site is installed (announcement WebSocket 101 on both hosts, a foreign Origin gets 403).
 - Preview servers were running on 15291 (SHOP) / 15292 (SIA) from `web/*/dist` built on this branch. **Gotcha:** stopping a background `npx vite preview` task leaves its `node` process holding the port; kill the listener (PowerShell `Get-NetTCPConnection -LocalPort 15291 -State Listen` → `Stop-Process`) before restarting, and restart previews after editing `vite.config.ts` (the CSP header is read at start).
 - **Never run `deploy/staging-lite/deploy.sh --edge` from a tree with unmerged changes:** it rebuilds and ships the local tree before installing the edge file.
@@ -132,7 +152,8 @@ SIA's SEO score (58) is correct for a staff app and should stay.
      npx playwright test -c tests/e2e-web lighthouse.local.spec.ts --project=chromium --reporter=list
    ```
    About 15 minutes for the 38 audits; `summary.json` and one HTML report per page land in `LH_OUT`. It creates test accounts (staff, customer, admin with MFA), a product and a request in the **dev** database only.
-3. A single public page by hand: `npx --yes lighthouse@12.6.0 http://localhost:15291/catalogue --form-factor=mobile --view` (or `--preset=desktop`). In Chrome DevTools: Lighthouse tab, Incognito; for signed-in pages sign in first and untick "Clear storage" under the gear.
+3. **On this PC, HTTPS pages (staging) come back uncompressed in Lighthouse because of ESET (§5.1)**; local previews (plain HTTP) are not affected.
+4. A single public page by hand: `npx --yes lighthouse@12.6.0 http://localhost:15291/catalogue --form-factor=mobile --view` (or `--preset=desktop`). In Chrome DevTools: Lighthouse tab, Incognito; for signed-in pages sign in first and untick "Clear storage" under the gear.
 
 Helper probes used (recreate as throwaway specs when needed): a `PerformanceObserver({ type: 'layout-shift', buffered: true })` recording `sources[].node` and previous/current rects, and a `securitypolicyviolation` listener recording `violatedDirective`, `blockedURI`, `sourceFile`.
 
