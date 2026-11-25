@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Outstanding payments at sign-in (owner, 2026-11-23; redesigned as a statement, impeccable): when a customer signs
- * in with delivered paid requests that have no proof of payment yet, a statement opens. Navy head (the SHOP band
+ * in with delivered paid requests that have no proof of payment yet, a statement opens. Plain head (golden-ratio dialog 2026-11-24; was the navy SHOP band
  * with its logo-blue rule): what is owed in total and over how many requests. Below, a ruled ledger: what was
  * requested, short ref + delivery date, the amount aligned right (or "On the invoice" when none is on record, never
  * a false 0.00); a row opens the request. Foot: Continue · Go to orders (→ the list filtered on Payment required).
@@ -91,14 +91,18 @@ function openOne(id: string) {
 <template>
   <v-dialog v-model="open" max-width="600" :fullscreen="xs" scrollable aria-labelledby="pay-title">
     <v-card class="statement" rounded="lg">
-      <header class="head">
-        <h2 id="pay-title" class="head-title">Payment due</h2>
-        <p class="head-sum">
-          <span v-if="totals.length" class="head-total">{{ totals.join(' + ') }}</span>
-          <span class="head-of">
-            on {{ countWords }}<template v-if="unpriced && totals.length">, {{ unpriced }} priced on the invoice</template>
-          </span>
-        </p>
+      <!-- Plain head (golden-ratio dialog, owner 2026-11-24): what φ : how much 1. -->
+      <header class="dlg-head" :class="{ solo: !totals.length }">
+        <div class="dlg-who">
+          <h2 id="pay-title" class="dlg-title">Payment due</h2>
+          <p class="dlg-sub">
+            On {{ countWords }}<template v-if="unpriced && totals.length">, {{ unpriced }} priced on the invoice</template>
+          </p>
+        </div>
+        <dl v-if="totals.length" class="dlg-key">
+          <dt class="dlg-cap">Total owed</dt>
+          <dd class="dlg-figure owed">{{ totals.join(' + ') }}</dd>
+        </dl>
       </header>
 
       <v-card-text class="body">
@@ -134,78 +138,41 @@ function openOne(id: string) {
 </template>
 
 <style scoped>
+/* Golden-ratio dialog (owner 2026-11-24): 11 · 14 · 17.8 · 22.65 px, spacing 8 · 13 · 21 · 34; head from base.css. */
 .statement {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  font-size: 14px;
 }
-/* The SHOP band: navy field, logo-blue rule (masthead, cart, Orders). Same in both themes. */
-.head {
-  flex: none;
-  background: #0a2e4a;
-  color: #fff;
-  border-bottom: 4px solid #0084c8;
-  padding: var(--sp-6) var(--sp-6) var(--sp-5, 20px);
+.owed {
+  white-space: normal; /* two currencies wrap instead of running out of the head */
 }
-.head-title {
-  margin: 0;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 600;
-  color: rgb(255 255 255 / 0.78);
-}
-.head-sum {
-  margin: var(--sp-2) 0 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--sp-1) var(--sp-3);
-}
-.head-total {
-  font-size: clamp(28px, 4vw + 12px, 36px);
-  line-height: 1.1;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  overflow-wrap: anywhere;
-}
-.head-of {
-  font-size: 15px;
-  line-height: 22px;
-  color: rgb(255 255 255 / 0.86);
-}
-.head-sum:not(:has(.head-total)) .head-of {
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 600;
-  color: #fff;
-}
-
 .body {
-  padding: var(--sp-5, 20px) var(--sp-6) var(--sp-2) !important;
+  padding: 21px 21px 8px !important;
 }
 .lead {
-  margin: 0 0 var(--sp-4);
+  margin: 0 0 21px;
   max-width: 60ch;
-  font-size: 15px;
-  line-height: 22px;
+  line-height: 1.5;
+  color: var(--dlg-muted);
 }
 .ledger {
   list-style: none;
   margin: 0;
   padding: 0;
-  border-top: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-top: 1px solid var(--dlg-rule);
 }
 .ledger li {
-  border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-bottom: 1px solid var(--dlg-rule);
 }
 .entry {
   width: 100%;
-  min-height: 56px;
+  min-height: 55px;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-1) var(--sp-3) var(--sp-2);
+  gap: 13px;
+  padding: 13px 8px;
   background: none;
   border: 0;
   color: inherit;
@@ -229,30 +196,26 @@ function openOne(id: string) {
   gap: 2px;
 }
 .entry-title {
-  font-size: 15px;
-  line-height: 22px;
+  line-height: 1.5;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 .entry-meta {
-  font-size: 13px;
-  line-height: 18px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  line-height: 1.5;
+  color: var(--dlg-muted);
 }
 .nowrap {
   white-space: nowrap;
 }
 .entry-amount {
   flex: none;
-  font-size: 15px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .entry-amount.unknown {
-  font-size: 13px;
   font-weight: 500;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: var(--dlg-muted);
 }
 .entry-go {
   flex: none;
@@ -265,28 +228,25 @@ function openOne(id: string) {
   transform: translateX(2px);
 }
 .more {
-  margin: var(--sp-3) 0 0;
-  font-size: 14px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  margin: 13px 0 0;
+  color: var(--dlg-muted);
 }
 .foot {
   flex: none;
   display: flex;
   justify-content: flex-end;
-  gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-6) var(--sp-5, 20px);
+  gap: 8px;
+  padding: 13px 21px;
+  border-top: 1px solid var(--dlg-rule);
 }
 @media (max-width: 599.98px) {
-  .head,
   .foot {
-    padding-inline: var(--sp-4);
-  }
-  .body {
-    padding-inline: var(--sp-4) !important;
-  }
-  .foot {
+    padding-inline: 13px;
     flex-direction: column-reverse;
     align-items: stretch;
+  }
+  .body {
+    padding-inline: 13px !important;
   }
 }
 @media (prefers-reduced-motion: reduce) {

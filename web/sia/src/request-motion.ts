@@ -48,6 +48,18 @@ export function movesNewProduct(to: RouteLocationNormalized, from: RouteLocation
   return (NEW.test(to.path) && LIST.test(from.path)) || (NEW.test(from.path) && LIST.test(to.path))
 }
 
+/**
+ * Desk (summary beside the queue, no `?open=`) -> the request's own page: a step deeper, not the same panel
+ * growing (the summary is a different view from the page), so it is a quiet hand-off instead of a morph
+ * (owner 2026-11-24, from Verify and purchase): the desk dims out, the page settles in place. `vt-quiet` on
+ * <html> swaps the request names for one `request-page` pair (console.css). The way back keeps the morph.
+ */
+export function quietRequestMove(to: RouteLocationNormalized, from: RouteLocationNormalized): boolean {
+  const a = place(from)
+  const b = place(to)
+  return a.area === 'requests' && a.kind === 'desk' && b.area === 'requests' && b.kind === 'page'
+}
+
 const reduced = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
 
 export function installRequestMotion(router: Router): () => void {
@@ -61,14 +73,19 @@ export function installRequestMotion(router: Router): () => void {
   const offResolve = router.beforeResolve((to, from) => {
     const doc = document as Document & { startViewTransition?: (cb: () => Promise<void>) => { finished: Promise<void> } }
     if (first || !doc.startViewTransition || reduced() || !(movesRequest(to, from) || movesNewProduct(to, from))) return
+    const root = document.documentElement
+    const quiet = quietRequestMove(to, from)
+    // Set before the old state is captured; cleared once the transition is over (also when it is skipped).
+    root.classList.toggle('vt-quiet', quiet)
     // Hold the navigation until the old state is captured; finish the transition once Vue has rendered the new one.
     return new Promise<void>((resolve) => {
-      doc.startViewTransition!(async () => {
+      const vt = doc.startViewTransition!(async () => {
         const rendered = new Promise<void>((done) => (pendingAfter = done))
         resolve()
         await Promise.race([rendered, new Promise((t) => setTimeout(t, 600))])
         await nextTick()
       })
+      if (quiet) void vt.finished.finally(() => root.classList.remove('vt-quiet'))
     })
   })
   return () => {

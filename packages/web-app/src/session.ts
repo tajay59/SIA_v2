@@ -11,7 +11,8 @@ import { clearDrafts } from './draft'
 export type LoginOutcome =
   | { kind: 'ok'; account: Account }
   | { kind: 'mfa' } // admin with MFA: ask for the 6-digit code and log in again
-  | { kind: 'blocked'; code: string; message: string }
+  /** `retryAfter`: seconds until a locked account (ACCOUNT_LOCKED) unlocks. */
+  | { kind: 'blocked'; code: string; message: string; retryAfter?: number }
 
 /** Account-state codes from POST /auth/login (APD §2). Anything else is thrown. */
 export const BLOCKING_CODES = new Set([
@@ -74,7 +75,7 @@ export const useSession = defineStore('session', () => {
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
         if (e.code === 'MFA_REQUIRED') return { kind: 'mfa' }
-        if (e.code && BLOCKING_CODES.has(e.code)) return { kind: 'blocked', code: e.code, message: e.message }
+        if (e.code && BLOCKING_CODES.has(e.code)) return { kind: 'blocked', code: e.code, message: e.message, retryAfter: e.retryAfter }
       }
       throw e
     }

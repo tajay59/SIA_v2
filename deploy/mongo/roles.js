@@ -23,7 +23,7 @@ admin.auth("root", secret("mongo_root"));
 // Collection ownership (CLAUDE.md / BSD §3.1). A service only touches its own collections.
 const OWN = {
   identity: ["accounts", "temp", "organisations", "auditlog"],
-  catalog: ["product", "misc"],
+  catalog: ["product", "misc", "announcements"],
   inventory: ["storage", "history", "stock"],
   order: ["orders"],
 };

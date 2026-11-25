@@ -40,7 +40,7 @@ services:
     networks:
       internal: {}
       kong-net: { aliases: [sia-gateway] }
-    depends_on: [identity-svc, catalog-svc, document-svc]
+    depends_on: [identity-svc, catalog-svc, catalog-push, document-svc]
     mem_limit: 48m
     cpus: 0.25
     logging: { driver: local, options: { max-size: "10m", max-file: "3" } }
@@ -143,6 +143,27 @@ services:
     networks: [internal]
     mem_limit: 192m
     cpus: 0.5
+
+  # Announcement sockets (plan 2026-11-23): same image, stream + live list only.
+  catalog-push:
+    image: cimh/catalog-svc:staging
+    <<: *hardening
+    command: ["gunicorn", "catalog_svc.main:build_push_app()", "-k", "uvicorn.workers.UvicornWorker",
+              "-b", "0.0.0.0:8000", "-w", "1", "--access-logfile", "-", "--worker-tmp-dir", "/tmp"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017/?replicaSet=rs0
+      REDIS_URL: redis://redis:6379/0
+      JWKS_URL: http://identity-svc:8000/api/identity/v1/.well-known/jwks.json
+      JWT_ISSUER: https://sia.hashiz.store
+      JWT_AUDIENCE: cimh-stores
+      PUSH_ORIGINS: https://sia.hashiz.store,https://store.hashiz.store
+      PUSH_MAX_SOCKETS: "1000"
+      LOG_LEVEL: INFO
+    depends_on:
+      catalog-svc: { condition: service_healthy }
+    networks: [internal]
+    mem_limit: 96m
+    cpus: 0.25
 
   outbox-relay-catalog:
     image: cimh/catalog-svc:staging

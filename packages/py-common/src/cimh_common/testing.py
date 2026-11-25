@@ -83,6 +83,11 @@ class AsyncCollection:
     async def create_index(self, keys: Any, **kw: Any) -> str:
         kw.pop("collation", None)  # mongomock doesn't support collations
         kw.pop("partialFilterExpression", None)
+        # mongomock can't check a unique index on an array field (TypeError on the next insert). Such indexes are
+        # named "*_multikey"; here they lose `unique`, so the service's own check is what unit tests exercise (the
+        # real index is covered by an integration test against MongoDB).
+        if str(kw.get("name", "")).endswith("_multikey"):
+            kw.pop("unique", None)
         return str(self._c.create_index(keys, **kw))
 
 

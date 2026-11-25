@@ -92,9 +92,11 @@ def build_app(
         # past gunicorn's boot timeout on the dev stack (hundreds of test accounts; the worker was killed).
         names = asyncio.create_task(upgrade.customer_names(store.orders, deps))
         keys = asyncio.create_task(upgrade.name_keys(store.orders))  # idempotent one-off (2026-11-23), background
+        invoices = asyncio.create_task(upgrade.invoices(store.orders))  # idempotent one-off (2026-11-24), background
         yield
         names.cancel()
         keys.cancel()
+        invoices.cancel()
 
     app.router.lifespan_context = lifespan
     app.state.metrics.scrape_hooks.append(outbox_backlog_hook(app.state.metrics, {"orders": db["orders"]}))

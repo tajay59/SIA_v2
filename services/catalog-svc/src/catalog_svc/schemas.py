@@ -4,7 +4,17 @@ from cimh_common.validation import ARRAY, BOOL, COUNT, DATE, ID, INT, MONEY, STR
 
 TYPES = enum("MET", "RAD", "EQUIP", "SUPP", "MISC", "PRO")
 MISC_KINDS = enum(
-    "counter", "departments", "location", "projects", "shelf", "site", "types", "settings", "fees", "emailLists"
+    "counter",
+    "departments",
+    "location",
+    "projects",
+    "shelf",
+    "site",
+    "types",
+    "settings",
+    "fees",
+    "emailLists",
+    "announcements",
 )
 
 SCHEMAS = {
@@ -30,4 +40,18 @@ SCHEMAS = {
         {"cost": MONEY, "inStock": BOOL},
     ),
     "misc": document({"id": ID, "kind": MISC_KINDS, "updatedAt": DATE}),
+    "announcements": document(
+        {
+            "id": ID,
+            "message": STRING,
+            "tone": enum("INFO", "ALERT"),
+            "audience": enum("SHOP", "SIA", "BOTH"),
+            "dismissible": BOOL,
+            "startsAt": DATE,
+            "expiresAt": DATE,
+            "createdAt": DATE,
+            "updatedAt": DATE,
+            "version": VERSION,
+        }
+    ),
 }

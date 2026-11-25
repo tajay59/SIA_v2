@@ -40,6 +40,11 @@ class Store:
         await o.create_index([("quoteExpiresAt", 1)], partialFilterExpression={"status": "QUOTED"})
         await o.create_index([("lines.productId", 1)])
         await o.create_index([("outbox.0", 1)], sparse=True)
+        # Invoice numbers (plan 2026-11-24-invoice-crud): every number ever issued on a request, as "kind:number",
+        # voided ones included. A unique multikey index keeps one number on one request; the code checks within it.
+        await o.create_index("invoiceNumbers", unique=True, sparse=True, name="invoiceNumbers_unique_multikey")
+        for kind in ("invoice", "commercial_invoice"):  # the builder's "next number" (latest invoice of a kind)
+            await o.create_index(f"invoices.{kind}.createdAt", sparse=True)
 
     async def transaction(self, fn: Callable[[Any], Awaitable[T]]) -> T:
         """Run `fn(session)` in a multi-document transaction; on the unit-test mock it runs directly."""

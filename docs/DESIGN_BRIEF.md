@@ -106,7 +106,7 @@ Android uses the same families, bundled as resources.
 | `display` | 36 / 44 | 600 | -0.5px | SHOP home hero only |
 | `h1` | 28 / 36 | 600 | -0.3px | Page titles |
 | `h2` | 22 / 30 | 600 | -0.2px | Section titles, request id header |
-| `h3` | 18 / 26 | 600 | 0 | Card titles, dialog titles |
+| `h3` | 18 / 26 | 600 | 0 | Card titles (dialog titles: see Dialogs below) |
 | `body-lg` | 16 / 24 | 400 | 0 | SHOP body |
 | `body` | 14 / 22 | 400 | 0 | **Default UI** (SIA tables, forms) |
 | `body-strong` | 14 / 22 | 600 | 0 | Emphasis, table key column |
@@ -115,6 +115,8 @@ Android uses the same families, bundled as resources.
 | `overline` | 11 / 16 | 600 | 0.6px, UPPERCASE | Section eyebrows (sparingly) |
 | `mono` | 13 / 20 | 400 | 0 | Ids, barcodes, serials |
 | `money` | inherits | 500 | 0 | `tnum`; always with currency code: `BBD 1,250.00` |
+
+**Dialogs (SHOP + SIA, owner 2026-11-24): a golden-ratio system** of their own, set in web-app `base.css` so every `v-dialog` follows it: type 11 px uppercase captions (14/√φ) · 14 px body and fields · 17.8 px section heads (14·√φ) · 22.65 px title and key figure (14·φ); spacing Fibonacci 8 · 13 · 21 · 34 (21 px edge, 13 px on phones); heads split φ : 1 (title, what and reference · one key figure such as Agreed total, Total owed, Amount) on the plain surface over a hairline, never a navy or washed band; fields with 8 px corners (pages keep pills); a checkbox, radio or switch 13 px from its words. Task dialogs use the `dlg-head` / `dlg-title` / `dlg-what` / `dlg-sub` / `dlg-key` / `dlg-cap` / `dlg-figure` classes.
 
 Rules:
 - Use sentence case everywhere, no Title Case.
@@ -216,9 +218,10 @@ States: hover → `primary-hover`; press → `primary-press`; disabled → 38% o
 ### 8.5 Signature components
 | Component | Where | Spec |
 |---|---|---|
-| **Status timeline** | S-11, A-03 | Vertical list. Each step has a dot (status tone), the status word, date/time, the actor, and the reason if any. Current step bold; future steps hollow and muted |
+| **Status timeline** | S-11, A-03, A-17 | Vuetify `v-timeline` everywhere (2026-11-24). A-03 (`RequestTimeline`, web-app): across the panel when every step gets 132 px, else down it; done = success dot with a tick, current = primary dot with a soft ring, closed = error dot with a cross, not reached = hollow ring; the line is success up to the current step; date/time under each step; the full history (who, why) stays a table below. S-11: the request path (horizontal, 16 px nodes, primary) and History (vertical, newest first on a filled node). A-17 Status history: vertical, status chip + actor + reason, date under. Lines are solid colours (Vuetify's segments overlap; a translucent line shows dashes) |
 | **Quote comparison** | S-11, S-12 | Table: line · qty · **CIMH stock** column · **Supplier** column. Per line, a radio in each available option (CIMH shows a "from CIMH stock" tag). Totals row sticky at the bottom with the currency code; exchange rate shown in a caption when USD |
 | **Task checklist** | S-12 | Ruled list of three tasks (Check the quote · Get it signed · Send the signed copy), one open at a time on a primary wash, any reachable. Each task has a node (to do = outline ring with its number, open = primary ring + halo, done = primary fill + ✓) on one wire down the node column that fills as tasks are done. Ticks are kept in the browser, so a return opens the first task not done. Wide screens: the open task's document beside the list (sticky), one head per document, on a desk ground |
+| **Announcement banner** | Every SHOP and SIA page (A-22) | Full-width rows above the app bar (Vuetify layout slot, measured height, `density="default"`): Information = primary wash 14 % + full 1 px edge at 45 % + info icon; Alert = warning wash 22 % + warning icon; the word ("Information:" / "Alert:") always bold before the text. 14/20, 2 lines then More; link underlined (a product link opens it in this app); Close only on information. Content on SHOP's 1200 px column, SIA full width. Slides down 180 ms, fades out 140 ms; reduced motion = fade. Admin preview = the same row on SHOP/SIA page sketches, light and dark |
 | **Request header** | S-11, A-03 | Id (mono, `h2`) + type badge + status chip + key dates; the primary action on the right (from `allowedActions`) |
 | **Dashboard counter** | A-01 | Card with label, big number (`h1`, `tnum`) and tone border-left 4 px when attention is needed. The whole card is clickable |
 | **Approval card** | A-16 | Name, email (domain highlighted), organisation text, suggested organisation match, waiting time; Approve (primary) and Deny (danger) buttons |

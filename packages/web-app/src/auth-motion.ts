@@ -60,8 +60,13 @@ function shopDirection(to: string, from: string): 'fwd' | 'back' {
   return b > a ? 'fwd' : 'back'
 }
 
-/** Direction of the last SHOP page change, for App.vue's page transition. */
-export const shopDir = ref<'fwd' | 'back'>('fwd')
+// The Orders list and one request's own page are two views of the same papers: no travel between them.
+const REQ_LIST = /^\/requests\/?$/
+const REQ_ONE = /^\/requests\/[^/]+\/?$/
+const requestPair = (a: string, b: string) => (REQ_LIST.test(a) && REQ_ONE.test(b)) || (REQ_ONE.test(a) && REQ_LIST.test(b))
+
+/** Direction of the last SHOP page change, for App.vue's page transition ('quiet' = Orders list ↔ a request). */
+export const shopDir = ref<'fwd' | 'back' | 'quiet'>('fwd')
 
 export function installAuthMotion(router: Router, app?: 'shop' | 'sia'): void {
   let first = router.currentRoute.value === START_LOCATION
@@ -78,7 +83,7 @@ export function installAuthMotion(router: Router, app?: 'shop' | 'sia'): void {
     // stretched to the new page's height and held while the page loaded read as jerky). App.vue animates the
     // page itself with a Vue <Transition>; here only the direction of travel is recorded for it.
     if (app === 'shop' && to.meta.layout !== 'bare' && from.meta.layout !== 'bare') {
-      shopDir.value = shopDirection(to.path, from.path)
+      shopDir.value = requestPair(to.path, from.path) ? 'quiet' : shopDirection(to.path, from.path)
       return
     }
     if (to.meta.layout !== 'bare' || from.meta.layout !== 'bare') return

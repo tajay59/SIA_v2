@@ -16,6 +16,39 @@ ownership_values:
 - service
 - staff
 endpoints:
+  GET /api/catalog/v1/admin/announcements:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  POST /api/catalog/v1/admin/announcements:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  DELETE /api/catalog/v1/admin/announcements/{announcementId}:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  GET /api/catalog/v1/admin/announcements/{announcementId}:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  PATCH /api/catalog/v1/admin/announcements/{announcementId}:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  GET /api/catalog/v1/announcements:
+    roles:
+    - anonymous
+    - user
+    - staff
+    - admin
+    ownership: public
+    note: app=shop public; app=sia staff only (401/403, checked in test_announcements)
   GET /api/catalog/v1/health/live:
     roles:
     - anonymous
@@ -214,7 +247,25 @@ endpoints:
     - staff
     - admin
     ownership: staff
-    note: staff, admin; staff-built invoice / commercial invoice, stored + attached
+    note: staff, admin; the request's invoice / commercial invoice (one per kind), stored + recorded + attached
+  GET /api/documents/v1/requests/{requestId}/invoices/{kind}:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; the current invoice of a kind, as the builder reopens it
+  PUT /api/documents/v1/requests/{requestId}/invoices/{kind}:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; next revision (If-Match = rev); locked once the request is marked paid
+  DELETE /api/documents/v1/requests/{requestId}/invoices/{kind}:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; void with a reason; admin only once the request is marked paid (409/403 from order-svc)
   POST /api/documents/v1/internal/labels:
     roles:
     - service
@@ -660,6 +711,21 @@ endpoints:
     - service
     ownership: service
     note: document-svc; normally via document.events
+  PUT /api/orders/v1/internal/requests/{requestId}/invoices/{kind}:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; records a rendered invoice as the current one
+  POST /api/orders/v1/internal/requests/{requestId}/invoices/{kind}/void:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; voids the current invoice
+  GET /api/orders/v1/internal/invoice-numbers/next:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; suggested next invoice number
   GET /api/orders/v1/requests:
     roles: *id002
     ownership: same_org

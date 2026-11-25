@@ -11,6 +11,10 @@ Upload:   staff/admin any upload kind on any request; a customer only `signed_ag
 Download: staff/admin, or whoever order-svc says may see the request; otherwise 404 (never reveal a file exists).
           Label batches: staff only. nginx streams the bytes (X-Accel-Redirect to the internal /_protected/).
 Delete:   staff; uploads only (generated documents stay); soft (sidecar flag) + document.deleted + audit.
+Invoices: one current invoice and one commercial invoice per request (plan 2026-11-24-invoice-crud). document-svc
+          renders and stores the PDF; order-svc records which is current (rev, number, lines, total) and refuses
+          a second one, a stale revision, a change once paid or a number already used. Saving again = a new PDF
+          (rev + 1); the earlier PDF is flagged replaced, voiding flags it voided: both are staff-only downloads.
 Generate: from order events (consumer.py); the file id is derived from the event id, so a redelivered event
           rewrites the same file and order-svc attaches it once. An agreement / CIMH quote is rendered only while
           its quote version is still the current one (a revision sent meanwhile renders its own).
@@ -47,12 +51,17 @@ NAMES = {
 }
 
 
+SYSTEM_ACTOR = {"id": "system", "name": "CIMH Stores", "role": "system"}
+
+
 def now() -> datetime:
     return datetime.now(UTC)
 
 
 def public(meta: dict[str, Any]) -> dict[str, Any]:
-    keys = ("id", "requestId", "kind", "name", "mime", "size", "sha256", "uploadedBy", "uploadedAt", "quoteVersion")
+    keys: tuple[str, ...] = ("id", "requestId", "kind", "name", "mime", "size", "sha256", "uploadedBy", "uploadedAt")
+    keys += ("quoteVersion",)
+    keys += ("number", "rev") if meta.get("rev") else ()
     return {k: meta.get(k) for k in keys}
 
 
@@ -167,6 +176,8 @@ class DocumentService:
         if meta is None or meta.get("deleted"):
             raise not_found("No file with this id")
         if not p.is_staff:
+            if meta.get("replaced") or meta.get("voided"):  # an earlier or withdrawn invoice: staff only
+                raise not_found("No file with this id")
             rid = meta.get("requestId")
             acc = await self.orders.access(rid, p.sub) if rid else None
             if not acc or not acc.get("allowed"):
@@ -213,9 +224,7 @@ class DocumentService:
         render: dict[str, Callable[..., bytes]] = {
             "cimh_quote": pdfs.cimh_quote,
             "agreement": pdfs.agreement,
-            "invoice": pdfs.invoice,
             "probono_invoice": pdfs.probono_invoice,
-            "commercial_invoice": pdfs.commercial_invoice,
         }
         data = await asyncio.to_thread(render[kind], req, **opts)
         fid = "FIL" + hashlib.sha256(f"{event.eventId}:{kind}".encode()).hexdigest()[:32]
@@ -238,7 +247,7 @@ class DocumentService:
             raise not_found("Request not found")
         return await asyncio.to_thread(pdfs.agreement, req, preview=True)
 
-    # ------------------------------------------------------------------ staff-built invoices
+    # ------------------------------------------------------------------ invoices (one current per kind, revisions)
 
     async def _staff_request(self, p: Principal, rid: str) -> dict[str, Any]:
         if not p.is_staff:
@@ -249,41 +258,170 @@ class DocumentService:
         return req
 
     async def invoice_draft(self, p: Principal, rid: str, kind: str) -> dict[str, Any]:
-        """The lines, fee and shipping the invoice builder starts from (staff edit them before creating)."""
-        return pdfs.invoice_draft(await self._staff_request(p, rid), kind)
+        """The lines, fee and shipping the invoice builder starts from (staff edit them before creating), plus the
+        suggested number (the latest invoice number of this kind + 1)."""
+        draft = pdfs.invoice_draft(await self._staff_request(p, rid), kind)
+        draft["suggestedNumber"] = await self.orders.next_invoice_number(kind)
+        return draft
+
+    async def invoice_get(self, p: Principal, rid: str, kind: str) -> dict[str, Any]:
+        """The request's current invoice of `kind` as the builder reopens it (404 when there is none)."""
+        req = await self._staff_request(p, rid)
+        rec = (req.get("invoices") or {}).get(kind)
+        if not rec:
+            raise not_found("This request has no invoice of that kind")
+        return {**rec, "kind": kind, "recipient": pdfs.invoice_recipient(req, kind)}
 
     async def invoice_preview(self, p: Principal, rid: str, body: dict[str, Any]) -> bytes:
         req = await self._staff_request(p, rid)
         return await asyncio.to_thread(pdfs.built_invoice, req, body, preview=True)
 
     async def create_invoice(self, p: Principal, rid: str, body: dict[str, Any], cid: str) -> dict[str, Any]:
-        """Render, store and attach a staff-built invoice / commercial invoice; document.generated carries who
-        to email (`notify`), so notification-svc mails the customer and/or the staff invoice list."""
+        """A new invoice / commercial invoice (rev 1); 409 INVOICE_EXISTS when the request already has one."""
+        return await self._save_invoice(p, rid, body["kind"], body, None, cid)
+
+    async def revise_invoice(
+        self, p: Principal, rid: str, kind: str, body: dict[str, Any], rev: int, cid: str
+    ) -> dict[str, Any]:
+        """Changes to the current invoice: a new PDF (rev + 1, same or new number) replaces it for the customer;
+        the earlier PDF stays for staff. 409 VERSION_CONFLICT when someone saved first, 409 INVOICE_LOCKED once
+        marked paid."""
+        if body["kind"] != kind:
+            raise ProblemError(422, "VALIDATION_FAILED", errors=[{"field": "kind", "message": "must match the path"}])
+        return await self._save_invoice(p, rid, kind, body, rev, cid)
+
+    async def _save_invoice(
+        self, p: Principal, rid: str, kind: str, body: dict[str, Any], rev: int | None, cid: str
+    ) -> dict[str, Any]:
+        """Render, store, let order-svc record it as the current invoice (it decides: one per kind, revision,
+        lock, unique number; a refusal removes the new file), then publish document.generated (`notify` says who
+        is emailed; `rev` > 1 = a corrected invoice) and audit it."""
         req = await self._staff_request(p, rid)
-        kind = body["kind"]
-        data = await asyncio.to_thread(pdfs.built_invoice, req, body)
-        fid = "FIL" + secrets.token_hex(16)
-        number = "".join(ch for ch in str(body["number"]) if ch.isalnum() or ch in "-_")[:40]
-        name = f"{NAMES[kind]}-{number or rid}.pdf"
-        meta = self._generated_meta(fid, rid, kind, name, data, p.sub)
-        meta["uploadedBy"] = actor(p)
-        meta["number"] = body["number"]
+        new_rev = 1 if rev is None else rev + 1
+        data = await asyncio.to_thread(pdfs.built_invoice, req, body | {"rev": new_rev})
+        meta = self._invoice_meta("FIL" + secrets.token_hex(16), rid, kind, body["number"], new_rev, data, actor(p))
         self.files.save(meta, data)
+        try:
+            out = await self.orders.record_invoice(rid, kind, self._record_body(body, rev, "STAFF", actor(p), meta))
+        except ProblemError:
+            self.files.remove(meta)
+            raise
+        self._mark_old(out.get("replacedFileId"), {"replaced": True, "replacedBy": meta["id"]})
         notify = {"customer": bool(body.get("emailCustomer")), "staff": bool(body.get("emailStaff"))}
-        extra: dict[str, Any] = {"notify": notify, "number": body["number"]}
+        extra: dict[str, Any] = {"notify": notify, "number": body["number"], "rev": new_rev}
         if isinstance(req.get("customer"), str):
             extra["customer"] = req["customer"]
         try:
             await self._emit("document.generated", meta, cid, p.sub, **extra)
         except ProblemError:
-            self.files.remove(meta)
-            raise
-        try:
-            await self.orders.attach(rid, meta)
-        except ProblemError:
-            log.warning("sync attach failed; document.generated will attach it", extra={"fileId": fid})
-        await self._audit(p, f"{kind}.created", fid, cid, requestId=rid, number=body["number"])
+            # Recorded and attached already: the invoice stands; only its email is lost (staff can re-save).
+            log.error("document.generated not published; the invoice is recorded", extra={"fileId": meta["id"]})
+        action = f"{kind}.created" if rev is None else f"{kind}.revised"
+        await self._audit(p, action, meta["id"], cid, requestId=rid, number=body["number"], rev=new_rev)
+        return public(meta) | {"invoice": out.get("invoice")}
+
+    async def void_invoice(self, p: Principal, rid: str, kind: str, rev: int, reason: str, cid: str) -> None:
+        """Withdraw the current invoice: it leaves the customer's papers (nobody is emailed) and its number stays
+        used. Once the request is marked paid only an administrator may (order-svc answers 403)."""
+        await self._staff_request(p, rid)
+        body = {"rev": rev, "reason": reason, "by": actor(p), "admin": p.is_admin}
+        out = await self.orders.void_invoice(rid, kind, body)
+        fid = out.get("voidedFileId")
+        flags = {"voided": True, "voidedBy": actor(p), "voidedAt": now().isoformat(), "voidedReason": reason}
+        self._mark_old(fid, flags)
+        await self._audit(
+            p, f"{kind}.voided", fid or rid, cid, requestId=rid, number=out.get("number"), rev=out.get("rev"),
+            reason=reason,
+        )  # fmt: skip
+
+    async def generate_invoice(
+        self, kind: str, rid: str, event: EventEnvelope, *, shipment_id: str | None = None
+    ) -> dict[str, Any] | None:
+        """An invoice made on delivery, or a commercial invoice for a CIMH parcel leaving Barbados: only when the
+        request has no invoice of that kind yet (a voided one counts: staff withdrew it on purpose). Rendered from
+        the request like the builder's draft (an invoice charges the signed total: estimated shipping, not parcel
+        costs), recorded as the current invoice (source AUTO), so staff can open and change it later. Same event
+        -> same file id; a redelivery after the record re-publishes document.generated only."""
+        req = await self.orders.request(rid)
+        if req is None:
+            log.warning("request gone; nothing to render", extra={"requestId": rid, "kind": kind})
+            return None
+        fid = "FIL" + hashlib.sha256(f"{event.eventId}:{kind}".encode()).hexdigest()[:32]
+        cur = (req.get("invoices") or {}).get(kind)
+        voided = any(v.get("kind") == kind for v in req.get("voidedInvoices") or [])
+        meta: dict[str, Any] | None = None
+        if cur or voided:
+            meta = self.files.meta(fid) if cur and cur.get("fileId") == fid else None
+            if meta is None:
+                log.info("invoice already on the request; none generated", extra={"requestId": rid, "kind": kind})
+                return None
+        else:
+            data = pdfs.auto_invoice_data(req, kind, shipment_id)
+            if not data["lines"]:
+                log.info("nothing to invoice", extra={"requestId": rid, "kind": kind})
+                return None
+            number = data["number"] or await self.orders.next_invoice_number(kind) or rid
+            data["date"] = event.occurredAt
+            for _ in range(5):  # another request took the number a moment ago: the next one
+                data["number"] = number
+                pdf = await asyncio.to_thread(pdfs.built_invoice, req, data | {"rev": 1})
+                meta = self._invoice_meta(fid, rid, kind, number, 1, pdf, SYSTEM_ACTOR)
+                self.files.save(meta, pdf)
+                try:
+                    await self.orders.record_invoice(
+                        rid, kind, self._record_body(data, None, "AUTO", SYSTEM_ACTOR, meta)
+                    )
+                    break
+                except ProblemError as exc:
+                    self.files.remove(meta)
+                    meta = None
+                    if exc.code == "INVOICE_EXISTS":
+                        return None
+                    if exc.code != "INVOICE_NUMBER_TAKEN":
+                        raise
+                    number = await self.orders.next_invoice_number(kind) or f"{rid}-{secrets.token_hex(2)}"
+            if meta is None:
+                raise RuntimeError(f"no free invoice number for {rid}")  # -> retry topic
+        extra = {"customer": req["customer"]} if isinstance(req.get("customer"), str) else {}
+        await self._emit(
+            "document.generated", meta, event.correlationId, event.actorId, number=meta["number"], rev=1, **extra
+        )
         return public(meta)
+
+    @staticmethod
+    def _record_body(
+        data: dict[str, Any], rev: int | None, source: str, by: dict[str, Any], meta: dict[str, Any]
+    ) -> dict[str, Any]:
+        when = data["date"]
+        day = when.date().isoformat() if isinstance(when, datetime) else str(when)[:10]
+        return {
+            "rev": rev,
+            "number": data["number"],
+            "date": day,
+            "lines": [{k: ln.get(k) for k in ("lineId", "description", "qty", "unitPrice")} for ln in data["lines"]],
+            "fees": data.get("fees") or "0.00",
+            "discount": data.get("discount") or "0.00",
+            "shipping": data.get("shipping") or "0.00",
+            "source": source,
+            "by": by,
+            "file": {k: meta[k] for k in ("id", "kind", "name", "mime", "size")},
+        }
+
+    def _invoice_meta(
+        self, fid: str, rid: str, kind: str, number: str, rev: int, data: bytes, by: dict[str, Any]
+    ) -> dict[str, Any]:
+        clean = "".join(ch for ch in str(number) if ch.isalnum() or ch in "-_")[:40]
+        name = f"{NAMES[kind]}-{clean or rid}" + (f"-rev{rev}" if rev > 1 else "") + ".pdf"
+        meta = self._generated_meta(fid, rid, kind, name, data, by["id"])
+        if by["id"] != "system":
+            meta["uploadedBy"] = by
+        return meta | {"number": number, "rev": rev}
+
+    def _mark_old(self, fid: str | None, flags: dict[str, Any]) -> None:
+        """Flag an earlier invoice PDF on its sidecar (replaced / voided): customers can no longer download it."""
+        old = self.files.meta(fid) if fid else None
+        if old is not None:
+            self.files.write_meta(old | flags)
 
     @staticmethod
     def _generated_meta(fid: str, rid: str | None, kind: str, name: str, data: bytes, by: str) -> dict[str, Any]:

@@ -117,9 +117,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 
 | Area | Codes |
 |---|---|
-| Auth | `ACCOUNT_PENDING_VERIFICATION`, `ACCOUNT_PENDING_APPROVAL`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_LOCKED`, `MFA_REQUIRED`, `TOKEN_REUSE`, `CODE_INVALID`, `CODE_EXPIRED`, `PASSWORD_BREACHED`, `LAST_ADMIN`, `INVALID_CREDENTIALS`, `MFA_INVALID`, `MFA_ALREADY_ENABLED`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `TOKEN_INVALID`, `CSRF_FAILED` |
+| Auth | `ACCOUNT_PENDING_VERIFICATION`, `ACCOUNT_PENDING_APPROVAL`, `ACCOUNT_REJECTED`, `ACCOUNT_SUSPENDED`, `ACCOUNT_LOCKED`, `MFA_REQUIRED`, `TOKEN_REUSE`, `CODE_INVALID`, `CODE_EXPIRED`, `PASSWORD_BREACHED`, `LAST_ADMIN`, `INVALID_CREDENTIALS`, `MFA_INVALID`, `MFA_CODE_REUSED` (401 at login / 422 at MFA confirm: the right code, already used; wait for the next), `MFA_ALREADY_ENABLED`, `TOKEN_EXPIRED`, `TOKEN_REVOKED`, `TOKEN_INVALID`, `CSRF_FAILED` |
 | Accounts / organisations | `ACCOUNT_ILLEGAL_TRANSITION`, `DUPLICATE`, `ORG_MERGE_INVALID` |
-| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `LINE_SOURCE_CONFLICT`, `SHIPPING_ESTIMATE_REQUIRED`, `CIMH_STOCK_SHORT`, `TRACKING_REQUIRED`, `TRACKING_URL_INVALID`, `LINE_ALREADY_SHIPPED`, `LINE_SOURCE_MISMATCH`, `NO_PURCHASE_ORDER` |
+| Orders | `CIMH_CANNOT_REQUEST`, `PROBONO_LIMIT_EXCEEDED`, `PRODUCT_UNAVAILABLE`, `ORDER_ILLEGAL_TRANSITION`, `QUOTE_OUTDATED`, `QUOTE_EXPIRED`, `QUOTE_INCOMPLETE`, `AGREEMENT_REQUIRED`, `AGREEMENT_NOT_VERIFIED`, `LINE_NOT_PICKABLE`, `LINE_FULLY_PICKED`, `UNIT_WRONG_PRODUCT`, `PICKING_INCOMPLETE`, `EXCHANGE_RATE_REQUIRED`, `LINE_SOURCE_CONFLICT`, `SHIPPING_ESTIMATE_REQUIRED`, `CIMH_STOCK_SHORT`, `TRACKING_REQUIRED`, `TRACKING_URL_INVALID`, `LINE_ALREADY_SHIPPED`, `LINE_SOURCE_MISMATCH`, `NO_PURCHASE_ORDER`, `INVOICE_EXISTS` (one current invoice / commercial invoice per request), `INVOICE_NUMBER_TAKEN` (another request's invoice of the kind uses it, voided ones included), `INVOICE_LOCKED` (the request is marked paid) |
 | Inventory | `UNIT_NOT_FOUND`, `SHELF_NOT_FOUND`, `UNIT_NOT_STOWED`, `UNIT_ALREADY_STOWED` (on another shelf: relocate instead), `UNIT_ALREADY_PICKED`, `UNIT_RESERVED`, `UNIT_NOT_RESERVED_FOR_ORDER`, `UNIT_ASSIGNED` (issued to a person: unassign first), `UNIT_NOT_ASSIGNED`, `RESERVATION_FAILED` |
 | General | `VERSION_CONFLICT`, `PRECONDITION_REQUIRED` (428: `If-Match` missing), `VALIDATION_FAILED`, `RATE_LIMITED`, `DEPENDENCY_UNAVAILABLE`, `IDEMPOTENCY_KEY_REUSED` (422: same key, different request), `IDEMPOTENCY_IN_PROGRESS` (409: the first request with this key is still running; retry), `SEARCH_BUSY` (503 + `Retry-After`: too many searches at once, or a broad query hit its time limit) |
 
@@ -167,6 +167,9 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | GET / PUT | `/settings/fees` · `/settings/email-lists` · `/settings/general` | staff read / admin write | Admin fee, notification lists, workflow settings |
 | POST | `/internal/products/summaries` · GET/PUT `/internal/places` | service | Internal |
 
+
+**Announcements** (plan 2026-11-23; A-22): `GET /announcements?app=shop|sia` (live list; anyone for `shop`, staff for `sia`; `no-store`), `GET|POST /admin/announcements`, `GET|PATCH|DELETE /admin/announcements/{id}` (admin; If-Match on PATCH/DELETE; DELETE = End now). Errors: `LINK_NOT_ALLOWED`, `TTL_OUT_OF_RANGE`, `STARTS_AFTER_EXPIRY`, `PRODUCT_NOT_FOUND`, `PRODUCT_NOT_ON_SHOP` (422). **Live push:** WebSocket `/api/catalog/v1/announcements/stream?app=shop|sia`, served by `catalog-push` (same image), contract in `push.asyncapi.yaml`: `snapshot` on connect, then `upsert` / `remove`, `ping` every 25 s; Origin must be SHOP/SIA (else HTTP 403); `app=sia` needs the staff access cookie (close 4401 without or when it expires, 4403 non-staff); 1013 = server full (poll the list instead); client frames are ignored, > 1 KB closes 1009.
+
 ### inventory-svc: `/api/inventory/v1` (staff and admin only)
 | Method | Path | Purpose |
 |---|---|---|
@@ -198,7 +201,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | POST | `/requests/{id}/purchase-orders` | staff | `ACCEPTED → PURCHASING` (needs `agreementVerified: true`) |
 | POST | `/requests/{id}/approve` · `/reject` | staff | Pro Bono: `SUBMITTED → APPROVED / REJECTED` |
 | POST | `/requests/{id}/picks` | staff | Pick a unit for a **CIMH-stock or Pro Bono line** (Pro Bono `APPROVED → PICKING`); supplier lines are never picked |
-| POST | `/requests/{id}/shipments` | staff | Record one parcel (CIMH stock picked, or one supplier's lines); `→ SHIPPED` when the last line is covered (carrier; tracking unless HAND; OTHER = name + https link) |
+| POST | `/requests/{id}/shipments` | staff | Record one parcel (CIMH stock picked, or one supplier's lines); `→ SHIPPED` when the last line is covered (carrier; tracking unless HAND; OTHER = name + https link; `cost` required since 2026-11-24, 0.00 when nothing) |
 | PATCH | `/requests/{id}/shipments/{shipmentId}` | staff | Correct a shipment (carrier, tracking, link, date, cost, note); emails again only with `notifyCustomer` |
 | POST | `/requests/{id}/deliver` | staff | `SHIPPED → DELIVERED` (+ invoice) |
 | GET / POST | `/internal/requests/{id}/access` · `/internal/requests/{id}/files` · `/internal/requests/{id}` | service | Internal (document-svc: access + state, attach, staff view for PDFs) |
@@ -213,9 +216,12 @@ Catalog internal (service token): `GET /internal/email-lists` (notification-svc:
 | GET | `/files/{id}` | allowed viewers | Download (streamed by nginx via X-Accel-Redirect) |
 | DELETE | `/files/{id}` | staff | Soft delete with a reason (generated documents cannot be deleted) |
 | GET | `/requests/{id}/agreement-preview` | staff | The agreement a Send quote would email, from the saved draft, marked "Preview · not sent"; never stored or published (`no-store`); order-svc's 409/422 passed on |
-| GET | `/requests/{id}/invoice-draft?kind=` | staff | Lines the invoice builder starts from (every priced line, or CIMH stock only for `commercial_invoice`), admin fee, parcel shipping costs, recipient |
+| GET | `/requests/{id}/invoice-draft?kind=` | staff | Lines the invoice builder starts from (every priced line, or CIMH stock only for `commercial_invoice`), admin fee, parcel shipping costs, recipient, `suggestedNumber` (latest number of the kind + 1) |
 | POST | `/requests/{id}/invoice-preview` | staff | Staff-built invoice / commercial invoice PDF (legacy SIA layout), marked as a preview, never stored |
-| POST | `/requests/{id}/invoices` | staff | Store it on the request; `document.generated` carries `notify` {customer, staff} and `number`; audited |
+| POST | `/requests/{id}/invoices` | staff | Create the request's invoice / commercial invoice (rev 1; one per kind: 409 `INVOICE_EXISTS`; 409 `INVOICE_NUMBER_TAKEN`); recorded by order-svc, attached; `document.generated` carries `notify` {customer, staff}, `number`, `rev`; audited |
+| GET | `/requests/{id}/invoices/{kind}` | staff | The current invoice as the builder reopens it (lines, figures, revisions, `locked`, `source`, recipient); `ETag` = rev; 404 when none |
+| PUT | `/requests/{id}/invoices/{kind}` | staff | Next revision (`If-Match` = rev; 409 `VERSION_CONFLICT`, `INVOICE_LOCKED` once marked paid, `INVOICE_NUMBER_TAKEN`); the earlier PDF becomes staff-only |
+| DELETE | `/requests/{id}/invoices/{kind}` | staff (admin once paid) | Void with a reason (`If-Match` = rev); nobody emailed; number stays used; audited |
 | POST | `/internal/labels` | service (inventory) | Render a unit-label PDF (QR + text) for barcodes just allocated |
 
 Upload errors: 413 `FILE_TOO_LARGE`, 415 `UNSUPPORTED_FILE_TYPE` (type read from the bytes, not the name), 422 `FILE_INFECTED` (ClamAV found malware; the file is quarantined, never stored), 409 `INVALID_STATE` (customer upload outside QUOTED), 503 when the scanner is down (fail closed).

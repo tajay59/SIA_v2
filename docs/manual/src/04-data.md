@@ -137,6 +137,9 @@ New key index: `{ product, stowed, picked, reservedFor }`; `reservedFor`, `order
 `id` (= product id) · `productName`, `type`, `threshold`, `active` (copied from catalog events) · `available`, `reserved`, `picked`, `assigned` · `low` · `outbox[]`.
 Updated **in the same transaction** as every scan, with counts recomputed from `storage`, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold > 0 and available ≤ threshold; `stock.low` is sent when it turns true.
 
+### ✚ `announcements` (the banner on every page, catalog-svc)
+Admin messages shown at the top of every SHOP/SIA page: `id` (`ANN…`), `message` (plain text ≤ 280), `tone` INFO/ALERT, `audience` SHOP/SIA/BOTH, optional `link` (web address or `productId`), `dismissible` (never for alerts), `startsAt`, `expiresAt`, Actors, `version`. A **TTL index on `expiresAt`** deletes a message when the admin's time runs out (≤ 90 days); every read also filters on `expiresAt`. Audit entries ride on the `misc` document `announcements`. See BSD §5.12.
+
 ### `orders` (carts and requests)
 
 | Group | Fields |
@@ -148,10 +151,11 @@ Updated **in the same transaction** as every scan, with counts recomputed from `
 | Quote state | `quoteVersion`, `quoteExpiresAt`, **`adminFee`** (once per request, in the request currency), `quoteDraft` (staff) |
 | Agreement | `agreement{quoteVersion, total (lines + shipping + fee), fileId, signedFileId, verified, rejections[]}`, made when the quote is sent |
 | Decision | `acceptance{quoteVersion, agreementFileId, by, at, ip}` or `decline{by, at, reason}` |
-| Fulfilment | `purchaseOrders[]`, `approval` / `rejection` (PROBONO), `shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}`, `invoice{…}`, `files[]`, `cancellation{by, at, reason, auto}` |
+| Fulfilment | `purchaseOrders[]`, `approval` / `rejection` (PROBONO), `shipping{carrier FEDEX/DHL/HAND, tracking (required unless HAND), cost, date, by}`, `invoice{…}`, **`invoices{invoice?, commercial_invoice?}`** (the one current invoice of each kind: number, rev, fileId, lines, fees, discount, shipping, total, source STAFF/AUTO/LEGACY, revisions[]), `invoicesVoided[]`, `invoiceNumbers[]`, `files[]` (replaced/voided invoice PDFs flagged), `cancellation{by, at, reason, auto}` |
 
 Key rules:
 - One cart per user (only carts carry `cartOf`; a sparse unique index). While the customer is suspended the cart carries `blocked: true` and answers 403 `ACCOUNT_SUSPENDED`.
+- One current invoice and one commercial invoice per request; each save is the next revision; a number belongs to one request per kind (`invoiceNumbers`, unique multikey index), voided ones included. The current invoice's total is what the customer owes.
 - Accounts with `isCimh` can't have a cart or requests.
 - A mixed cart is split into one PAID and one Pro Bono request.
 - Status changes must follow the allowed flows, and each is a conditional update.

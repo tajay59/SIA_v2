@@ -7,6 +7,7 @@
  */
 import { type RequestSummary, ShortRef, StatusChip } from '@cimh/web-app'
 import IOverdue from '~icons/material-symbols/schedule-rounded'
+import { nextTick, ref, watch } from 'vue'
 import { type RouteLocationRaw, useRouter } from 'vue-router'
 import { BTN, TONE_ICON, waited, why } from '../request-queue'
 
@@ -42,6 +43,27 @@ const target = (id: string): RouteLocationRaw => props.linkTo?.(id) ?? `/request
 // Delivered but not paid (no proof yet, or a proof to check): Delivered shrinks to its icon beside a red chip.
 const unpaid = (r: RequestSummary) => r.paymentStatus === 'DUE' || r.paymentStatus === 'PROOF_SENT'
 const overdue = (r: RequestSummary) => props.overdueDays > 0 && (r.waitingDays ?? 0) > props.overdueDays
+
+// A list that arrives with a request already selected (back from its own page) shows that row: once, inside the
+// queue's own scroller (the page does not scroll), centred only when it was out of view.
+const scroller = ref<HTMLElement | null>(null)
+let revealed = false
+watch(
+  () => props.items,
+  async (list) => {
+    if (revealed || !list?.length) return
+    revealed = true
+    if (!selected.value || list[0].id === selected.value) return
+    await nextTick()
+    const host = scroller.value
+    const row = host?.querySelector<HTMLElement>('[aria-selected="true"]')
+    if (!host || !row) return
+    const h = host.getBoundingClientRect()
+    const r = row.getBoundingClientRect()
+    if (r.top < h.top || r.bottom > h.bottom) host.scrollTop += r.top - h.top - (h.height - r.height) / 2
+  },
+  { immediate: true },
+)
 
 function onRowKey(e: KeyboardEvent, i: number) {
   const list = props.items
@@ -83,7 +105,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
       <p v-if="emptyText" class="muted">{{ emptyText }}</p>
       <slot name="empty" />
     </div>
-    <div v-else class="console-scroll scroller">
+    <div v-else ref="scroller" class="console-scroll scroller">
       <TransitionGroup tag="ul" name="row" appear class="rows" role="listbox" :aria-label="label">
         <li
           v-for="(r, i) in items"
@@ -98,7 +120,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
           @click="pick(r.id)"
           @keydown="onRowKey($event, i)"
         >
-          <span class="code"><ShortRef :id="r.id" /></span>
+          <span class="code"><ShortRef :id="r.id" fit /></span>
           <span class="who">
             <span class="who-name">{{ r.customerName || r.customer }}</span>
             <span v-if="r.type === 'PROBONO'" class="probono-badge">Pro Bono</span>

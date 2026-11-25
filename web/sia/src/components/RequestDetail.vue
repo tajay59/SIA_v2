@@ -8,7 +8,6 @@
 import {
   act,
   ApiError,
-  fileUrl,
   getRequest,
   type OrderRequest,
   ReasonDialog,
@@ -21,6 +20,7 @@ import {
 import { mdiArrowRight } from '@mdi/js'
 import { computed, ref, watch } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
+import FilePreviewDialog from './FilePreviewDialog.vue'
 import { BTN, expiresSoon, fmtDate, TONE_ICON, waited, why } from '../request-queue'
 
 const props = defineProps<{ summary: RequestSummary | null; openTo?: RouteLocationRaw }>()
@@ -71,6 +71,7 @@ async function run(path: Parameters<typeof act>[1], body: unknown, done: string)
     busy.value = false
   }
 }
+const previewing = ref(false)
 const rejecting = ref(false)
 async function submitReject(reason: string) {
   if (await run('/requests/{requestId}/reject', { reason }, 'Request rejected')) rejecting.value = false
@@ -93,7 +94,7 @@ async function submitReject(reason: string) {
           <p class="ident-sub">
             {{ [summary.organisationName, summary.customerName || summary.customer].filter(Boolean).join(' · ') }}
           </p>
-          <p class="code-full"><ShortRef :id="summary.id" /></p>
+          <p class="code-full"><ShortRef :id="summary.id" fit copy /></p>
         </div>
 
         <section class="next" :class="why(summary).tone" aria-labelledby="next-title">
@@ -129,7 +130,7 @@ async function submitReject(reason: string) {
               >Approve</v-btn>
               <template v-if="can('purchase-orders')">
                 <v-btn :to="`/requests/${detail.id}`" class="m3" color="primary" :prepend-icon="BTN.verify">Verify and purchase</v-btn>
-                <v-btn v-if="signed" :href="fileUrl(signed)" target="_blank" variant="outlined" class="m3" :prepend-icon="BTN.signed">
+                <v-btn v-if="signed" variant="outlined" @click="previewing = true" class="m3" :prepend-icon="BTN.signed">
                   Signed agreement
                 </v-btn>
               </template>
@@ -190,6 +191,7 @@ async function submitReject(reason: string) {
       <p class="muted">Select a request to see it here.</p>
     </div>
 
+    <FilePreviewDialog v-model="previewing" :request="detail" :file-id="signed" title="Signed agreement" />
     <ReasonDialog
       v-model="rejecting"
       title="Reject this Pro Bono request?"

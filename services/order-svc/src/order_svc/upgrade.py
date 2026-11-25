@@ -166,3 +166,81 @@ async def name_keys(orders: Any) -> int:
     if fixed:
         log.warning("name-keys upgrade", extra={"requestsFilled": fixed})
     return fixed
+
+
+INVOICE_PREFIX = {"invoice": "Invoice-", "commercial_invoice": "Commercial-invoice-"}
+
+
+def _number_from(kind: str, name: str | None, rid: str) -> str | None:
+    """A staff-built PDF is named "<Prefix><number>.pdf"; generated and legacy ones carry the request id instead."""
+    name = name or ""
+    if not name.startswith(INVOICE_PREFIX[kind]):
+        return None
+    stem = name.removesuffix(".pdf").removeprefix(INVOICE_PREFIX[kind])
+    return None if not stem or rid in stem else stem
+
+
+async def invoices(orders: Any) -> dict[str, Any]:
+    """invoices (2026-11-24, docs/plans/2026-11-24-invoice-crud.md §4.7): each request's newest invoice PDF of each
+    kind becomes its current invoice record (`source` LEGACY: no lines kept, so the builder starts from the
+    request and saving issues rev 2); older PDFs of that kind are marked replaced. The number comes from Mark
+    delivered (`invoice.number`) or the staff-built file name. A number another request already holds is logged
+    (request ids) and left out of `invoiceNumbers`, so the unique index always builds; staff renumber on save.
+    `invoicesUpgraded` marks a request as done, so a second run changes nothing."""
+    from .service import INVOICE_KINDS, invoice_number_key
+
+    made = 0
+    clashes: list[str] = []
+    filt = {"files.kind": {"$in": list(INVOICE_KINDS)}, "invoicesUpgraded": {"$ne": True}, "status": {"$ne": "CART"}}
+    fields = {"_id": 1, "id": 1, "files": 1, "invoice": 1, "invoices": 1, "invoiceNumbers": 1, "statusAt": 1}
+    async for doc in orders.find(filt, fields):
+        sets: dict[str, Any] = {"invoicesUpgraded": True}
+        keys: list[str] = []
+        replaced: list[str] = []
+        for kind in INVOICE_KINDS:
+            if (doc.get("invoices") or {}).get(kind):
+                continue
+            live = [f for f in doc.get("files") or [] if f.get("kind") == kind
+                    and not (f.get("deleted") or f.get("replaced") or f.get("voided"))]  # fmt: skip
+            if not live:
+                continue
+            live.sort(key=lambda f: str(f.get("uploadedAt") or ""))
+            cur = live[-1]
+            replaced += [f["id"] for f in live[:-1]]
+            number = (doc.get("invoice") or {}).get("number") if kind == "invoice" else None
+            number = number or _number_from(kind, cur.get("name"), doc["id"])
+            if number:
+                key = invoice_number_key(kind, number)
+                if await orders.find_one({"invoiceNumbers": key, "id": {"$ne": doc["id"]}}, {"_id": 1}):
+                    clashes.append(doc["id"])
+                else:
+                    keys.append(key)
+            at = cur.get("uploadedAt") or doc.get("statusAt") or now()
+            sets[f"invoices.{kind}"] = {
+                "number": number,
+                "rev": 1,
+                "fileId": cur["id"],
+                "date": at if hasattr(at, "year") else None,
+                "lines": None,
+                "total": None,
+                "source": "LEGACY",
+                "createdAt": at if hasattr(at, "year") else now(),
+                "updatedAt": now(),
+                "revisions": [{"rev": 1, "fileId": cur["id"], "number": number, "total": None, "by": SYSTEM, "at": at}],
+            }
+        update: dict[str, Any] = {"$set": sets}
+        if keys:
+            update["$addToSet"] = {"invoiceNumbers": {"$each": keys}}
+        try:
+            await orders.update_one({"_id": doc["_id"]}, update)
+        except Exception:  # a number taken a moment ago by a live save: keep the record without it
+            update.pop("$addToSet", None)
+            clashes.append(doc["id"])
+            await orders.update_one({"_id": doc["_id"]}, update)
+        for fid in replaced:
+            await orders.update_one({"_id": doc["_id"], "files.id": fid}, {"$set": {"files.$.replaced": True}})
+        made += len(sets) - 1
+    if made or clashes:
+        extra = {"recordsMade": made, "numberClashes": len(clashes), "requestIds": clashes}
+        log.warning("invoices upgrade", extra=extra)
+    return {"recordsMade": made, "numberClashes": clashes}

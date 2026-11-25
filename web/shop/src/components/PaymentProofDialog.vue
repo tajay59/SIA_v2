@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
  * Send a proof of payment for a delivered paid request (owner, 2026-11-23; redesigned with the payment statement,
- * impeccable). Navy head: what is being paid for, its reference and the amount on record. Body: one drop slot (click,
+ * impeccable). Plain head (2026-11-24, golden-ratio dialog; was navy): what is being paid for, its reference and the amount on record. Body: one drop slot (click,
  * Enter or drop a file; the native picker stays hidden), then the chosen file as a row with Change and Remove.
  * Uploaded as `payment_proof` (document-svc; scanned like every upload); CIMH staff are emailed. Send stays enabled:
  * a press with no file says so under the slot and moves the cursor there (forms rule).
@@ -105,14 +105,18 @@ async function send() {
 <template>
   <v-dialog v-model="open" max-width="560" :fullscreen="xs" :persistent="busy" scrollable aria-labelledby="proof-title">
     <v-card class="proof" rounded="lg">
-      <header class="head">
-        <h2 id="proof-title" class="head-title">Send proof of payment</h2>
-        <p class="head-what">{{ title }}</p>
-        <p class="head-meta">
-          <span class="t-mono">{{ shortRef(request.id) }}</span>
-          <template v-if="amount"> · <strong class="head-amount">{{ amount }}</strong></template>
-          <template v-else> · amount on the invoice</template>
-        </p>
+      <!-- Plain head (golden-ratio dialog, owner 2026-11-24): the request φ : the amount 1. -->
+      <header class="dlg-head">
+        <div class="dlg-who">
+          <h2 id="proof-title" class="dlg-title">Send proof of payment</h2>
+          <p class="dlg-what">{{ title }}</p>
+          <p class="dlg-sub"><span class="t-mono">{{ shortRef(request.id) }}</span></p>
+        </div>
+        <dl class="dlg-key">
+          <dt class="dlg-cap">Amount</dt>
+          <dd v-if="amount" class="dlg-figure">{{ amount }}</dd>
+          <dd v-else class="dlg-sub on-invoice">On the invoice</dd>
+        </dl>
       </header>
 
       <v-card-text class="body">
@@ -166,48 +170,21 @@ async function send() {
   display: flex;
   flex-direction: column;
 }
-.head {
-  flex: none;
-  background: #0a2e4a;
-  color: #fff;
-  border-bottom: 4px solid #0084c8;
-  padding: var(--sp-6) var(--sp-6) var(--sp-5, 20px);
-}
-.head-title {
-  margin: 0;
-  font-size: 15px;
-  line-height: 20px;
-  font-weight: 600;
-  color: rgb(255 255 255 / 0.78);
-}
-.head-what {
-  margin: var(--sp-2) 0 0;
-  font-size: 22px;
-  line-height: 28px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  overflow-wrap: anywhere;
-  text-wrap: balance;
-}
-.head-meta {
-  margin: var(--sp-1) 0 0;
+/* Golden-ratio dialog (owner 2026-11-24): 11 · 14 · 17.8 · 22.65 px, spacing 8 · 13 · 21 · 34; head from base.css. */
+.proof {
   font-size: 14px;
-  line-height: 20px;
-  color: rgb(255 255 255 / 0.86);
 }
-.head-amount {
-  color: #fff;
-  font-variant-numeric: tabular-nums;
+.on-invoice {
+  margin: 0;
 }
-
 .body {
-  padding: var(--sp-5, 20px) var(--sp-6) var(--sp-2) !important;
+  padding: 21px 21px 8px !important;
 }
 .lead {
-  margin: 0 0 var(--sp-4);
+  margin: 0 0 21px;
   max-width: 60ch;
-  font-size: 15px;
-  line-height: 22px;
+  line-height: 1.5;
+  color: var(--dlg-muted);
 }
 .picker {
   position: absolute;
@@ -220,10 +197,10 @@ async function send() {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-1);
-  padding: var(--sp-6) var(--sp-4);
+  gap: 8px;
+  padding: 34px 21px;
   border: 1.5px dashed rgb(var(--v-theme-field-outline));
-  border-radius: 12px;
+  border-radius: 8px;
   text-align: center;
   cursor: pointer;
   transition: border-color 140ms ease-out, background-color 140ms ease-out;
@@ -247,16 +224,15 @@ async function send() {
   font-weight: 600;
 }
 .slot-hint {
-  font-size: 13px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: var(--dlg-muted);
 }
 .chosen {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-2) var(--sp-3) var(--sp-4);
-  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
-  border-radius: 12px;
+  gap: 13px;
+  padding: 13px 8px 13px 13px;
+  border: 1px solid var(--dlg-rule);
+  border-radius: 8px;
   background: rgba(var(--v-theme-primary), 0.05);
 }
 .chosen-icon {
@@ -275,37 +251,34 @@ async function send() {
   white-space: nowrap;
 }
 .chosen-size {
-  font-size: 13px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  color: var(--dlg-muted);
   font-variant-numeric: tabular-nums;
 }
 .error {
-  min-height: 20px;
-  margin: var(--sp-2) 0 0;
-  font-size: 13px;
-  line-height: 20px;
+  min-height: 21px;
+  margin: 8px 0 0;
+  line-height: 21px;
   color: rgb(var(--v-theme-error));
 }
 .note {
-  margin: var(--sp-2) 0 0;
-  font-size: 14px;
-  line-height: 20px;
-  color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  margin: 8px 0 0;
+  line-height: 1.5;
+  color: var(--dlg-muted);
 }
 .foot {
   flex: none;
   display: flex;
   justify-content: flex-end;
-  gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-6) var(--sp-5, 20px);
+  gap: 8px;
+  padding: 13px 21px;
+  border-top: 1px solid var(--dlg-rule);
 }
 @media (max-width: 599.98px) {
-  .head,
   .foot {
-    padding-inline: var(--sp-4);
+    padding-inline: 13px;
   }
   .body {
-    padding-inline: var(--sp-4) !important;
+    padding-inline: 13px !important;
   }
   .foot {
     flex-direction: column-reverse;

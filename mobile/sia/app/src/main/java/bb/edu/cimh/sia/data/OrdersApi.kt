@@ -87,11 +87,21 @@ data class ShipmentInput(
     val carrier: String,
     val tracking: String? = null,
     val note: String? = null,
+    /** Required (2026-11-24): what CIMH paid to send the parcel, BBD with 2 decimals ("0.00" when nothing). */
+    val cost: String,
     /** yyyy-MM-dd */
     val date: String,
     val notifyCustomer: Boolean = true,
     val source: String = "CIMH",
 )
+
+/** A typed shipping cost as the API's money string ("45" → "45.00", "45.5" → "45.50"); null when it isn't one. */
+fun shippingCost(input: String): String? {
+    val t = input.trim()
+    if (!Regex("""^\d{1,12}(\.\d{1,2})?$""").matches(t)) return null
+    val (whole, frac) = t.split('.').let { it[0] to it.getOrElse(1) { "" } }
+    return "$whole.${frac.padEnd(2, '0')}"
+}
 
 class OrdersApi(baseUrl: String, client: OkHttpClient) {
     private val api = ApiClient(baseUrl, "orders", client)

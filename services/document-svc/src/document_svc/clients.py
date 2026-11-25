@@ -4,9 +4,13 @@
          GET  /internal/requests/{id}                staff view, for rendering PDFs
          POST /internal/requests/{id}/files          attach an upload at once (so "Accept" works immediately)
          GET  /internal/requests/{id}/quote-preview  the request as Send quote would leave it (agreement preview)
+         PUT  /internal/requests/{id}/invoices/{kind}       record a rendered invoice as the current one (new / rev)
+         POST /internal/requests/{id}/invoices/{kind}/void  withdraw the current invoice
+         GET  /internal/invoice-numbers/next?kind=          the builder's suggested number
 
 Transport errors and 5xx become 503 DEPENDENCY_UNAVAILABLE. The quote preview passes order-svc's 409/422 on: they
-say why the draft can't be sent yet, which is what staff need to read.
+say why the draft can't be sent yet, which is what staff need to read. The invoice calls pass order-svc's
+403/409 on (INVOICE_EXISTS, INVOICE_NUMBER_TAKEN, INVOICE_LOCKED, VERSION_CONFLICT) and turn 404 into one.
 
 document-svc owns no collection, so it has no outbox: events are published straight to Kafka (acks=all) and the
 caller decides what a failed publish means (upload: refuse and remove the file; generated PDF: the consumer
@@ -21,7 +25,7 @@ from typing import Any, Protocol
 import httpx
 
 from cimh_common.consumer import envelope_bytes
-from cimh_common.errors import ProblemError
+from cimh_common.errors import ProblemError, not_found
 from cimh_common.outbox import EventEnvelope
 
 TOPIC = "document.events"
@@ -37,6 +41,9 @@ class Orders(Protocol):
     async def request(self, rid: str) -> dict[str, Any] | None: ...
     async def attach(self, rid: str, file: dict[str, Any]) -> None: ...
     async def quote_preview(self, rid: str) -> dict[str, Any] | None: ...
+    async def record_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def void_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]: ...
+    async def next_invoice_number(self, kind: str) -> str | None: ...
 
 
 class Publisher(Protocol):
@@ -54,7 +61,8 @@ class HttpOrders:
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.identity = identity_url.rstrip("/") + "/api/identity/v1"
-        self.orders = order_url.rstrip("/") + "/api/orders/v1/internal/requests"
+        self.internal = order_url.rstrip("/") + "/api/orders/v1/internal"
+        self.orders = self.internal + "/requests"
         self.secret = secret
         self.timeout = timeout
         self.transport = transport
@@ -103,6 +111,26 @@ class HttpOrders:
     async def quote_preview(self, rid: str) -> dict[str, Any] | None:
         r = await self._call("GET", f"{self.orders}/{rid}/quote-preview", relay=(409, 422))
         return None if r is None else dict(r.json())
+
+    async def record_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        r = await self._call("PUT", f"{self.orders}/{rid}/invoices/{kind}", json=body, relay=INVOICE_RELAY)
+        if r is None:
+            raise not_found("Request not found")
+        return dict(r.json())
+
+    async def void_invoice(self, rid: str, kind: str, body: dict[str, Any]) -> dict[str, Any]:
+        r = await self._call("POST", f"{self.orders}/{rid}/invoices/{kind}/void", json=body, relay=INVOICE_RELAY)
+        if r is None:
+            raise not_found("This request has no invoice of that kind")
+        return dict(r.json())
+
+    async def next_invoice_number(self, kind: str) -> str | None:
+        r = await self._call("GET", f"{self.internal}/invoice-numbers/next", params={"kind": kind})
+        number = None if r is None else r.json().get("number")
+        return number if isinstance(number, str) else None
+
+
+INVOICE_RELAY = (403, 409, 422)
 
 
 def _relayed(r: httpx.Response) -> ProblemError:

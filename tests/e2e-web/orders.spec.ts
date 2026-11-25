@@ -300,6 +300,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     const confirmSend = page.getByRole('dialog')
     await expect(confirmSend).toContainText('This accepts quote version 1 for BBD 430.00')
     await auditDialog(page, 'shop-agreement-confirm-send')
+    await shot(page, 'shop-agreement-confirm-send', { fullPage: false })
     await confirmSend.getByRole('button', { name: 'Send signed agreement' }).click()
     // Ends on the request page: a lasting banner says what CIMH does next.
     const after = page.getByRole('region', { name: 'Where it stands' }) // History repeats the words, folded
@@ -334,10 +335,35 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
       await page.reload()
       await expect(page.getByText('Reserved', { exact: true })).toBeVisible({ timeout: 2000 })
     }).toPass({ timeout: 45_000 })
+    // Request files open in a dialog on the page, never another tab (owner 2026-11-23); Esc closes it and the opener
+    // gets focus back.
+    const signedTile = page.getByRole('button', { name: /^Signed agreement, / })
+    await signedTile.click()
+    const filePreview = page.getByRole('region', { name: /^Preview of / })
+    await expect(filePreview.locator('canvas').first()).toBeVisible()
+    await expect(page.getByRole('dialog').getByRole('link', { name: 'Download' })).toHaveAttribute('href', /\?disposition=attachment$/)
+    await auditDialog(page, 'sia-file-preview')
+    await page.keyboard.press('Escape')
+    await expect(filePreview).toHaveCount(0)
+    await expect(signedTile).toBeFocused()
     await page.getByRole('button', { name: 'Verify and purchase' }).click()
+    const openSigned = page.getByRole('button', { name: 'Open the signed agreement' })
+    await openSigned.click()
+    await expect(filePreview.locator('canvas').first()).toBeVisible()
+    await page.getByRole('dialog').filter({ has: filePreview }).getByRole('button', { name: 'Close' }).click()
+    await expect(filePreview).toHaveCount(0)
+    await expect(openSigned).toBeFocused()
+    // Start purchasing is never disabled: a press with nothing done marks what is missing and moves the cursor there.
+    await page.getByRole('button', { name: 'Start purchasing' }).click()
+    await expect(page.getByText('Check the signed agreement first')).toBeVisible()
+    await expect(page.getByLabel(/signed by an authorised person/)).toBeFocused()
+    await expect(page.getByText('Enter the PO number')).toBeVisible()
+    await shot(page, 'sia-verify-missing', { fullPage: false })
     await page.getByLabel(/signed by an authorised person/).check()
     await page.getByLabel('PO number').fill(`PO-${run}`) // the supplier line is ordered by CIMH
-    await shot(page, 'sia-verify')
+    await expect(page.getByRole('region', { name: 'Purchase orders' }).getByText('1 of 1 recorded')).toBeVisible()
+    await auditDialog(page, 'sia-verify')
+    await shot(page, 'sia-verify-done', { fullPage: false })
     await page.getByRole('button', { name: 'Start purchasing' }).click()
     await expect(page.getByText('Signature verified; purchasing')).toBeVisible()
 
@@ -351,9 +377,18 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('button', { name: 'Record shipment' }).click()
     // One parcel per source: the request's only line comes from CIMH stock, ticked and ready (every unit picked).
     await expect(page.getByRole('dialog').getByRole('checkbox', { name: new RegExp(paidName) })).toBeChecked()
+    // The order id in full wherever it fits (on its own line in the head) with its copy button.
+    if ((page.viewportSize()?.width ?? 1280) >= 600) await expect(page.getByRole('dialog').getByText(paidRequest, { exact: true })).toBeVisible()
+    await expect(page.getByRole('dialog').getByRole('button', { name: `Copy order id ${paidRequest}` })).toBeVisible()
     await page.getByLabel('Hand delivery').check()
+    // Shipping cost is required: an empty press marks it and moves the cursor there.
+    await page.getByRole('dialog').getByRole('button', { name: 'Record shipment' }).click()
+    await expect(page.getByText('Enter the shipping cost (0.00 if it cost nothing)')).toBeVisible()
+    await expect(page.getByLabel('Shipping cost')).toBeFocused()
+    await shot(page, 'sia-ship-missing', { fullPage: false })
     await page.getByLabel('Delivered by / collected by').fill('Collected by Cass')
-    await shot(page, 'sia-ship-dialog')
+    await page.getByLabel('Shipping cost').fill('0')
+    await shot(page, 'sia-ship-dialog', { fullPage: false })
     await auditDialog(page, 'Record shipment')
     await page.getByRole('dialog').getByRole('button', { name: 'Record shipment' }).click()
     await expect(page.getByText('Shipment recorded')).toBeVisible()
@@ -362,10 +397,12 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(page.getByRole('button', { name: 'Mark delivered' })).toHaveCount(0)
     await page.getByRole('button', { name: 'Record shipment' }).click()
     const second = page.getByRole('dialog')
+    await shot(page, 'sia-ship-second', { fullPage: false })
     await expect(second.getByRole('radio', { name: /Campbell Scientific/ })).toBeChecked()
     await expect(second.getByRole('checkbox', { name: new RegExp(supName) })).toBeChecked()
     await second.getByLabel('UPS').check()
     await second.getByLabel('Tracking number').fill('1Z999AA10123456784')
+    await second.getByLabel('Shipping cost').fill('85.5')
     await second.getByRole('button', { name: 'Record shipment' }).click()
     await expect(page.getByText('Shipment recorded').last()).toBeVisible() // the first parcel's toast may still show
     await expect(page.getByRole('region', { name: 'Shipments' }).getByRole('listitem')).toHaveCount(2)
@@ -374,11 +411,23 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('dialog').getByRole('button', { name: 'Mark delivered' }).click()
     await expect(page.getByText('Marked delivered')).toBeVisible()
 
-    // Invoice builder: every priced line, the preview drawn beside the panel, stored on the request.
-    await page.getByRole('button', { name: 'Create invoice', exact: true }).click()
+    // Mark delivered made the invoice (document-consumer, number from delivery): the button opens it by its number.
+    const invButton = page.getByTestId('invoice-button')
+    await expect(async () => {
+      await page.reload()
+      await expect(invButton).toHaveText(`Invoice INV-${run}`, { timeout: 2000 })
+    }).toPass({ timeout: 45_000 })
+
+    // Open it: the saved copy, its lines, nothing to save until something changes (plan 2026-11-24-invoice-crud).
+    await invButton.click()
     const inv = page.getByRole('dialog')
+    await expect(inv.locator('.v-card-title').first()).toHaveText(`Invoice INV-${run}`)
+    await expect(inv.getByTestId('invoice-state')).toHaveText('Revision 1 · Made automatically from the request')
     await expect(inv.locator('.line')).toHaveCount(2)
-    await expect(inv.getByLabel('Invoice #')).toHaveValue(`INV-${run}`) // the number given at delivery
+    await expect(inv.getByLabel('Invoice #')).toHaveValue(`INV-${run}`)
+    await expect(inv.getByRole('button', { name: 'Save changes' })).toBeDisabled() // nothing changed yet
+    await expect(inv.getByText('The copy the customer has.')).toBeVisible()
+    await expect(inv.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
     // The date is a Vuetify date input: pressing it opens the v-date-picker.
     await inv.locator('.v-date-input .v-field').click()
     await expect(page.locator('.v-date-picker')).toBeVisible()
@@ -390,16 +439,60 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await shot(page, 'sia-invoice-date-picker', { fullPage: false })
     await page.keyboard.press('Escape')
     await expect(page.locator('.v-date-picker')).toBeHidden()
+    await auditDialog(page, 'Invoice (open)')
+    await shot(page, 'sia-invoice-open', { fullPage: false })
+
+    // Change it: a live preview of the next revision; Save issues revision 2, emailed only where ticked.
+    await expect(inv.getByLabel('Customer', { exact: true })).not.toBeChecked() // a corrected copy: unticked by default
+    await inv.getByLabel('Discount').fill('10.00')
+    await expect(inv.getByText('Preview of your changes: saving issues revision 2.')).toBeVisible()
+    await inv.getByLabel('Customer', { exact: true }).check()
+    await inv.getByRole('button', { name: 'Save changes' }).click()
+    await expect(page.getByText(`Invoice INV-${run} saved as revision 2; emailed to the customer`)).toBeVisible()
+    await expect(inv).toBeHidden()
+
+    // Reopen: revision 2, the first copy kept for staff and opened in the file preview.
+    await invButton.click()
+    await expect(inv.getByTestId('invoice-state')).toHaveText('Revision 2')
+    await expect(inv.getByLabel('Discount')).toHaveValue('10.00')
+    await inv.getByRole('button', { name: /^Revision 1/ }).click()
+    const earlierCopy = page.getByRole('dialog').filter({ hasText: `Invoice INV-${run} · revision 1` })
+    await expect(earlierCopy).toBeVisible()
+    await earlierCopy.getByRole('button', { name: 'Close' }).first().click()
+    await expect(earlierCopy).toBeHidden()
+
+    // Delete it (asks for a reason; nobody is emailed): the button starts a new one again.
+    await inv.getByRole('button', { name: 'Delete invoice…' }).click()
+    const why = page.getByRole('dialog').filter({ hasText: `Delete invoice INV-${run}?` })
+    await expect(why.getByText(`Number INV-${run} stays used.`, { exact: false })).toBeVisible()
+    await auditDialog(page, 'Delete invoice')
+    await why.getByLabel('Reason').fill('Wrong discount: issuing a fresh invoice')
+    await why.getByRole('button', { name: 'Delete invoice' }).click()
+    await expect(page.getByText(`Invoice INV-${run} voided`)).toBeVisible()
+    await expect(invButton).toHaveText('Create invoice')
+
+    // Create a new one: every priced line from the request; the deleted number stays taken.
+    await invButton.click()
+    await expect(inv.locator('.v-card-title').first()).toHaveText('Create invoice')
+    await expect(inv.locator('.line')).toHaveCount(2)
     await expect(inv.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
+    await inv.getByLabel('Invoice #').fill(`INV-${run}`)
+    await inv.getByRole('button', { name: 'Create invoice', exact: true }).click()
+    await expect(inv.locator('.problems')).toContainText(`Number INV-${run} is already used by another invoice`)
+    await inv.getByLabel('Invoice #').fill(`INV-${run}-B`)
     await auditDialog(page, 'Create invoice')
     await inv.getByRole('button', { name: 'Create invoice', exact: true }).click()
-    await expect(page.getByText(`Invoice INV-${run} created; emailed to the customer and staff`)).toBeVisible()
+    await expect(page.getByText(`Invoice INV-${run}-B created; emailed to the customer and staff`)).toBeVisible()
     await expect(inv).toBeHidden()
+    await expect(invButton).toHaveText(`Invoice INV-${run}-B`)
     // Commercial invoice: CIMH stock only (the supplier's item shipped direct).
-    await page.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
+    await page.getByTestId('commercial-invoice-button').click()
     const ci = page.getByRole('dialog')
     await expect(ci.locator('.line')).toHaveCount(1)
     await expect(ci.getByLabel('Line 1 description')).toHaveValue(new RegExp(paidName))
+    // The number starts as the next one in the series (commercial invoices exist on the dev stack); cleared, a press
+    // marks it instead of the button being disabled.
+    await ci.getByLabel('Commercial invoice #').clear()
     await ci.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
     await expect(ci.locator('.problems')).toContainText('Enter the commercial invoice number') // marked, not disabled
     await ci.getByLabel('Commercial invoice #').fill(`CI-${run}`)
@@ -408,6 +501,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(ci.locator('canvas.doc-page').first()).toBeVisible({ timeout: 20_000 })
     await ci.getByRole('button', { name: 'Create commercial invoice', exact: true }).click()
     await expect(page.getByText(`Commercial invoice CI-${run} created; emailed to staff`)).toBeVisible()
+    await expect(page.getByTestId('commercial-invoice-button')).toHaveText(`Commercial invoice CI-${run}`)
   })
 
   test('J-04 customer sees the request delivered', async ({ page }) => {
@@ -424,14 +518,13 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await expect(parcels.getByRole('link', { name: /Track 1Z999AA10123456784 with UPS/ })).toHaveAttribute('href', 'https://www.ups.com/track?tracknum=1Z999AA10123456784')
     await shot(page, 'shop-request-delivered')
     await expect(page.locator('.items li', { hasText: 'From CIMH stock' })).toBeVisible() // where the line came from
-    // order.delivered → document-consumer makes the invoice → it joins the papers in place of the dashed sheet.
-    await expect(async () => {
-      await page.reload()
-      // The invoice made at delivery and the one staff built in J-06 (invoice builder).
-      await expect(page.getByRole('region', { name: 'Papers', exact: true }).getByRole('button', { name: /^Read Invoice full size/ })).toHaveCount(2, { timeout: 2000 })
-    }).toPass({ timeout: 45_000 })
-    await expect(page.getByText('Comes when the items are delivered')).toHaveCount(0)
-  })
+    // One current invoice of each kind (J-06: the automatic one was corrected, then deleted and made again): the
+    // papers show only the current PDFs, named by number; the deleted and replaced copies never reach the customer.
+    const papers = page.getByRole('region', { name: 'Papers', exact: true })
+    await expect(papers.getByRole('button', { name: `Read Invoice INV-${run}-B full size` })).toBeVisible()
+    await expect(papers.getByRole('button', { name: `Read Commercial invoice CI-${run} full size` })).toBeVisible()
+    await expect(papers.getByRole('button', { name: new RegExp(`^Read Invoice INV-${run} full size`) })).toHaveCount(0)
+    await expect(page.getByText('Comes when the items are delivered')).toHaveCount(0)  })
 
   test('J-07 Pro Bono: approve, pick, ship with tracking, deliver', async ({ page }) => {
     await siaLogin(page, staff)
@@ -449,6 +542,7 @@ test.describe.serial('J-02…J-07 requests, quotes, agreements, fulfilment', () 
     await page.getByRole('link', { name: 'Record the shipment' }).click()
     await page.getByRole('button', { name: 'Record shipment' }).click()
     await page.getByLabel('Tracking number').fill('JD014600006281')
+    await page.getByLabel('Shipping cost').fill('42.00')
     await page.getByRole('dialog').getByRole('button', { name: 'Record shipment' }).click()
     await expect(page.getByText('Shipment recorded')).toBeVisible()
     await page.getByRole('button', { name: 'Mark delivered' }).click()

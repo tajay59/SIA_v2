@@ -5,11 +5,34 @@
  * and its reason. The full history (who, when) is listed below when `history` is on (staff).
  */
 import { formatDateTime, statusLabel } from '@cimh/web-ui'
-import { mdiCheckCircle, mdiCircleOutline, mdiCloseCircle, mdiRadioboxMarked } from '@mdi/js'
-import { computed } from 'vue'
+import { mdiCheck, mdiClose } from '@mdi/js'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { isClosed, type OrderRequest, statusSteps } from '../orders'
 
 const props = defineProps<{ request: OrderRequest; history?: boolean }>()
+
+// Vuetify v-timeline: across the panel when every step gets ~132 px (dates fit on one line), else down it
+// (phones, the request beside the queue). Measured on the panel, not the window.
+const STEP_MIN = 132
+const root = ref<HTMLElement | null>(null)
+const width = ref(0)
+let ro: ResizeObserver | null = null
+onMounted(() => {
+  if (!root.value) return
+  width.value = root.value.clientWidth
+  ro = new ResizeObserver(([e]) => (width.value = e?.contentRect.width ?? width.value))
+  ro.observe(root.value)
+})
+onBeforeUnmount(() => ro?.disconnect())
+const horizontal = computed(() => width.value >= steps.value.length * STEP_MIN)
+
+type StepState = 'done' | 'current' | 'todo' | 'closed'
+const DOT: Record<StepState, { color?: string; icon?: string }> = {
+  done: { color: 'success', icon: mdiCheck },
+  current: { color: 'primary' },
+  todo: {},
+  closed: { color: 'error', icon: mdiClose },
+}
 
 const steps = computed(() => {
   const r = props.request
@@ -22,9 +45,9 @@ const steps = computed(() => {
     .map((s) => ({
       status: s,
       at: reached.get(s) ?? null,
-      state: s === r.status ? 'current' : reached.has(s) ? 'done' : 'todo',
+      state: (s === r.status ? 'current' : reached.has(s) ? 'done' : 'todo') as StepState,
     }))
-  if (closed) out.push({ status: r.status, at: reached.get(r.status) ?? null, state: 'closed' })
+  if (closed) out.push({ status: r.status, at: reached.get(r.status) ?? null, state: 'closed' as StepState })
   return out
 })
 const closingReason = computed(() => {
@@ -36,17 +59,37 @@ const byName = (n: string) => (n.includes('@') ? n.slice(0, n.indexOf('@')) : n)
 </script>
 
 <template>
-  <div class="rt">
-    <ol class="timeline" aria-label="Request status">
-      <li v-for="s in steps" :key="s.status" :class="s.state" :aria-current="s.state === 'current' ? 'step' : undefined">
-        <v-icon
-          size="20"
-          :icon="s.state === 'done' ? mdiCheckCircle : s.state === 'current' ? mdiRadioboxMarked : s.state === 'closed' ? mdiCloseCircle : mdiCircleOutline"
-        />
-        <span class="t-label">{{ statusLabel(s.status) }}</span>
-        <span v-if="s.at" class="t-caption muted">{{ formatDateTime(s.at) }}</span>
-      </li>
-    </ol>
+  <div ref="root" class="rt">
+    <!-- v-timeline renders divs, so the list semantics are given by role (an <ol> may only hold <li>). -->
+    <v-timeline
+      role="list"
+      aria-label="Request status"
+      class="timeline"
+      :class="{ across: horizontal }"
+      :direction="horizontal ? 'horizontal' : 'vertical'"
+      :align="horizontal ? 'center' : 'start'"
+      side="end"
+      density="compact"
+      size="x-small"
+      line-thickness="2"
+      truncate-line="both"
+    >
+      <v-timeline-item
+        v-for="s in steps"
+        :key="s.status"
+        role="listitem"
+        class="step"
+        :class="s.state"
+        :aria-current="s.state === 'current' ? 'step' : undefined"
+        :dot-color="DOT[s.state].color"
+        :icon="DOT[s.state].icon"
+        :fill-dot="s.state !== 'todo'"
+      >
+        <span class="t-label step-name">{{ statusLabel(s.status) }}</span>
+        <span v-if="s.at" class="t-caption step-at">{{ formatDateTime(s.at) }}</span>
+        <span v-else-if="s.state === 'todo'" class="d-sr-only">not reached yet</span>
+      </v-timeline-item>
+    </v-timeline>
     <p v-if="closingReason" class="t-body reason">Reason: {{ closingReason }}</p>
     <v-table v-if="history" density="compact" class="history">
       <thead>
@@ -66,36 +109,77 @@ const byName = (n: string) => (n.includes('@') ? n.slice(0, n.indexOf('@')) : n)
 </template>
 
 <style scoped>
-.timeline {
-  list-style: none;
+/* ---- Vuetify v-timeline, tuned to the console: 22 px dots, labels close under (or beside) them. */
+.timeline.across {
+  grid-auto-columns: minmax(0, 1fr);
+  column-gap: 0;
+}
+.timeline.v-timeline--vertical {
+  row-gap: var(--sp-3);
+}
+.step :deep(.v-timeline-item__body) {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-2) var(--sp-4);
-  padding: 0;
-  margin: 0;
+  flex-direction: column;
+  gap: 2px;
 }
-.timeline li {
-  display: grid;
-  grid-template-columns: auto auto;
-  column-gap: var(--sp-1);
+.across .step :deep(.v-timeline-item__body) {
+  padding-block-start: var(--sp-2) !important;
   align-items: center;
+  text-align: center;
 }
-.timeline li .t-caption {
-  grid-column: 2;
+.timeline.v-timeline--vertical .step :deep(.v-timeline-item__body) {
+  padding-inline-start: var(--sp-3) !important;
+  min-height: 22px;
+  justify-content: center;
 }
-.timeline .done {
-  color: rgb(var(--v-theme-success));
+.step-name {
+  color: rgb(var(--v-theme-on-surface));
 }
-.timeline .current {
+.step-at {
+  color: rgb(var(--v-theme-on-surface-variant));
+  white-space: nowrap;
+}
+.current .step-name {
   color: rgb(var(--v-theme-primary));
   font-weight: 600;
 }
+.current .step-at {
+  color: rgb(var(--v-theme-on-surface));
+  font-weight: 600;
+}
 /* Not reached yet: medium emphasis in the theme's AA text colour (an opacity fade measured 3.1:1). */
-.timeline .todo {
+.todo .step-name {
   color: rgb(var(--v-theme-on-surface-variant));
 }
-.timeline .closed {
+.closed .step-name {
   color: rgb(var(--v-theme-error));
+  font-weight: 600;
+}
+/* Dots: done = success with a tick, current = primary with a soft ring, closed = error with a cross,
+   not reached = a hollow ring in the medium-emphasis colour (3:1 on the panel, WCAG 1.4.11). */
+.current :deep(.v-timeline-divider__dot) {
+  box-shadow: 0 0 0 4px rgba(var(--v-theme-primary), 0.24);
+}
+.todo :deep(.v-timeline-divider__dot) {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px rgb(var(--v-theme-on-surface-variant));
+}
+.todo :deep(.v-timeline-divider__inner-dot) {
+  background: transparent;
+}
+/* The line is filled as far as the request has got: into and out of every done step, into the current one. */
+/* Solid colour: Vuetify's segments overlap between items, so a translucent line showed darker dashes. */
+.step :deep(.v-timeline-divider__before),
+.step :deep(.v-timeline-divider__after) {
+  background: color-mix(in srgb, rgb(var(--v-theme-on-surface)) 20%, rgb(var(--v-theme-surface)));
+}
+.done :deep(.v-timeline-divider__before),
+.done :deep(.v-timeline-divider__after),
+.current :deep(.v-timeline-divider__before) {
+  background: rgb(var(--v-theme-success));
+}
+.closed :deep(.v-timeline-divider__before) {
+  background: rgb(var(--v-theme-error));
 }
 .reason {
   margin-top: var(--sp-2);

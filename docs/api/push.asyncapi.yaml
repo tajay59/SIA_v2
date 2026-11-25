@@ -1,0 +1,111 @@
+asyncapi: 3.0.0
+info:
+  title: catalog-push (announcement socket)
+  version: 1.0.0-draft
+  description: |
+    Server-to-browser push of admin announcements (plan 2026-11-23, ADR 0016). One WebSocket per open SHOP or SIA tab.
+    The server sends a `snapshot` on connect, then `upsert` / `remove` as announcements change, start or expire, and
+    a `ping` every 25 s. The client sends nothing (frames are ignored; a frame over 1 KB closes the socket, 1009).
+
+    **Handshake:** the browser `Origin` must be the SHOP or SIA origin (`PUSH_ORIGINS`, else the request's own host);
+    otherwise HTTP 403. `app=sia` needs a staff access cookie (`access_token`): without one the socket closes 4401,
+    a non-staff account 4403; the server also closes 4401 when the access token expires, so the client refreshes and
+    reconnects. A full worker closes 1013 (the client falls back to polling `GET /announcements`).
+
+    **Delivery:** at most once per change while connected; every (re)connect starts from a fresh `snapshot`, and the
+    server re-checks the live set every 30 s, so a client is never more than one reconnect or 30 s behind.
+defaultContentType: application/json
+servers:
+  edge:
+    host: '{host}'
+    protocol: wss
+    description: nginx edge; proxied to catalog-push
+    variables:
+      host: { default: store.cimh.edu.bb }
+channels:
+  announcements:
+    address: /api/catalog/v1/announcements/stream
+    title: Announcement stream
+    bindings:
+      ws:
+        query:
+          type: object
+          properties:
+            app: { type: string, enum: [shop, sia], default: shop }
+    messages:
+      snapshot: { $ref: '#/components/messages/snapshot' }
+      upsert: { $ref: '#/components/messages/upsert' }
+      remove: { $ref: '#/components/messages/remove' }
+      ping: { $ref: '#/components/messages/ping' }
+operations:
+  receiveAnnouncements:
+    action: send
+    summary: The server sends the live set, then changes, to the browser
+    channel: { $ref: '#/channels/announcements' }
+    messages:
+      - { $ref: '#/channels/announcements/messages/snapshot' }
+      - { $ref: '#/channels/announcements/messages/upsert' }
+      - { $ref: '#/channels/announcements/messages/remove' }
+      - { $ref: '#/channels/announcements/messages/ping' }
+components:
+  messages:
+    snapshot:
+      name: snapshot
+      summary: Every live announcement for the app, sent once on connect (alerts first, then newest)
+      payload:
+        type: object
+        required: [type, items, serverTime]
+        properties:
+          type: { type: string, const: snapshot }
+          items: { type: array, items: { $ref: '#/components/schemas/Announcement' } }
+          serverTime: { type: string, format: date-time, description: Lets the client hide items at expiresAt on the server's clock }
+    upsert:
+      name: upsert
+      summary: An announcement was published, edited, or reached its start time
+      payload:
+        type: object
+        required: [type, item]
+        properties:
+          type: { type: string, const: upsert }
+          item: { $ref: '#/components/schemas/Announcement' }
+    remove:
+      name: remove
+      summary: An announcement was ended or expired
+      payload:
+        type: object
+        required: [type, id]
+        properties:
+          type: { type: string, const: remove }
+          id: { type: string }
+    ping:
+      name: ping
+      summary: Keep-alive every 25 s (nginx closes idle proxied sockets after 75 s)
+      payload:
+        type: object
+        required: [type]
+        properties:
+          type: { type: string, const: ping }
+  schemas:
+    Announcement:
+      description: Same shape as `Announcement` in catalog.openapi.yaml
+      type: object
+      required: [id, message, tone, audience, link, dismissible, startsAt, expiresAt, version]
+      properties:
+        id: { type: string }
+        message: { type: string, maxLength: 280 }
+        tone: { type: string, enum: [INFO, ALERT] }
+        audience: { type: string, enum: [SHOP, SIA, BOTH] }
+        link:
+          oneOf:
+            - type: 'null'
+            - type: object
+              description: A web address (url) or a product (productId; SHOP /catalogue/{id}, SIA /products/{id})
+              required: [label]
+              properties:
+                label: { type: string, maxLength: 40 }
+                url: { type: string, maxLength: 500 }
+                productId: { type: string, maxLength: 64 }
+        dismissible: { type: boolean }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        version: { type: integer }

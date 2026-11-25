@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * A supplier's quote file beside the price lines (A-04), or the agreement preview (`src`) in the review dialog:
- * the shared `DocumentViewer` (pdf.js on canvases, one paint at a time) on Graphite Console seams. Staff keep
- * "Open in a new tab" in the header.
+ * the shared `DocumentViewer` (pdf.js on canvases, one paint at a time) on Graphite Console seams. Download in the
+ * header saves a copy (owner 2026-11-23: request files never open another tab).
  */
 import { DocumentViewer } from '@cimh/web-app'
 
@@ -21,7 +21,7 @@ const emit = defineEmits<{ state: ['loading' | 'ready' | 'error'] }>()
     :name="name"
     :mime="mime"
     :what="what"
-    link="open"
+    link="download"
     class="console-doc"
     @state="(v: 'loading' | 'ready' | 'error') => emit('state', v)"
   />

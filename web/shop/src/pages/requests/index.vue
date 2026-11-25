@@ -18,7 +18,8 @@ import {
   type RequestStatus,
   type RequestSummary,
   requestTitle,
-  shortRef,
+  shopDir,
+  ShortRef,
   useCursorList,
   useNotify,
 } from '@cimh/web-app'
@@ -90,7 +91,19 @@ async function loadWaiting() {
     notify.report(e)
   }
 }
-onMounted(loadWaiting)
+const waitingDone = ref(false)
+onMounted(() => void loadWaiting().finally(() => (waitingDone.value = true)))
+// Back from a request's own page (shopDir 'quiet'): the page cross-fades, so the rows arrive still; the usual
+// staggered entrance returns once this arrival's lists are on screen (scope or filter changes).
+const rowsAppear = ref(shopDir.value !== 'quiet')
+if (!rowsAppear.value) {
+  const stop = watch([() => list.loaded.value, waitingDone], async ([a, b]) => {
+    if (!a || !b) return
+    await nextTick()
+    rowsAppear.value = true
+    stop()
+  })
+}
 const showWaiting = computed(() => scope.value === 'mine' && !filtered.value && waiting.value.length > 0)
 const waitingIds = computed(() => new Set(showWaiting.value ? waiting.value.map((r) => r.id) : []))
 const rows = computed(() => list.items.value.filter((r) => !waitingIds.value.has(r.id)))
@@ -216,7 +229,7 @@ function onChanged(r: OrderRequest) {
 
         <section v-if="showWaiting" class="group yours" aria-labelledby="g-waiting">
           <h2 id="g-waiting" class="group-title">Waiting for you <span class="count">{{ waiting.length }}</span></h2>
-          <TransitionGroup tag="ul" name="row" appear class="rows">
+          <TransitionGroup tag="ul" name="row" :appear="rowsAppear" class="rows">
             <li v-for="(r, i) in waiting" :key="r.id" :style="{ '--i': Math.min(i, 7) }">
               <router-link :to="rowLink(r)" class="row" :class="{ open: r.id === openId }" :aria-current="r.id === openId ? 'true' : undefined">
                 <span class="row-main">
@@ -231,7 +244,7 @@ function onChanged(r: OrderRequest) {
                       </span>
                     </template>
                   </span>
-                  <span class="row-ref t-mono">{{ shortRef(r.id) }}</span>
+                  <span class="row-ref t-mono"><ShortRef :id="r.id" fit /></span>
                 </span>
                 <v-icon :icon="mdiChevronRight" size="18" class="row-go" />
               </router-link>
@@ -261,7 +274,7 @@ function onChanged(r: OrderRequest) {
         <template v-else>
           <section v-for="g in groups" :key="g.key" class="group" :aria-labelledby="`g-${g.key}`">
             <h2 :id="`g-${g.key}`" class="group-title">{{ g.title }} <span class="count">{{ g.rows.length }}</span></h2>
-            <TransitionGroup tag="ul" name="row" appear class="rows">
+            <TransitionGroup tag="ul" name="row" :appear="rowsAppear" class="rows">
               <li v-for="(r, i) in g.rows" :key="r.id" :style="{ '--i': Math.min(i, 7) }">
                 <router-link :to="rowLink(r)" class="row" :class="{ open: r.id === openId, closed: isClosed(r.status) }" :aria-current="r.id === openId ? 'true' : undefined">
                   <span class="row-main">
@@ -274,7 +287,7 @@ function onChanged(r: OrderRequest) {
                       {{ stateText(r) }} · sent {{ formatDate(r.submittedAt) }}
                       <template v-if="scope === 'organisation'"> · {{ r.customerName }}</template>
                     </span>
-                    <span class="row-ref t-mono">{{ shortRef(r.id) }}</span>
+                    <span class="row-ref t-mono"><ShortRef :id="r.id" fit /></span>
                   </span>
                   <v-icon :icon="mdiChevronRight" size="18" class="row-go" />
                 </router-link>

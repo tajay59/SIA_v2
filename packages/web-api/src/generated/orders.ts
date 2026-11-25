@@ -1358,6 +1358,191 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/requests/{requestId}/invoices/{kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+                kind: "invoice" | "commercial_invoice";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Record a rendered invoice as the request's current one (document-svc)
+         * @description `rev` null = a new invoice (409 INVOICE_EXISTS when one is current); otherwise the revision it replaces
+         *     (409 VERSION_CONFLICT when stale; 409 INVOICE_LOCKED once the request is marked paid). 409
+         *     INVOICE_NUMBER_TAKEN when another invoice of the kind uses the number (voided ones included). The total is
+         *     computed here (lines + fees + shipping - discount). The PDF is attached; the replaced one is flagged. The
+         *     request `version` does not change.
+         */
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                    kind: "invoice" | "commercial_invoice";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        rev?: number | null;
+                        number: string;
+                        date: string;
+                        lines: {
+                            lineId?: string | null;
+                            description: string;
+                            qty: number;
+                            unitPrice: string;
+                        }[];
+                        fees?: string;
+                        discount?: string;
+                        shipping?: string;
+                        /** @enum {string} */
+                        source?: "STAFF" | "AUTO";
+                        by: components["schemas"]["Actor"];
+                        file: components["schemas"]["FileRef"];
+                    };
+                };
+            };
+            responses: {
+                /** @description Recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            invoice?: components["schemas"]["InvoiceRecord"];
+                            replacedFileId?: string | null;
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/requests/{requestId}/invoices/{kind}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                requestId: components["parameters"]["RequestId"];
+                kind: "invoice" | "commercial_invoice";
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Void the current invoice (document-svc)
+         * @description 409 VERSION_CONFLICT when stale; 403 once the request is marked paid unless `admin`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    requestId: components["parameters"]["RequestId"];
+                    kind: "invoice" | "commercial_invoice";
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        rev: number;
+                        reason: string;
+                        by: components["schemas"]["Actor"];
+                        /** @default false */
+                        admin?: boolean;
+                    };
+                };
+            };
+            responses: {
+                /** @description Voided */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            voidedFileId?: string | null;
+                            number?: string | null;
+                            rev?: number | null;
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/invoice-numbers/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Suggested next invoice number of a kind (document-svc)
+         * @description The latest invoice number of the kind + 1 (last digits counted on; numbers already used skipped); null when there is none to count from.
+         */
+        get: {
+            parameters: {
+                query: {
+                    kind: "invoice" | "commercial_invoice";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The suggestion */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            number?: string | null;
+                        };
+                    };
+                };
+                403: components["responses"]["Forbidden"];
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1573,8 +1758,8 @@ export interface components {
             trackingLink?: string | null;
             /** @description e.g. who hand-delivered */
             note?: string | null;
-            /** @description CIMH's records; never shown to the customer */
-            cost?: components["schemas"]["Money"] | null;
+            /** @description Required (2026-11-24): what CIMH paid to send this parcel, 0.00 when nothing. CIMH's records; never shown to the customer */
+            cost: components["schemas"]["Money"];
             /** Format: date */
             date: string;
             /** @default true */
@@ -1629,6 +1814,43 @@ export interface components {
             /** @description Download path: /api/documents/v1/files/{id} */
             url?: string;
         };
+        InvoiceRecord: {
+            number?: string | null;
+            /** @description 1 when first issued; each save issues the next (a corrected invoice) */
+            rev: number;
+            /** @description The current PDF */
+            fileId: string | null;
+            date?: string | null;
+            total?: string | null;
+            /**
+             * @description staff/admin only
+             * @enum {string}
+             */
+            source?: "STAFF" | "AUTO" | "LEGACY";
+            /** @description staff/admin only: the request is marked paid */
+            locked?: boolean;
+            /** @description staff/admin only; null on a LEGACY record */
+            lines?: {
+                lineId?: string | null;
+                description?: string;
+                qty?: number;
+                unitPrice?: string | null;
+            }[] | null;
+            fees?: string | null;
+            discount?: string | null;
+            shipping?: string | null;
+            createdAt?: string | null;
+            updatedAt?: string | null;
+            /** @description staff/admin only: every PDF issued, oldest first */
+            revisions?: {
+                rev?: number;
+                fileId?: string | null;
+                number?: string | null;
+                total?: string | null;
+                by?: Record<string, never> | null;
+                at?: string | null;
+            }[];
+        };
         RequestSummary: {
             id: string;
             type: components["schemas"]["RequestType"];
@@ -1654,7 +1876,7 @@ export interface components {
             paymentStatus?: "DUE" | "PROOF_SENT" | "PAID" | null;
             /** @description When staff recorded the payment */
             paidAt?: components["schemas"]["Timestamp"] | null;
-            /** @description With paymentStatus: the signed agreement total (migrated requests: their legacy total); null when none above zero is on record */
+            /** @description With paymentStatus: the current invoice's total once there is one with lines, else the signed agreement total (migrated requests: their legacy total); null when none above zero is on record. A commercial invoice never counts */
             amountDue?: components["schemas"]["Money"] | null;
             version: number;
         };
@@ -1673,10 +1895,31 @@ export interface components {
             approval?: Record<string, never> | null;
             /** @description Pro Bono rejection (by */
             rejection?: Record<string, never> | null;
+            /** @description Invoice number given at Mark delivered (optional); the current invoice is in `invoices` */
             invoice?: {
                 number?: string;
                 date?: string;
             } | null;
+            /**
+             * @description The current invoice and commercial invoice (at most one each; keys `invoice`, `commercial_invoice`).
+             *     Customers: which PDF it is. Staff also get what the builder reopens (documents API GET
+             *     /requests/{id}/invoices/{kind} adds the recipient).
+             */
+            invoices?: {
+                invoice?: components["schemas"]["InvoiceRecord"];
+                commercial_invoice?: components["schemas"]["InvoiceRecord"];
+            };
+            /** @description staff/admin only: invoices staff withdrew, oldest first (their numbers stay used) */
+            voidedInvoices?: {
+                /** @enum {string} */
+                kind?: "invoice" | "commercial_invoice";
+                number?: string | null;
+                rev?: number;
+                fileId?: string | null;
+                total?: string | null;
+                /** @description { by, at, reason } */
+                voided?: Record<string, never> | null;
+            }[];
             /** @description All versions; latest last */
             quotes?: components["schemas"]["SupplierQuote"][];
             cimhQuote?: components["schemas"]["CimhQuote"] | null;
@@ -1707,6 +1950,7 @@ export interface components {
             purchaseOrders?: Record<string, never>[];
             /** @description One per parcel (CIMH stock, each supplier's direct shipment), oldest first */
             shipments?: components["schemas"]["Shipment"][];
+            /** @description Replaced and voided invoice PDFs are left out (staff reach them through `invoices.*.revisions` / `voidedInvoices`) */
             files?: components["schemas"]["FileRef"][];
             cancellation?: Record<string, never> | null;
             history: components["schemas"]["StatusChange"][];

@@ -20,6 +20,28 @@ tests:
         exp_alerts:
           - exp_labels: { severity: critical, service: order-svc, collection: orders }
             exp_annotations: { summary: "Outbox of orders not published for 8m 0s: is its outbox relay running?" }
+  # catalog-push at 90 % of its socket cap for 5 min -> PushSocketsNearCap; 50 % never fires.
+  - interval: 1m
+    input_series:
+      - series: 'push_sockets{app="shop",instance="p1"}'
+        values: '4400x10'
+      - series: 'push_sockets{app="sia",instance="p1"}'
+        values: '200x10'
+      - series: 'push_sockets_max{instance="p1"}'
+        values: '5000x10'
+      - series: 'push_sockets{app="shop",instance="p2"}'
+        values: '2500x10'
+      - series: 'push_sockets_max{instance="p2"}'
+        values: '5000x10'
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: PushSocketsNearCap
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: PushSocketsNearCap
+        exp_alerts:
+          - exp_labels: { severity: warning, instance: p1 }
+            exp_annotations: { summary: "catalog-push p1 holds 4600 sockets (90 % of its cap)" }
   # A relay that keeps up never fires.
   - interval: 30s
     input_series:

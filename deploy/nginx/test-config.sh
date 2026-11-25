@@ -8,7 +8,7 @@ here=$(cd "$(dirname "$0")" && (pwd -W 2>/dev/null || pwd))
 docker run --rm \
   -e SIA_HOST=sia.test -e STORE_HOST=store.test -e OPS_ALLOW_CIDR=10.0.0.0/8 \
   -e NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx/conf.d \
-  --add-host identity-svc:127.0.0.1 --add-host catalog-svc:127.0.0.1 --add-host inventory-svc:127.0.0.1 \
+  --add-host identity-svc:127.0.0.1 --add-host catalog-svc:127.0.0.1 --add-host catalog-push:127.0.0.1 --add-host inventory-svc:127.0.0.1 \
   --add-host order-svc:127.0.0.1 --add-host document-svc:127.0.0.1 --add-host prometheus:127.0.0.1 \
   -v "$here/templates:/etc/nginx/templates:ro" -v "$here/snippets:/etc/nginx/snippets:ro" \
   nginx:1.27-alpine sh -ec '

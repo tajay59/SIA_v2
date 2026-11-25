@@ -38,7 +38,11 @@ ACTIONS: dict[str, tuple[str, str, Any]] = {
     "approve": ("POST", "approve", None),
     "reject": ("POST", "reject", REASON),
     "pick": ("POST", "picks", {"lineId": "L1", "unit": "MET1_00"}),
-    "ship": ("POST", "shipments", {"source": "CIMH", "lineIds": ["L1"], "carrier": "HAND", "date": "2026-11-09"}),
+    "ship": (
+        "POST",
+        "shipments",
+        {"source": "CIMH", "lineIds": ["L1"], "carrier": "HAND", "cost": "0.00", "date": "2026-11-09"},
+    ),
     "deliver": ("POST", "deliver", None),
 }
 # Where each action is legal (beyond the table): quote drafts while quoting or revising; picks while

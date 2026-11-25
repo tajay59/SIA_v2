@@ -206,12 +206,16 @@ def test_admin_mfa_flow(ctx: Ctx) -> None:
     good = ctx.login("root@cimh.edu.bb", totp=future)
     r = ctx.client.get(ctx.url("/admin/accounts"), headers={"Authorization": "Bearer " + good["accessToken"]})
     assert r.status_code == 200
-    # replaying the same TOTP step is refused
+    # replaying the same TOTP step is refused, said apart from a wrong code, and not counted towards the lock
+    before = ctx.account("root@cimh.edu.bb")["failedLogins"]["count"]
     r = ctx.client.post(
         ctx.url("/auth/login"),
         json={"email": "root@cimh.edu.bb", "password": GOOD_PW, "totp": future, "client": "mobile"},
     )
     assert r.status_code == 401
+    assert r.json()["code"] == "MFA_CODE_REUSED"
+    after = ctx.account("root@cimh.edu.bb")["failedLogins"]["count"]
+    assert after == before
 
 
 def test_mfa_setup_only_for_admins(ctx: Ctx) -> None:

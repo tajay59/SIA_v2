@@ -27,10 +27,11 @@ The platform has three clients (SHOP, SIA, SIA Mobile) and one backend. Its only
 |---|---|
 | **nginx** | TLS, serves both web apps, routes `/api/*` to services, rate limits, serves public images, protected downloads (`X-Accel-Redirect`) |
 | **identity-svc** | Accounts, organisations, login, tokens, approvals, roles, audit log |
-| **catalog-svc** | Products, search, Pro Bono items and limits, reference data (`misc`), image records |
+| **catalog-svc** | Products, search, Pro Bono items and limits, reference data (`misc`), image records, announcements (`announcements`, TTL) |
+| **catalog-push** | Same image as catalog-svc: holds the browsers' announcement WebSockets; a Redis poke after each admin change makes every worker re-read MongoDB and send the difference; reconcile every 30 s (ADR-0016) |
 | **inventory-svc** | Sites, shelves, storage units, stow, pick, relocate, stock levels, **reservations** |
 | **order-svc** | Carts, requests, status flows, supplier and CIMH quotes, acceptance, purchasing, shipping |
-| **document-svc** | PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events, the agreement preview staff see before sending a quote (never stored), virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes `document.*` itself |
+| **document-svc** | PDF generation (CIMH quote, agreement, invoice, Pro Bono note, commercial invoice, unit labels) from order events; staff open, revise and void the request's one invoice per kind (order-svc records which is current), the agreement preview staff see before sending a quote (never stored), virus-scanned uploads, permission-checked downloads. Owns no collection and has no outbox: it publishes `document.*` itself |
 | **notification-svc** | All email, triggered by events: once per event and recipient, links into the SHOP/SIA screens, retries then DLQ. Starts from "now" on first deploy and skips events older than 48 h. Dev and staging send to Mailpit only |
 | **media-worker** ×2 | Background removal on the GPUs, resizing, WebP, barcode decoding |
 | **outbox relays** | Publish saved events from each service to Kafka |

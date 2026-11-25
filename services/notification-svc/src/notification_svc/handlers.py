@@ -463,16 +463,24 @@ class Notifier:
             )
         notify = p.get("notify")
         if e.type == "document.generated" and isinstance(notify, dict) and kind in ("invoice", "commercial_invoice"):
-            # Built by staff in SIA (invoice builder): each tick decides who is mailed.
+            # Built by staff in SIA (invoice builder): each tick decides who is mailed. A revision (`rev` > 1) is a
+            # corrected invoice that replaces the one sent before.
             name = "Commercial invoice" if kind == "commercial_invoice" else "Invoice"
+            rev: int = p["rev"] if isinstance(p.get("rev"), int) else 1
             facts = [("Number", str(p["number"]))] if p.get("number") else []
+            if rev > 1:
+                facts.append(("Revision", str(rev)))
             out: list[Message] = []
             if notify.get("customer"):
+                corrected = [
+                    f"This corrected {name.lower()} replaces the one sent before; use it from now on.",
+                    f"The {name.lower()} is attached to the request.",
+                ]
                 out += await self.to_customer(
                     e,
-                    subject=f"{name} for your request ({rid})",
-                    heading=f"Your {name.lower()} is ready",
-                    paragraphs=[f"The {name.lower()} is attached to the request."],
+                    subject=f"{'Corrected ' + name.lower() if rev > 1 else name} for your request ({rid})",
+                    heading=f"Your corrected {name.lower()} is ready" if rev > 1 else f"Your {name.lower()} is ready",
+                    paragraphs=corrected if rev > 1 else [f"The {name.lower()} is attached to the request."],
                     request_id=rid,
                     facts=facts,
                     link=self.shop(f"/requests/{rid}"),
@@ -481,8 +489,8 @@ class Notifier:
             if notify.get("staff"):
                 out += await self.staff(
                     "invoice",
-                    subject=f"{name} created: {rid}",
-                    heading=f"A {name.lower()} was created",
+                    subject=f"{name} {'corrected' if rev > 1 else 'created'}: {rid}",
+                    heading=f"A {name.lower()} was {'corrected' if rev > 1 else 'created'}",
                     request_id=rid,
                     facts=facts,
                     link=self.sia(f"/requests/{rid}"),

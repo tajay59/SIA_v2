@@ -73,7 +73,9 @@ def _headers(case: schemathesis.Case) -> dict[str, str]:
 @schema.parametrize()
 @settings(max_examples=25, deadline=None, suppress_health_check=list(HealthCheck))
 def test_documents_api_conforms_as_admin_or_inventory_svc(case: schemathesis.Case) -> None:
-    case.call_and_validate(headers={**_headers(case), **(case.headers or {})}, checks=CHECKS)
+    # 60 s, not the 10 s default: a 200-label PDF takes ~3 s, and many times that under coverage tracing (a full
+    # `pytest --cov` run timed out on it, 2026-11-25).
+    case.call_and_validate(headers={**_headers(case), **(case.headers or {})}, checks=CHECKS, timeout=60)
 
 
 @schema.parametrize()

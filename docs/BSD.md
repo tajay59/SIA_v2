@@ -63,6 +63,7 @@ Only the owning service connects to its collections. Each service has **its own 
 | `product` | catalog-svc | `svc_catalog` | find, insert, update | 83 | 2M |
 | `xuser` (view) | catalog-svc | `svc_catalog` | find | view | — |
 | `misc` | catalog-svc | `svc_catalog` | find, insert, update | 12 | ~5k (sites/shelves) |
+| `announcements` ✚ | catalog-svc | `svc_catalog` | find, insert, update, remove | — | < 100 live (TTL) |
 | `storage` | inventory-svc | `svc_inventory` | find, insert, update | 697 | 30M |
 | `history` | inventory-svc | `svc_inventory` | find, insert | 860 | +5M/year |
 | `stock` ✚ | inventory-svc | `svc_inventory` | find, insert, update | — | 2M (one per product) |
@@ -437,6 +438,32 @@ One document per product. It answers "how many, and is it low?" without counting
 
 **Built** from `catalog.product.events` (a compacted topic, so a new consumer starts from every product) and, at cut-over, by the migration for every product (MIGRATION_PLAN M04).
 
+### 5.12 `announcements` ✚ (catalog-svc): the banner on every page
+
+Admin messages shown at the top of every SHOP and SIA page (plan 2026-11-23, APD A-22). One document per message; it
+exists only while the message does: a **TTL index on `expiresAt`** makes MongoDB delete it once it runs out (the TTL
+monitor runs about once a minute, so every read also filters `expiresAt > now`), and End now deletes it at once.
+Audit entries (`announcement.created` / `updated` / `ended`, with the text) ride on the `misc` document
+`announcements` (kind `announcements`), not on the message: a message can vanish before the relay reads its outbox.
+No personal data beyond the admin Actor.
+
+| Field | Type | R | Notes |
+|---|---|---|---|
+| `_id` | ObjectId | R | |
+| `id` | string | R | **Unique.** `ANN` + 32 hex |
+| `message` | string | R | Plain text, 1–280 chars (no HTML or Markdown) |
+| `tone` | enum | R | `INFO` \| `ALERT` (alerts first; never closable) |
+| `audience` | enum | R | `SHOP` \| `SIA` \| `BOTH` |
+| `link` | object | | `{ label, url }` (`https://…` or a site path `/…`) **or** `{ label, productId }` (owner 2026-11-23: a banner about a product links to it; SHOP opens `/catalogue/<id>`, SIA `/products/<id>`). The product must be active, and on SHOP when the audience includes SHOP |
+| `dismissible` | bool | R | Viewers may close it (stored per browser); `false` for every `ALERT` |
+| `startsAt` | Timestamp | R | Default now; scheduled ones wait (≤ 90 days ahead) |
+| `expiresAt` | Timestamp | R | From the admin's TTL: preset 1 h / 1 day / 1 week / 30 days from the start, or an end time; ≤ 90 days from now |
+| `createdAt`, `updatedAt` | Timestamp | R | |
+| `createdBy`, `updatedBy` | Actor | | |
+| `version` | int | R | If-Match; also part of a viewer's "closed" mark, so an edit shows the message again |
+
+**Indexes:** `{ id: 1 }` unique; `{ expiresAt: 1 }` TTL (`expireAfterSeconds: 0`, name `announcement_ttl`); `{ audience: 1, startsAt: 1 }`.
+
 ### 5.10 `orders` (order-svc): carts and requests
 
 One collection, two kinds of document, told apart by `status`. Carts have `status: "CART"`.
@@ -531,9 +558,12 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 |---|---|---|---|
 | `approval` | `{ by, at }`? | ✚ | Pro Bono approve |
 | `rejection` | `{ by, at, reason }`? | ✚ | Pro Bono reject |
-| `shipments[]` | `{ id: "SHP…", source: "CIMH"\|"SUPPLIER"\|null, supplier?, lineIds[], carrier: "FEDEX"\|"DHL"\|"UPS"\|"HAND"\|"OTHER", carrierName?, tracking?, trackingLink?, date, cost?: Money, note?, by, at, updatedBy?, updatedAt? }` | ⟲ | One per parcel (2026-11-19, replaces the single `shipping`): CIMH stock (Pro Bono counts as CIMH) or one supplier shipping direct; a line is in one shipment. `tracking` required unless `HAND`; `OTHER` needs `carrierName` + an https `trackingLink`. Customers and same-org users see everything except `cost`, `trackingLink` (they get the Track URL) and `by`. Legacy `method` → `carrier`; legacy/pre-2026-11-19 `shipping` → `shipments[0]` covering every line (order-svc start-up upgrade) |
-| `invoice` | `{ number, number1?, number3?, number4?, date }` | ⟲ | Legacy invoice numbering kept |
-| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, quoteVersion?, deleted? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice`, `payment_proof` (customer upload on a delivered PAID request, 2026-11-23). `quoteVersion`: the quote a generated agreement / CIMH quote was made for, or the one a signed agreement was uploaded for |
+| `shipments[]` | `{ id: "SHP…", source: "CIMH"\|"SUPPLIER"\|null, supplier?, lineIds[], carrier: "FEDEX"\|"DHL"\|"UPS"\|"HAND"\|"OTHER", carrierName?, tracking?, trackingLink?, date, cost: Money (required on new parcels since 2026-11-24; may be absent on older and migrated ones), note?, by, at, updatedBy?, updatedAt? }` | ⟲ | One per parcel (2026-11-19, replaces the single `shipping`): CIMH stock (Pro Bono counts as CIMH) or one supplier shipping direct; a line is in one shipment. `tracking` required unless `HAND`; `OTHER` needs `carrierName` + an https `trackingLink`. Customers and same-org users see everything except `cost`, `trackingLink` (they get the Track URL) and `by`. Legacy `method` → `carrier`; legacy/pre-2026-11-19 `shipping` → `shipments[0]` covering every line (order-svc start-up upgrade) |
+| `invoice` | `{ number, number1?, number3?, number4?, date }` | ⟲ | Legacy invoice numbering kept; v2: the number given at Mark delivered (optional) |
+| `invoices` | `{ invoice?, commercial_invoice? }` each `{ number?, rev, fileId, date?, lines[{lineId?, description, qty, unitPrice: Money}]?, fees, discount, shipping, total: Money?, source: "STAFF"\|"AUTO"\|"LEGACY", createdAt, updatedAt, revisions[{rev, fileId, number, total, by: Actor, at}] }` | ✚ | 2026-11-24 (plan `invoice-crud`): the **one current** invoice and commercial invoice. Written by order-svc for document-svc (`PUT /internal/requests/{id}/invoices/{kind}`; total = lines + fees + shipping − discount, computed here). Each save = next `rev` (same or new number); `revisions` lists every PDF issued. `source` AUTO = made on delivery / for a parcel, LEGACY = made before invoices kept their lines (`lines`/`total` null; start-up upgrade `invoices`). Locked once `payment.paidAt` is set. Does not bump `version`. `invoices.invoice.total` (when not null) is the amount owed (`amountDue`) |
+| `invoicesVoided[]` | the record above + `kind`, `voided: { by, at, reason }` | ✚ | Invoices staff withdrew (staff only); a voided kind is never generated again automatically |
+| `invoiceNumbers[]` | String | ✚ | Every invoice number ever issued on the request as `"<kind>:<number lower-cased, spaces collapsed>"`, voided ones included; unique multikey index = one number on one request per kind |
+| `files` | `{ id, kind, name, mime, size, sha256, path, uploadedBy, uploadedAt, quoteVersion?, deleted?, replaced?, voided? }[]` | ⟲ (`files`) | `kind`: `supplier_quote`, `cimh_quote`, `agreement` (generated), `signed_agreement` (customer upload), `invoice`, `commercial_invoice`, `upload`, `probono_invoice`, `payment_proof` (customer upload on a delivered PAID request, 2026-11-23). `quoteVersion`: the quote a generated agreement / CIMH quote was made for, or the one a signed agreement was uploaded for |
 | `cancellation` | `{ by, at, reason, auto: bool }`? | ✚ | `auto: true` for quote expiry |
 | `legacy` | `{ total?, shippingEstimate?, shippingCost1? }`? | ⟲ | Read-only values from migrated orders; never written by v2 |
 
@@ -551,6 +581,8 @@ One collection, two kinds of document, told apart by `status`. Carts have `statu
 | `{ type: 1, status: 1, "payment.paidAt": 1 }` | Unpaid deliveries count + Payment due tab |
 | `{ nameKeys: 1, statusAt: -1 }` | Staff search: lower-cased customer/organisation names, indexed prefix |
 | `{ quoteExpiresAt: 1 }` partial `{ status: "QUOTED" }` | Expiry and reminder jobs |
+| `{ invoiceNumbers: 1 }` sparse, unique (multikey) | An invoice number belongs to one request (per kind) |
+| `{ "invoices.invoice.createdAt": 1 }`, `{ "invoices.commercial_invoice.createdAt": 1 }` sparse | The builder's suggested next number (latest invoice of a kind) |
 | `{ "shipTo.organization": 1 }` collation strength 2 | Staff search (prefix) |
 | `{ "lines.productId": 1 }` | Replaces legacy `cart.id` |
 | `{ "outbox.0": 1 }` sparse | Relay sweep |
@@ -609,6 +641,7 @@ db.runCommand({ collMod: "orders", validator: { $jsonSchema: {
 | Data | Retention | Mechanism |
 |---|---|---|
 | `temp` codes | 15 min | TTL index |
+| `announcements` | Until the admin's end time (≤ 90 days), or End now | TTL index on `expiresAt`; the audit log keeps who posted what |
 | Unverified accounts | 24 h → `EXPIRED` | identity job |
 | `REJECTED` / `EXPIRED` accounts | Deleted after 90 days | identity job; audit entries have personal data removed |
 | Carts | Emptied after 180 days of inactivity | order job |

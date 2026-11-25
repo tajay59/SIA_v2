@@ -47,8 +47,10 @@ import {
   mdiCheck,
   mdiChevronDown,
   mdiDownload,
+  mdiEmailOutline,
   mdiFileImageOutline,
   mdiFilePdfBox,
+  mdiSend,
   mdiTrayArrowUp,
 } from '@mdi/js'
 import { useDisplay } from 'vuetify'
@@ -398,7 +400,7 @@ async function cancel(reason: string) {
           <p v-if="request" class="band-sub">
             <span>{{ title }}</span>
             <span aria-hidden="true">·</span>
-            <ShortRef :id="request.id" />
+            <ShortRef :id="request.id" fit copy />
             <template v-if="quote"><span aria-hidden="true">·</span><span>quote version {{ quote.version }}</span></template>
           </p>
         </div>
@@ -658,20 +660,43 @@ async function cancel(reason: string) {
     </div>
 
     <!-- Sending accepts the quote: say what it confirms and who hears of it, then send. -->
-    <v-dialog v-model="confirming" max-width="520">
-      <v-card title="Send the signed agreement?">
-        <v-card-text>
-          <p v-if="quote" class="confirm-lead">
-            This accepts quote version {{ quote.version }} for <strong class="tnum">{{ money(quote.total) }}</strong>. CIMH staff are emailed to
-            check the signature.
-          </p>
-          <p v-if="file" class="confirm-file"><v-icon :icon="fileIcon" size="20" /> {{ file.name }} <span class="confirm-facts">{{ fileFacts }}</span></p>
+    <v-dialog v-model="confirming" max-width="560" :fullscreen="width < 600" scrollable aria-labelledby="send-title">
+      <v-card class="send" rounded="lg">
+        <!-- Plain head (golden-ratio dialog, owner 2026-11-24): the request φ : the total to sign 1. -->
+        <header class="dlg-head" :class="{ solo: !quote }">
+          <div class="dlg-who">
+            <h2 id="send-title" class="dlg-title">Send the signed agreement?</h2>
+            <p class="dlg-what">{{ title }}</p>
+            <p v-if="quote" class="dlg-sub">Quote version {{ quote.version }}</p>
+          </div>
+          <dl v-if="quote" class="dlg-key">
+            <dt class="dlg-cap">Total to sign</dt>
+            <dd class="dlg-figure">{{ money(quote.total) }}</dd>
+          </dl>
+        </header>
+        <v-card-text class="send-body">
+          <ol class="send-steps">
+            <li v-if="quote">
+              <span class="send-node" aria-hidden="true"><v-icon :icon="mdiCheck" size="18" /></span>
+              <span>This accepts quote version {{ quote.version }} for <strong class="tnum">{{ money(quote.total) }}</strong>, the total CIMH invoices.</span>
+            </li>
+            <li>
+              <span class="send-node" aria-hidden="true"><v-icon :icon="mdiEmailOutline" size="18" /></span>
+              <span>CIMH staff are emailed to check the signature, then order and pick the items.</span>
+            </li>
+          </ol>
+          <div v-if="file" class="send-file">
+            <v-icon :icon="fileIcon" size="28" class="send-file-icon" aria-hidden="true" />
+            <span class="send-file-main">
+              <span class="send-file-name" :title="file.name">{{ file.name }}</span>
+              <span class="send-file-facts">{{ fileFacts }}</span>
+            </span>
+          </div>
         </v-card-text>
-        <v-card-actions>
-          <v-spacer />
+        <footer class="send-foot">
           <v-btn variant="text" @click="confirming = false">Back</v-btn>
-          <v-btn color="primary" variant="flat" @click="sendNow">Send signed agreement</v-btn>
-        </v-card-actions>
+          <v-btn color="primary" variant="flat" :prepend-icon="mdiSend" @click="sendNow">Send signed agreement</v-btn>
+        </footer>
       </v-card>
     </v-dialog>
 
@@ -1215,6 +1240,11 @@ async function cancel(reason: string) {
   text-decoration: underline;
   text-underline-offset: 3px;
 }
+/* On the tinted slot primary text drops under 4.5:1, so the link takes the ink colour. */
+.slot:hover .slot-link,
+.slot.over .slot-link {
+  color: rgb(var(--v-theme-on-surface));
+}
 .err {
   margin: calc(-1 * var(--sp-2)) 0 0;
   font-size: 14px;
@@ -1286,22 +1316,90 @@ async function cancel(reason: string) {
   margin: 0;
   max-width: 40ch;
 }
-.confirm-lead {
-  margin: 0 0 var(--sp-3);
-  font-size: 16px;
-  line-height: 24px;
+/* Golden-ratio dialog (owner 2026-11-24): 11 · 14 · 17.8 · 22.65 px, spacing 8 · 13 · 21 · 34; head from base.css. */
+.send {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-size: 14px;
 }
-.confirm-file {
+.send-body {
+  padding: 13px 21px 8px !important;
+}
+.send-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.send-steps li {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 13px;
+  align-items: start;
+  padding: 13px 0;
+  line-height: 1.5;
+}
+.send-steps li + li {
+  border-top: 1px solid var(--dlg-rule);
+}
+.send-node {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+  margin-top: -3px;
+}
+.send-file {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
-  margin: 0;
-  font-weight: 600;
-  overflow-wrap: anywhere;
+  gap: 13px;
+  margin-top: 8px;
+  padding: 13px;
+  border-radius: 8px;
+  border: 1px solid var(--dlg-rule);
 }
-.confirm-facts {
-  font-weight: 400;
-  color: rgb(var(--v-theme-on-surface-variant));
+.send-file-icon {
+  flex: none;
+  color: rgb(var(--v-theme-primary));
+}
+.send-file-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.send-file-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.send-file-facts {
+  line-height: 1.5;
+  color: var(--dlg-muted);
+}
+.send-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 13px 21px;
+  border-top: 1px solid var(--dlg-rule);
+}
+@media (max-width: 599px) {
+  .send-body {
+    padding-inline: 13px !important;
+  }
+  .send-foot {
+    padding-inline: 13px;
+    margin-top: auto;
+  }
+  .send-foot .v-btn {
+    flex: 1 1 auto;
+  }
 }
 .sheet-title {
   font-size: 17px;

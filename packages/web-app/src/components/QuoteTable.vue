@@ -176,6 +176,7 @@ const totalLabel = computed(() =>
 }
 .num {
   text-align: right;
+  white-space: nowrap; /* amounts stay on one line ("BBD 150.00"); Item and From wrap instead (owner 2026-11-24) */
 }
 .total td {
   font-weight: 600;

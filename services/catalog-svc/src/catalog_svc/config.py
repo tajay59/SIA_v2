@@ -24,6 +24,11 @@ class Settings:
     media_url_prefix: str = "/media/products/"
     max_image_bytes: int = 20 * 1024 * 1024
     max_images_per_upload: int = 10
+    # catalog-push (announcement sockets): cap per worker, reconcile tick, allowed browser origins (comma list;
+    # empty = the Origin must match the Host the request came in on).
+    push_max_sockets: int = 5000
+    push_reconcile_seconds: float = 30.0
+    push_origins: tuple[str, ...] = ()
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -39,4 +44,7 @@ class Settings:
             service_secret=read_secret("SERVICE_SECRET"),
             media_root=env("MEDIA_ROOT", cls.media_root),
             media_url_prefix=env("MEDIA_URL_PREFIX", cls.media_url_prefix),
+            push_max_sockets=int(env("PUSH_MAX_SOCKETS", str(cls.push_max_sockets))),
+            push_reconcile_seconds=float(env("PUSH_RECONCILE_SECONDS", str(cls.push_reconcile_seconds))),
+            push_origins=tuple(o.strip().rstrip("/") for o in env("PUSH_ORIGINS", "").split(",") if o.strip()),
         )

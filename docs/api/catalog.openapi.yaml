@@ -5,7 +5,9 @@ info:
   description: |
     Products, search, Pro Bono items, product images and reference data (departments, types, projects,
     fees, email lists, settings, and the site/location/shelf records stored in `misc`).
-    Owns `product`, `xuser` (view), `misc` (BSD §5.5–5.7).
+    Owns `product`, `xuser` (view), `misc`, `announcements` (BSD §5.5–5.7, §5.12).
+    **Announcements:** admin messages shown as a banner on every SHOP/SIA page. The live list is served here and by
+    `catalog-push`, which also pushes changes over a WebSocket (`push.asyncapi.yaml`).
     **Field visibility:** customers (role `user`, or anonymous) only ever receive `ProductPublic`;
     staff/admin receive `ProductStaff` (adds cost, threshold, serials).
 servers:
@@ -18,6 +20,7 @@ tags:
   - name: images
   - name: reference
   - name: settings
+  - name: announcements
   - name: internal
   - name: ops
 
@@ -293,6 +296,87 @@ paths:
       responses:
         '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
 
+  /announcements:
+    get:
+      tags: [announcements]
+      summary: Live announcements for an app (anyone for SHOP; staff for SIA)
+      description: |
+        Messages whose `startsAt ≤ now < expiresAt` for the app's audience (`shop`: SHOP + BOTH, `sia`: SIA + BOTH),
+        alerts first, then newest. Not cached (`Cache-Control: no-store`). Also the client's polling fallback.
+      security: [{}, { cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: app, in: query, schema: { type: string, enum: [shop, sia], default: shop } }
+      responses:
+        '200':
+          description: Live messages
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/Announcement' } } } } } }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /admin/announcements:
+    get:
+      tags: [announcements]
+      summary: Live and scheduled announcements (admin)
+      responses:
+        '200':
+          description: Not yet expired, newest start first
+          content: { application/json: { schema: { type: object, required: [items], properties: { items: { type: array, items: { $ref: '#/components/schemas/AnnouncementAdmin' } } } } } }
+    post:
+      tags: [announcements]
+      summary: Publish an announcement (admin)
+      description: Pushed to open pages at once (or at `startsAt`). Audited. An ALERT is never closable.
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementInput' } } }
+      responses:
+        '201':
+          description: Created
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementAdmin' } } }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /admin/announcements/{announcementId}:
+    parameters:
+      - { name: announcementId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+    get:
+      tags: [announcements]
+      summary: One announcement (admin)
+      responses:
+        '200':
+          description: Announcement
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementAdmin' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    patch:
+      tags: [announcements]
+      summary: Edit an announcement (admin); resend `ttl` to shorten or extend it
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementPatch' } } }
+      responses:
+        '200':
+          description: Updated
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementAdmin' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+    delete:
+      tags: [announcements]
+      summary: End now (admin; deletes it and removes it from every open page)
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '204': { description: Ended }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
   /internal/products/summaries:
     post:
       tags: [internal]
@@ -521,6 +605,85 @@ components:
         approvalReminderHours: { type: integer, minimum: 1, default: 48 }
         purgeAfterDays: { type: integer, minimum: 1, default: 90 }
         cartInactivityDays: { type: integer, minimum: 1, default: 180 }
+    AnnouncementLink:
+      type: object
+      description: |
+        Either a web address or a product. A product link (owner 2026-11-23: a banner about a product change opens
+        that product) carries only the id; each app builds its own page: SHOP `/catalogue/{productId}`, SIA
+        `/products/{productId}`.
+      required: [label]
+      properties:
+        label: { type: string, minLength: 1, maxLength: 40 }
+        url: { type: string, minLength: 1, maxLength: 500, description: 'https:// address or a path on this site starting with / (never //, never http:)' }
+        productId: { type: string, maxLength: 64 }
+    AnnouncementLinkInput:
+      type: object
+      additionalProperties: false
+      description: |
+        A web address with a label, or a product (label optional: defaults to the product name). The product must
+        be active, and on SHOP when the audience includes SHOP (422 PRODUCT_NOT_FOUND / PRODUCT_NOT_ON_SHOP).
+      properties:
+        label: { type: string, minLength: 1, maxLength: 40 }
+        url: { type: string, minLength: 1, maxLength: 500 }
+        productId: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$' }
+      oneOf:
+        - { required: [url, label] }
+        - { required: [productId] }
+    AnnouncementTtl:
+      type: object
+      description: Either a preset counted from the start, or an end time (at most 90 days from now).
+      properties:
+        preset: { type: string, enum: ['1h', '1d', '7d', '30d'] }
+        until: { type: string, format: date-time }
+      oneOf:
+        - { required: [preset] }
+        - { required: [until] }
+    Announcement:
+      type: object
+      required: [id, message, tone, audience, link, dismissible, startsAt, expiresAt, version]
+      properties:
+        id: { type: string, example: ANN0123456789abcdef0123456789abcdef }
+        message: { type: string, maxLength: 280, description: Plain text }
+        tone: { type: string, enum: [INFO, ALERT] }
+        audience: { type: string, enum: [SHOP, SIA, BOTH] }
+        link: { anyOf: [ { $ref: '#/components/schemas/AnnouncementLink' }, { type: 'null' } ] }
+        dismissible: { type: boolean, description: Viewers may close it (always false for ALERT) }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        version: { type: integer, description: Changes on every edit; a closed banner shows again after an edit }
+    AnnouncementAdmin:
+      allOf:
+        - { $ref: '#/components/schemas/Announcement' }
+        - type: object
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            createdBy: { $ref: './common.yaml#/components/schemas/Actor' }
+            updatedBy: { $ref: './common.yaml#/components/schemas/Actor' }
+    AnnouncementInput:
+      type: object
+      additionalProperties: false
+      required: [message, tone, audience, ttl]
+      properties:
+        message: { type: string, minLength: 1, maxLength: 280 }
+        tone: { type: string, enum: [INFO, ALERT] }
+        audience: { type: string, enum: [SHOP, SIA, BOTH] }
+        link: { $ref: '#/components/schemas/AnnouncementLinkInput' }
+        dismissible: { type: boolean, default: true }
+        startsAt: { type: string, format: date-time, description: Default now }
+        ttl: { $ref: '#/components/schemas/AnnouncementTtl' }
+    AnnouncementPatch:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        message: { type: string, minLength: 1, maxLength: 280 }
+        tone: { type: string, enum: [INFO, ALERT] }
+        audience: { type: string, enum: [SHOP, SIA, BOTH] }
+        link: { anyOf: [ { $ref: '#/components/schemas/AnnouncementLinkInput' }, { type: 'null' } ] }
+        dismissible: { type: boolean }
+        startsAt: { type: string, format: date-time }
+        ttl: { $ref: '#/components/schemas/AnnouncementTtl' }
     Place:
       type: object
       required: [kind, barcode, name, active]

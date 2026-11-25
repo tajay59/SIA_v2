@@ -16,6 +16,7 @@ from typing import Any, Literal
 
 import jwt
 from fastapi import Request
+from starlette.requests import HTTPConnection
 
 from .errors import ProblemError, unauthorized
 
@@ -184,7 +185,7 @@ class TokenVerifier:
 MAX_COOKIE_CANDIDATES = 4
 
 
-def cookie_values(request: Request, name: str) -> list[str]:
+def cookie_values(request: HTTPConnection, name: str) -> list[str]:
     """Every non-empty value of cookie `name`, in the order the browser sent them.
 
     `request.cookies` keeps only the LAST value of a repeated name. A browser holds one cookie per (name, domain,

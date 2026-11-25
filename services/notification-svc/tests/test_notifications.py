@@ -441,3 +441,16 @@ def test_empty_staff_list_is_logged_not_silent(
         run(n, ev("stock.low", {"productId": "MET1", "available": 1, "threshold": 2}))
     assert mailer.sent == []
     assert "'lowStock' is empty" in caplog.text
+
+
+def test_a_corrected_invoice_says_it_replaces_the_earlier_one(env: tuple[Notifier, FakeMailer, FakeDirectory]) -> None:
+    n, mailer, _ = env
+    gen = {**ORDER, "fileId": "FILREV2", "kind": "invoice", "name": "Invoice-0080926-rev2.pdf",
+           "mime": "application/pdf", "size": 1, "sha256": "0", "number": "0080926", "rev": 2,
+           "notify": {"customer": True, "staff": True}}  # fmt: skip
+    run(n, ev("document.generated", gen))
+    customer, staff = mailer.sent[0], mailer.sent[1]
+    assert customer.subject.startswith("Corrected invoice for your request")
+    assert "replaces the one sent before" in customer.text
+    assert "Revision" in customer.text
+    assert staff.subject.startswith("Invoice corrected")

@@ -168,3 +168,146 @@ p, li, .t-body, .t-body-lg {
 .v-snackbar .v-snackbar__actions {
   pointer-events: auto;
 }
+
+/* Dialog scrim (SHOP + SIA): Vuetify's default (on-surface at 32 %) let the page read through and looked messy.
+   A dark wash at full layer opacity plus a blur pushes the page back; the fade in/out is kept. */
+.v-overlay .v-overlay__scrim {
+  opacity: 1;
+  background: rgba(6, 10, 16, 0.6) !important;
+  backdrop-filter: blur(8px) saturate(0.8);
+  -webkit-backdrop-filter: blur(8px) saturate(0.8);
+}
+.v-overlay .v-overlay__scrim.fade-transition-enter-from,
+.v-overlay .v-overlay__scrim.fade-transition-leave-to {
+  opacity: 0;
+}
+
+/* ---- Dialogs (SHOP + SIA): the golden-ratio system (owner 2026-11-24; built on SIA's invoice builder and Verify
+   and purchase, then made the default for every dialog in both apps). Type: 11 px captions (14/√φ) · 14 px body and
+   fields · 17.8 px section heads (14·√φ) · 22.65 px title and key figure (14·φ). Space: Fibonacci 8 · 13 · 21 · 34
+   (21 = the dialog's edge, 13 on phones). Plain surface heads, never a coloured band. Fields: 8 px corners instead
+   of pills. A checkbox, radio or switch sits 13 px from its words. Padding is low specificity (:where), so a dialog
+   that lays itself out keeps its own. */
+.v-dialog .v-card {
+  --f1: 8px;
+  --f2: 13px;
+  --f3: 21px;
+  --f4: 34px;
+  --dlg-muted: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity));
+  --dlg-rule: rgba(var(--v-border-color), var(--v-border-opacity));
+}
+:where(.v-dialog .v-card) > .v-card-item,
+:where(.v-dialog .v-card) > .v-card-title {
+  padding: 21px 21px 13px;
+}
+.v-dialog .v-card .v-card-title,
+.dlg-title {
+  margin: 0;
+  font-size: 22.65px;
+  line-height: 1.236;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.v-dialog .v-card .v-card-subtitle {
+  font-size: 14px;
+  line-height: 1.5;
+  opacity: 1;
+  color: var(--dlg-muted);
+  white-space: normal;
+}
+:where(.v-dialog .v-card) > .v-card-text {
+  padding: 13px 21px 21px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+:where(.v-dialog .v-card) > .v-card-actions {
+  padding: 13px 21px;
+  gap: 8px;
+}
+.v-dialog .v-field {
+  border-radius: 8px;
+}
+.v-dialog .v-selection-control .v-label {
+  padding-inline-start: 9px; /* + the control's own 4 px = 13 px from the box to the words */
+}
+/* A task dialog's own head: who and what φ : one key figure 1, a hairline under it. */
+.dlg-head {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1.618fr) minmax(0, 1fr);
+  align-items: end;
+  gap: 21px;
+  padding: 21px;
+  border-bottom: 1px solid var(--dlg-rule);
+}
+.dlg-head.solo {
+  grid-template-columns: minmax(0, 1fr);
+}
+.dlg-who {
+  min-width: 0;
+}
+.dlg-sub {
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--dlg-muted);
+  overflow-wrap: anywhere;
+}
+.dlg-what {
+  margin: 8px 0 0;
+  font-size: 17.8px;
+  line-height: 1.382;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+.dlg-what + .dlg-sub {
+  margin-top: 2px;
+}
+.dlg-key {
+  margin: 0;
+  text-align: right;
+  min-width: 0;
+}
+.dlg-cap {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.618;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dlg-muted);
+}
+.dlg-figure {
+  margin: 0;
+  font-size: 22.65px;
+  line-height: 1.236;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@media (max-width: 599.98px) {
+  :where(.v-dialog .v-card) > .v-card-item,
+  :where(.v-dialog .v-card) > .v-card-title {
+    padding: 21px 13px 13px;
+  }
+  :where(.v-dialog .v-card) > .v-card-text {
+    padding: 13px 13px 21px;
+  }
+  :where(.v-dialog .v-card) > .v-card-actions {
+    padding: 13px;
+  }
+  .dlg-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 21px 13px 13px;
+  }
+  .dlg-key {
+    text-align: left;
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+}

@@ -13,6 +13,10 @@ from cimh_common.auth import JwksCache, TokenVerifier, http_jwks_fetcher, redis_
 from cimh_common.outbox import outbox_backlog_hook
 from cimh_common.redis_client import redis_client
 
+from .announcements import AnnouncementService, PushHub, redis_publisher
+from .announcements_api import admin as announcements_admin
+from .announcements_api import public as announcements_public
+from .announcements_api import push as announcements_push
 from .api import router
 from .config import Settings
 from .identity_client import IdentityClient
@@ -88,5 +92,75 @@ def build_app(
     )
     app.state.settings = s
     app.state.catalog = CatalogService(store, lookup_account)
+    app.state.announcements = AnnouncementService(store, redis_publisher(redis) if redis is not None else None)
     app.include_router(router, prefix=BASE)
+    app.include_router(announcements_public, prefix=BASE)
+    app.include_router(announcements_admin, prefix=BASE)
+    return app
+
+
+def build_push_app(
+    settings: Settings | None = None,
+    *,
+    db: Any = None,
+    redis: Any = None,
+    token_verifier: TokenVerifier | None = None,
+    configure_logs: bool = True,
+) -> FastAPI:
+    """catalog-push: the announcement socket and the live list only (plan 2026-11-23, D9). Same image as
+    catalog-svc. Run: gunicorn 'catalog_svc.main:build_push_app()' -k uvicorn.workers.UvicornWorker -w 1"""
+    s = settings or Settings.from_env()
+    if db is None:
+        from pymongo import AsyncMongoClient
+
+        if not s.mongo_url:
+            raise RuntimeError("MONGO_URL is required")
+        db = AsyncMongoClient(s.mongo_url, tz_aware=True)[s.db_name]
+    if redis is None and s.redis_url:
+        redis = redis_client(s.redis_url)
+    if token_verifier is None:
+        if not s.jwks_url:
+            raise RuntimeError("JWKS_URL is required")
+        token_verifier = TokenVerifier(
+            JwksCache(http_jwks_fetcher(s.jwks_url)),
+            issuer=s.issuer,
+            audience=s.audience,
+            is_revoked=redis_revocation_check(redis) if redis is not None else None,
+        )
+    store = Store(db)
+
+    async def mongo_ok() -> bool:
+        res = await db.command("ping")
+        return bool(res.get("ok"))
+
+    app = create_app(
+        "catalog-push",
+        version=os.environ.get("APP_VERSION", "0.1.0"),
+        token_verifier=token_verifier,
+        readiness_checks={"mongo": mongo_ok},
+        configure_logs=configure_logs,
+    )
+    service = AnnouncementService(store)
+    hub = PushHub(
+        service,
+        max_sockets=s.push_max_sockets,
+        reconcile_seconds=s.push_reconcile_seconds,
+        redis=redis,
+        metrics=app.state.metrics,
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> Any:
+        hub.start()
+        try:
+            yield
+        finally:
+            await hub.stop()
+
+    app.router.lifespan_context = lifespan
+    app.state.settings = s
+    app.state.announcements = service
+    app.state.push_hub = hub
+    app.include_router(announcements_public, prefix=BASE)
+    app.include_router(announcements_push, prefix=BASE)
     return app

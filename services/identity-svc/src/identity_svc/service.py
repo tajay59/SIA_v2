@@ -404,9 +404,14 @@ class IdentityService:
                 raise forbidden("Enter the code from your authenticator app", code="MFA_REQUIRED")
             secret = self.env.open(acc["mfa"]["totpSecretEnc"], acc["id"])
             step = sec.totp_verify(secret, totp)
-            if step is None or not await self.tokens.accept_totp_step(acc["id"], step):
+            if step is None:
                 await self._register_failure(acc, ip, cid)
                 raise unauthorized("Invalid authentication code", code="MFA_INVALID")
+            if not await self.tokens.accept_totp_step(acc["id"], step):
+                # The right code, already used (each step works once). Said apart from a wrong code so the person
+                # waits for the next one instead of retyping it into a lockout (2026-11-25). Not counted as a
+                # failure: it only answers an exact match of a code valid seconds ago, so it helps no guessing.
+                raise unauthorized("That code was just used; wait for the next one", code="MFA_CODE_REUSED")
             mfa_passed = True
 
         if acc.get("passwordHash") and sec.needs_rehash(acc["passwordHash"]):
@@ -596,8 +601,10 @@ class IdentityService:
             raise ProblemError(422, "VALIDATION_FAILED", "Start setup first")
         secret = self.env.open(pending, acc["id"])
         step = sec.totp_verify(secret, totp)
-        if step is None or not await self.tokens.accept_totp_step(acc["id"], step):
+        if step is None:
             raise ProblemError(422, "CODE_INVALID", "The code is not valid")
+        if not await self.tokens.accept_totp_step(acc["id"], step):
+            raise ProblemError(422, "MFA_CODE_REUSED", "That code was just used; wait for the next one")
         await self.store.accounts.update_one(
             {"id": acc["id"]},
             {"$set": {"mfa": {"enabled": True, "totpSecretEnc": pending}, "updatedAt": now()}, "$inc": {"version": 1}},
