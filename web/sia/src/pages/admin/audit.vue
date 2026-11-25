@@ -144,6 +144,7 @@ const SENTENCE: Record<string, string> = {
   'privacy.exported': 'Downloaded a copy of the personal data',
   'privacy.erasure_requested': 'Asked for their data to be erased',
   'product.deactivated': 'Deactivated the product',
+  'product.reactivated': 'Reactivated the product',
   'project.created': 'Created the project',
   'project.updated': 'Edited the project',
   'file.quarantined': 'Upload refused: a virus was found',

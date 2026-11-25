@@ -4040,7 +4040,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>catalog</td>
-<td><code>/products</code> (browse, create), <code>/products/search</code>, <code>/products/{id}</code>, <code>/products/{id}/images</code>, <code>/reference</code>, <code>/settings/fees</code>, <code>/settings/email-lists</code>, <code>/settings/general</code></td>
+<td><code>/products</code> (browse, create), <code>/products/search</code>, <code>/products/{id}</code> (+ <code>/reactivate</code>), <code>/products/{id}/images</code>, <code>/reference</code>, <code>/settings/fees</code>, <code>/settings/email-lists</code>, <code>/settings/general</code></td>
 </tr>
 <tr>
 <td>inventory</td>
@@ -4457,8 +4457,8 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/products/[id]</code></td>
 <td>Product</td>
 <td>staff</td>
-<td>Header (name, stock meter vs alert level, Create labels); tabs Overview (photos, description, facts, shelves), Edit details (sectioned form; Deactivate isolated below it), Images (upload, background-removal option, set primary, remove), Stock (by location), History</td>
-<td>Save ↺ · Deactivate ⧉ · Create labels → A-12 (prefilled)</td>
+<td>Golden-ratio record (owner 2026-11-25; 11 / 14 / 17.8 / 22.65 / 28.8 px, 8 · 13 · 21 · 34, plain section heads over hairlines, laid out by its own width). Header split φ : 1: name, what it is (type · department · model number), what customers see (eye icon + word, stock badge) beside Available (meter vs alert level, "Alert at n · on n shelves", tonal Create labels; phones: Available + Create labels on one row, meter across). Tabs (arrow keys, Home/End): <strong>Overview</strong> photos 1 : φ Shelves (most units first, five, each a link to the shelf with its short code; link to Stock) → Facts (lock-marked staff-only cost and serials, legend beside the head, money as "BBD 1275.00", id with copy; the model number shows once, in the header) → Description; narrow records shrink the photo. <strong>Edit details</strong> sectioned form, save state ("Unsaved changes" / "Saved"; Save waits for a change; <strong>Ctrl+S / ⌘S</strong> saves an edit, never creates; a "Ctrl S saves" hint shows while there is something to save; leaving with unsaved edits says they are kept as a draft and reopening restores them), Deactivate under the save bar in the form's column; an inactive product shows <strong>Reactivate</strong> there instead (no confirm: reversible). <strong>Images</strong> drop slot (drop or Choose photos; background removal for new uploads), photos with the primary ringed; removing asks first. <strong>Stock</strong> Available 22.65, reserved/issued/picked 17.8 (zeros muted), each with a sentence; every shelf with its share bar and short code. <strong>History</strong> (admins) Vuetify timeline, BBD for cost changes. A failed load says so in place with Try again. <strong>Previous / next product</strong> (owner 2026-11-25): the list's order is remembered for the browser tab; ‹ n of N › in the panel head beside the list and on the back-link row of the own page, Alt+↑ / Alt+↓ outside a field; the tab is kept. Phones: the tab strip fades at an end with tabs out of view.</td>
+<td>Save ↺ (Ctrl+S) · Deactivate ⧉ · Reactivate ↺ · ‹ › previous/next · Create labels → A-12 (prefilled)</td>
 </tr>
 <tr>
 <td>A-08</td>

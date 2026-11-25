@@ -243,6 +243,57 @@ export interface paths {
         };
         trace?: never;
     };
+    "/products/{productId}/reactivate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                productId: components["parameters"]["ProductId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reactivate a deactivated product (staff, admin)
+         * @description Undoes a deactivation. Customers see the product again only if it is sellable or Pro Bono. Emits product.updated with changed [active] and an audit entry product.reactivated. An active product is returned unchanged.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header: {
+                    /** @description The resource `version` the client last saw (as `"<int>"`). Mismatch returns 409. */
+                    "If-Match": components["parameters"]["IfMatch"];
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path: {
+                    productId: components["parameters"]["ProductId"];
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Reactivated (or already active) */
+                200: {
+                    headers: {
+                        ETag: components["headers"]["ETag"];
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ProductStaff"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+                409: components["responses"]["Conflict"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products/{productId}/images": {
         parameters: {
             query?: never;

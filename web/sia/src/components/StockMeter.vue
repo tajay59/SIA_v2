@@ -88,8 +88,8 @@ const label = computed(() => {
   font-size: 13px;
 }
 .large .n {
-  font-size: 28px;
-  line-height: 36px;
+  font-size: 22.65px; /* 14·φ, the key-figure step (golden-ratio system) */
+  line-height: 1.236;
   font-weight: 500;
   text-align: left;
 }

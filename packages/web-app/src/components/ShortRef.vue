@@ -10,7 +10,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useNotify } from '../notify'
 import { shortRef } from '../orders'
 
-const props = withDefaults(defineProps<{ id: string; fit?: boolean; copy?: boolean }>(), { fit: true, copy: false })
+/** `what`: names the id in the copy button ("Copy order id …", "Copy product id …"). */
+const props = withDefaults(defineProps<{ id: string; fit?: boolean; copy?: boolean; what?: string }>(), { fit: true, copy: false, what: 'order id' })
 
 const root = ref<HTMLElement | null>(null)
 const full = ref(false)
@@ -92,7 +93,7 @@ async function copyId() {
       size="x-small"
       density="comfortable"
       :icon="copied ? mdiCheck : mdiContentCopy"
-      :aria-label="`Copy order id ${id}`"
+      :aria-label="`Copy ${what} ${id}`"
       @click.stop.prevent="copyId"
     />
   </span>
@@ -109,5 +110,7 @@ async function copyId() {
 .short-ref-copy {
   vertical-align: middle;
   margin-inline-start: 4px;
+  min-width: 24px !important; /* WCAG 2.5.8: 24 px target (x-small draws 20) */
+  min-height: 24px !important;
 }
 </style>

@@ -265,6 +265,13 @@ async def delete_product(
     return Response(status_code=204)
 
 
+@router.post("/products/{productId}/reactivate", tags=["products"])
+async def reactivate_product(
+    productId: str, request: Request, version: IfMatch = None, me: Principal = Depends(require_staff)
+) -> JSONResponse:
+    return with_etag(await svc(request).reactivate_product(me, productId, if_match(version), cid(request)))
+
+
 # ---------------------------------------------------------------- images
 
 
