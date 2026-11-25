@@ -172,7 +172,14 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
       <p class="t-body muted">It may have been withdrawn from the catalogue.</p>
       <div><v-btn to="/catalogue" variant="outlined">Back to the catalogue</v-btn></div>
     </div>
-    <v-skeleton-loader v-else-if="!product" type="image, article" />
+    <!-- Loading: the page's own shape (crumb, a band as tall as the real one, the request bar), so nothing below
+         moves when the product arrives (Lighthouse 2026-11-25: the footer showed under a short skeleton, then jumped
+         off screen: layout shift 0.47 desktop / 0.53 phone). -->
+    <div v-else-if="!product" class="product loading" aria-busy="true" aria-label="Loading the product">
+      <v-skeleton-loader type="text" class="crumb-skel" />
+      <div class="band skel-band" />
+      <v-skeleton-loader type="heading, paragraph" class="bar-skel" />
+    </div>
     <article v-else class="product">
       <nav class="crumb t-body" aria-label="Breadcrumb">
         <router-link to="/catalogue">Equipment and spares</router-link>
@@ -315,6 +322,21 @@ const loginLink = computed(() => ({ path: '/login', query: { returnTo: route.ful
   text-decoration: underline;
 }
 
+/* Loading shape: keeps the page a screen tall so the footer stays below the fold until the product arrives. */
+.page {
+  min-height: 100dvh;
+}
+.loading .crumb-skel {
+  max-width: 320px;
+  background: transparent;
+}
+.loading .bar-skel {
+  margin-top: var(--sp-6);
+  background: transparent;
+}
+.skel-band {
+  border-bottom-color: rgba(var(--v-theme-on-surface), 0.12);
+}
 /* The band. */
 .band {
   position: relative;

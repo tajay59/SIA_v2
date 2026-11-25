@@ -17,6 +17,15 @@ limit_conn_status 429;
 # (pen test F-02).
 map $uri $is_internal { default 0; ~*^/api/[^/]+/v1/internal(/|$) 1; }
 
+# Compression for the web app files only (Lighthouse 2026-11-25: ~1.2 MB of JS/CSS went out uncompressed and
+# phones waited ~8 s for content). Switched on in the static locations below, not for /api/: compressing
+# responses that carry tokens next to user-supplied text invites BREACH, and API answers are small.
+gzip_vary on;
+gzip_comp_level 5;
+gzip_min_length 1024;
+gzip_proxied any;
+gzip_types text/css application/javascript text/javascript application/json image/svg+xml font/ttf application/xml text/plain;
+
 ssl_protocols TLSv1.2 TLSv1.3;
 ssl_prefer_server_ciphers off;
 ssl_session_cache shared:SSL:10m;
@@ -74,12 +83,14 @@ server {
 
   location /assets/ {
     root /srv/sia-web/sia;
+    gzip on;
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     try_files $uri =404;
   }
   location / {
     root /srv/sia-web/sia;
+    gzip on;
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "no-cache" always;
     try_files $uri /index.html;
@@ -102,12 +113,14 @@ server {
 
   location /assets/ {
     root /srv/sia-web/shop;
+    gzip on;
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "public, max-age=31536000, immutable" always;
     try_files $uri =404;
   }
   location / {
     root /srv/sia-web/shop;
+    gzip on;
     include /etc/nginx/snippets/security-headers.conf;
     add_header Cache-Control "no-cache" always;
     try_files $uri /index.html;

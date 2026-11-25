@@ -1,0 +1,9 @@
+# CIMH Stores (SHOP): the catalogue is public; a customer's own pages and the API are not for search engines.
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /cart
+Disallow: /requests
+Disallow: /account
+Disallow: /verify
+Disallow: /reset-password

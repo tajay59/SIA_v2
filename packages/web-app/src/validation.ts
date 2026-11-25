@@ -5,6 +5,12 @@
  */
 import { z } from 'zod'
 
+// No compiled validators: Zod probes `new Function` to decide, and our CSP (script-src 'self', no unsafe-eval)
+// blocks it, which Chrome reports as a CSP violation on every page even though Zod catches it (Lighthouse
+// 2026-11-25). Interpreted parsing is plenty fast for form-sized data. Runs at module load (index re-exports
+// this module), before any schema parses.
+z.config({ jitless: true })
+
 export const email = z.email('Enter a valid email address').max(254)
 export const password = z
   .string()
