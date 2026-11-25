@@ -498,9 +498,11 @@ const day = (iso: string | null) => (iso ? formatDate(iso.slice(0, 10)) : '')
               <p v-if="commercial" class="note r">Printed with “The cost does not cover shipping fees.”</p>
             </section>
 
-            <Transition name="drop"><ul v-if="tried && problems.length" class="problems" role="alert">
+            <!-- The alert role sits on a wrapper: on the <ul> itself it replaces the list role, leaving its items outside
+                 any list (axe listitem; seen in WebKit on main, 2026-11-25). -->
+            <Transition name="drop"><div v-if="tried && problems.length" role="alert"><ul class="problems">
               <li v-for="p in problems" :key="p">{{ p }}</li>
-            </ul></Transition>
+            </ul></div></Transition>
           </form>
         </div>
       </v-card-text>

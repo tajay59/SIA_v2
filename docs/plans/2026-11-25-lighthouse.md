@@ -1,6 +1,6 @@
 # Lighthouse: results, fixes done, fixes to come
 
-Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 merged (#55) and on staging; 5-A measured (§5.1); staging edge fixed (#56, installed); fix 6 built (branch `fix/signed-out-console-and-pick-queue`); next: fix 3** · Owner request 2026-11-25
+Date: 2026-11-25 · Status: **fixes 1, 2, 4, 5 (#55), staging edge (#56) and fix 6 (#57) merged and on staging; fix 3 built (branch `perf/smaller-first-load`, §5.2); next: measure phones without ESET, then C / B** · Owner request 2026-11-25
 
 Working plan, not part of the manual. Picks up where the session left off: read §6 first.
 
@@ -103,7 +103,7 @@ Best practices stays 93 after the fixes: only the two 401s are left (fix 6).
 |---|---|---|---|
 | A | **Done 2026-11-25 (§5.1).** ~~Merge #55, then re-run Lighthouse on staging's public pages~~ (`https://store.hashiz.store/`, `/catalogue`, a product, `/pro-bono`; `https://sia.hashiz.store/login`). Read-only page loads only; never sign up or create data there (it holds the real legacy data). | Compression only shows once nginx serves the files: this is the real phone performance number. | Small. Merging deploys the new gateway config to staging (CI reloads the gateway after `nginx -t`). |
 | 6 | **Built 2026-11-25** (no contract change: with no `csrf_token` cookie the web apps skip `/me` and `/auth/refresh`, which could only answer 401; identity refuses a web refresh without it; signed-out SHOP/SIA pages load with no failed request and no console error). ~~No 401s for signed-out visitors:~~ e.g. an identity endpoint that answers 200 `{ account: null }` for "am I signed in?" (or skip `/auth/refresh` when no session is known), so the console stays clean. | Last item keeping Best practices at 93 on every page. | Small; contract change (identity OpenAPI) + web-app `session.ts`/`api.ts`. |
-| 3 | **Smaller first load:** check whether all of Vuetify's CSS ships (`vuetify/styles` vs per-component styles with `vite-plugin-vuetify` `autoImport` + `styles: 'sass'`/`configFile`), split rarely used code out of the main chunk (pdf.js is already separate; check what else lands in `index-*.js`, e.g. via `rollup-plugin-visualizer`), lazy-load heavy components below the fold. | Main JS ~60 % unused on the first page; 370–415 KB render-blocking CSS. The biggest remaining phone cost once compression is on. | Medium; touches build config and possibly the look (verify with the Playwright suite + screenshots). Decide after A. |
+| 3 | **Built 2026-11-25 (§5.2).** ~~Smaller first load:~~ check whether all of Vuetify's CSS ships (`vuetify/styles` vs per-component styles with `vite-plugin-vuetify` `autoImport` + `styles: 'sass'`/`configFile`), split rarely used code out of the main chunk (pdf.js is already separate; check what else lands in `index-*.js`, e.g. via `rollup-plugin-visualizer`), lazy-load heavy components below the fold. | Main JS ~60 % unused on the first page; 370–415 KB render-blocking CSS. The biggest remaining phone cost once compression is on. | Medium; touches build config and possibly the look (verify with the Playwright suite + screenshots). Decide after A. |
 | B | **Brotli / precompressed assets:** build `.gz`/`.br` next to each asset (e.g. `vite-plugin-compression`) and serve them with `gzip_static` (brotli needs an nginx module not in the stock image). | A further ~15–20 % below gzip, and no compression CPU per request. | Small–medium. Optional after A. |
 | C | **Font and hero image:** check `font-display` and preload of Inter (SHOP home LCP), and the 110 KB `gears-*.webp` on SHOP home. | Small LCP gains on phones. | Small. |
 | D | **Lighthouse in CI (optional):** run the §7 spec against previews on PRs touching `web/`, failing on accessibility < 100 or CLS > 0.1 (performance too noisy on CI runners to gate). | Keeps the 100 accessibility and the layout-shift fix from regressing. | Medium (CI time ~15 min; could audit a subset). |
@@ -129,12 +129,36 @@ Accessibility 100 everywhere. Best practices 96: only the two 401s (fix 6) remai
 - What the reports still show, whatever the encoding: the 369 KB CSS blocks rendering (est. 1.95 s on a phone), ~386 KB of the main JS is unused on the first page, and the LCP image (home slide) is found only after the JS runs. These are fix 3 (and C), unchanged.
 - **Found: the shared staging edge gzips API answers.** `printit-nginx` (not ours) sets `gzip on; gzip_proxied any` at the http level for every site, so `/api/` JSON left staging gzipped (BREACH, the thing fix 1 avoided), before and after #55. Production is not affected (gzip is switched on only in the SPA locations; off by default elsewhere). Fix: `gzip off;` in our edge site's 443 server (`deploy/staging-lite/edge-site.conf`, branch `fix/staging-edge-no-api-gzip`); sia-gateway's own gzip of the web app files passes through untouched. Installing it touches the shared edge (backup, `nginx -t`, reload; no certbot): owner to approve.
 
+### 5.2 Fix 3: smaller first load (2026-11-25, branch `perf/smaller-first-load`)
+
+What the first page loaded, found with `source-map-explorer` on the SHOP entry chunk (644 KB): classic Zod 78 KB, qrcode 21 KB (MFA setup only), every shared web-app component 34 KB, Vuetify components no first page uses (OTP input, autocomplete, select, date composables…). Cause: `@cimh/web-app` declared no `sideEffects`, so its barrel (`index.ts`) pulled every module into the entry. Vuetify components were already imported one by one (`autoImport`); `vuetify/styles` (301 KB) was core 20 KB + palette classes 41 KB + utilities 240 KB, of which 186 KB are breakpoint variants no template uses.
+
+Changes:
+1. `packages/web-app/package.json` `"sideEffects": ["**/*.css"]`: pages pull only what they use (the only import-time code, `bootstrap.ts` and `z.config` in `validation.ts`, runs whenever those modules are used).
+2. `packages/web-ui/tooling/trim-vuetify-css.ts`, a PostCSS step in both Vite configs, removes from Vuetify's own style files only: breakpoint utility variants and `hidden-*`, and the Material palette classes except white/black/transparent. Checked: no template, script or Vuetify component uses them; `bg-white`, `rounded-pill`, `elevation-*`, `d-flex`, `ma-2` stay.
+3. `zod/mini` instead of classic Zod (validation.ts, AddressDialog, ProductForm; same checks and messages).
+
+SHOP first load, JS / CSS compressed (gzip 6), signed out, measured in a browser on preview builds:
+
+| Page | Before | After |
+|---|---|---|
+| Home | 229 / 60 KB | 164 / 31 KB |
+| Catalogue | 226 / 59 KB | 187 / 39 KB |
+| Product | 225 / 59 KB | 166 / 33 KB |
+| Login | 219 / 54 KB | 178 / 32 KB |
+| Sign-up | 219 / 54 KB | 197 / 37 KB |
+
+Entry stylesheet 360 → 110 KB (SHOP), 415 → 113 KB (SIA). Pages now load 30–40 small files instead of ~10 (HTTP/2, cheap). Lighthouse phone on previews (uncompressed, so pessimistic): home 49–54 → 55, catalogue 56 → 62, product 52 → 64, login 53 → 61; SIA sign-in desktop 90 → 94. Whole Playwright suite (Chromium + 360 px) passes.
+
+Still in every first load: Vue (~80 KB raw), vue-router (23 KB), Vuetify core, the shell (lists, menus, snackbar), Vuetify's date adapter (11.5 KB, created by `createVuetify` whatever the page). Further steps would be per-page (lazy-load below-the-fold parts) with smaller returns.
+
 ## 6. State at the end of the session (2026-11-25, second session)
 
 - **#55 merged** (squash) and deployed to staging; this plan is on `main` with it. 5-A done (§5.1).
 - **#56 merged and the edge file installed on kw-server by hand** (backup `/srv/edge-sites/cimh-stores-staging.conf.bak`, `nginx -t`, reload): `/api/` answers now leave uncompressed, web app files still gzip, the other sites on the edge answer as before (`printitdesigns.com` without `www.` has a certificate that doesn't name it: pre-existing, not ours).
 - **Fix 6 built** on branch `fix/signed-out-console-and-pick-queue` (with SIA/SHOP UI work from the same session).
-- **Next:** fix 3 (smaller first load), then C. Measure phones without ESET (see §5.1).
+- **#57 merged** (fix 6 + SIA pick/desk UI). **Fix 3 built** on `perf/smaller-first-load` (§5.2).
+- **Next:** measure phones on staging from a machine without ESET (or PageSpeed Insights, owner's call), then C (font preload, home image) and B (precompressed assets).
 - PR #54 (announcements + invoice CRUD) is merged and on staging: order-svc's `invoices` upgrade made 35 records, 0 number clashes; the staging edge site is installed (announcement WebSocket 101 on both hosts, a foreign Origin gets 403).
 - Preview servers were running on 15291 (SHOP) / 15292 (SIA) from `web/*/dist` built on this branch. **Gotcha:** stopping a background `npx vite preview` task leaves its `node` process holding the port; kill the listener (PowerShell `Get-NetTCPConnection -LocalPort 15291 -State Listen` → `Stop-Process`) before restarting, and restart previews after editing `vite.config.ts` (the CSP header is read at start).
 - **Never run `deploy/staging-lite/deploy.sh --edge` from a tree with unmerged changes:** it rebuilds and ships the local tree before installing the edge file.

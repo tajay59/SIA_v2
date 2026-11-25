@@ -2,6 +2,7 @@ import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 import vuetify from 'vite-plugin-vuetify'
 import VueRouter from 'vue-router/vite'
+import { trimVuetifyCss } from '../../packages/web-ui/tooling/trim-vuetify-css'
 
 // Same Content-Security-Policy as staging/production (deploy/staging-lite/gateway.conf), so the browser
 // tests catch violations before deployment.
@@ -30,6 +31,8 @@ export default defineConfig({
   resolve: { dedupe: ['vue', 'vue-router', 'pinia', 'vuetify'] },
   server: { port: 15173, strictPort: true, proxy },
   preview: { port: 15173, strictPort: true, proxy, headers: { 'Content-Security-Policy': csp } },
+  // Vuetify's global stylesheet without breakpoint utilities and palette classes (Lighthouse fix 3).
+  css: { postcss: { plugins: [trimVuetifyCss()] } },
   build: {
     target: 'es2022',
     sourcemap: true,
