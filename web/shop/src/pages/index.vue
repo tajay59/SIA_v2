@@ -176,6 +176,7 @@ function armPath() {
               sizes="100vw"
               :alt="s.alt"
               :loading="i === 0 ? 'eager' : 'lazy'"
+              :fetchpriority="i === 0 ? 'high' : undefined"
             />
             <div class="slide-shade" />
             <div class="slide-text">

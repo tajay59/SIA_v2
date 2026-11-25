@@ -142,6 +142,19 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
       - name: Browser journeys + axe (Chromium, Firefox, WebKit, 360 px phone)
         run: npx playwright test -c tests/e2e-web
+      - name: Lighthouse gate (accessibility 100, CLS <= 0.1; SHOP + SIA sign-in, production builds)
+        run: |
+          npm run preview -w @cimh/shop > /tmp/shop-preview.log 2>&1 &
+          npm run preview -w @cimh/sia > /tmp/sia-preview.log 2>&1 &
+          for _ in $(seq 1 30); do curl -sf -o /dev/null http://localhost:15173/ && curl -sf -o /dev/null http://localhost:15174/ && break; sleep 2; done
+          node tools/perf/lighthouse-gate.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-reports
+          path: lighthouse-reports
+          if-no-files-found: ignore
+          retention-days: 14
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

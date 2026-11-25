@@ -4,6 +4,7 @@ import vuetify from 'vite-plugin-vuetify'
 import Icons from 'unplugin-icons/vite'
 import VueRouter from 'vue-router/vite'
 import { trimVuetifyCss } from '../../packages/web-ui/tooling/trim-vuetify-css'
+import { precompress, preloadFonts } from '../../packages/web-ui/tooling/build-extras'
 
 // Same Content-Security-Policy as staging/production (deploy/staging-lite/gateway.conf), so the browser
 // tests catch violations before deployment.
@@ -27,6 +28,8 @@ export default defineConfig({
     VueRouter({ routesFolder: 'src/pages', dts: 'src/typed-router.d.ts' }),
     vue(),
     vuetify({ autoImport: true }),
+    preloadFonts(),
+    precompress(),
     // Iconify icons (filled Material Symbols) compiled into the bundle: nothing fetched at runtime (CSP).
     Icons({ compiler: 'vue3' }),
   ],
