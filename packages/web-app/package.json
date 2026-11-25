@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "sideEffects": ["**/*.css"],
   "description": "Shared Vue app code for SHOP and SIA: auth store, API error handling, identity screens' forms.",
   "main": "src/index.ts",
   "types": "src/index.ts",

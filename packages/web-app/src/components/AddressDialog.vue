@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** Add / edit one shipping address (common.yaml ShippingAddress = Address + Contact). */
 import { reactive, ref, watch } from 'vue'
-import { z } from 'zod'
+import { z } from 'zod/mini'
 import { countries } from '../countries'
 import type { ShippingAddress } from '../types'
 import { checkForm, type FormLike } from '../form'
@@ -22,8 +22,8 @@ watch(open, (o) => {
   if (o) Object.assign(form, blank(), props.address ?? {})
 })
 
-const req = (max: number) => rule(z.string().trim().min(1, 'Required').max(max, `At most ${max} characters`))
-const opt = (max: number) => rule(z.string().max(max, `At most ${max} characters`).nullable().optional())
+const req = (max: number) => rule(z.string().check(z.trim(), z.minLength(1, 'Required'), z.maxLength(max, `At most ${max} characters`)))
+const opt = (max: number) => rule(z.optional(z.nullable(z.string().check(z.maxLength(max, `At most ${max} characters`)))))
 
 async function save() {
   // Save is never disabled: missing fields are marked and the first one gets the cursor.

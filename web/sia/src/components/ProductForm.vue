@@ -5,7 +5,7 @@
  */
 import { checkForm, type FormLike, type ProductStaff, PRODUCT_TYPES, type ProductType, rule, typeLabel, useDraft, useReference } from '@cimh/web-app'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { z } from 'zod'
+import { z } from 'zod/mini'
 
 const props = defineProps<{
   product?: ProductStaff | null
@@ -97,7 +97,7 @@ const typeItems = computed(() => PRODUCT_TYPES.map((k) => ({ value: k, title: `$
 const projectItems = computed(() => (reference.value?.projects ?? []).map((p) => ({ value: p.code, title: p.name })))
 const departments = computed(() => reference.value?.departments ?? [])
 
-const money = z.string().trim().regex(/^\d{1,12}(\.\d{1,2})?$/, 'An amount like 1250 or 1250.50')
+const money = z.string().check(z.trim(), z.regex(/^\d{1,12}(\.\d{1,2})?$/, 'An amount like 1250 or 1250.50'))
 const required = (v: unknown) => (v !== null && v !== undefined && v !== '') || 'Required'
 const wholeAtLeast = (min: number) => (v: unknown) =>
   v === null || v === '' || (Number.isInteger(Number(v)) && Number(v) >= min) || `A whole number, ${min} or more`
