@@ -1,15 +1,21 @@
 <script setup lang="ts">
 /** Search organisations as you type (GET /organisations?q=); emits the chosen organisation. */
 import { call, identity, type Organisation, useNotify } from '@cimh/web-app'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 const model = defineModel<Organisation | null>({ default: null })
-const props = defineProps<{ label?: string; initialQuery?: string; excludeId?: string; rules?: ((v: unknown) => true | string)[] }>()
+/** `busy`: the caller is looking something up for this field (DecisionDialog's suggestion): show the progress bar. */
+const props = defineProps<{ label?: string; initialQuery?: string; excludeId?: string; rules?: ((v: unknown) => true | string)[]; busy?: boolean }>()
 const notify = useNotify()
 const search = ref(props.initialQuery ?? '')
 const items = ref<Organisation[]>([])
 const loading = ref(false)
 let timer: ReturnType<typeof setTimeout> | undefined
+// The chosen organisation is always an option: a suggestion set from outside (DecisionDialog) is not in the last
+// search's results, so the open menu said "No organisation found" under the chosen name.
+const options = computed(() =>
+  model.value && !items.value.some((o) => o.id === model.value!.id) ? [model.value, ...items.value] : items.value,
+)
 
 async function run(q: string) {
   loading.value = true
@@ -38,13 +44,13 @@ watch(
   <v-autocomplete
     v-model="model"
     v-model:search="search"
-    :items="items"
+    :items="options"
     item-title="name"
     item-value="id"
     return-object
     no-filter
     clearable
-    :loading="loading"
+    :loading="loading || busy"
     :label="label ?? 'Organisation'"
     :rules="rules"
     no-data-text="No organisation found"
