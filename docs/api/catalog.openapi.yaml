@@ -138,6 +138,23 @@ paths:
         '404': { $ref: './common.yaml#/components/responses/NotFound' }
         '409': { $ref: './common.yaml#/components/responses/Conflict' }
 
+  /products/{productId}/reactivate:
+    parameters: [ { $ref: '#/components/parameters/ProductId' } ]
+    post:
+      tags: [products]
+      summary: Reactivate a deactivated product (staff, admin)
+      description: Undoes a deactivation. Customers see the product again only if it is sellable or Pro Bono. Emits product.updated with changed [active] and an audit entry product.reactivated. An active product is returned unchanged.
+      parameters:
+        - { $ref: './common.yaml#/components/parameters/IfMatch' }
+        - { $ref: './common.yaml#/components/parameters/CsrfToken' }
+      responses:
+        '200':
+          description: Reactivated (or already active)
+          headers: { ETag: { $ref: './common.yaml#/components/headers/ETag' } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/ProductStaff' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+
   /products/{productId}/images:
     parameters: [ { $ref: '#/components/parameters/ProductId' } ]
     post:

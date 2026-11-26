@@ -160,6 +160,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 | GET | `/products/search?q=` | public | Full-text search (ranked; a word matching more than 300 products is ranked over the first 300 matches and pages stop there: refine the words) |
 | GET | `/products/{id}` | public | Detail (staff view adds cost, serials, stockCount) |
 | POST / PATCH / DELETE | `/products` · `/products/{id}` | staff | Create (`probono` required), edit, deactivate |
+| POST | `/products/{id}/reactivate` | staff | Undo a deactivation (If-Match; `product.updated` with `changed: [active]` + audit `product.reactivated`) |
 | POST | `/products/{id}/images` | staff | Upload (async processing; background removal optional) |
 | PATCH / DELETE | `/products/{id}/images/{fileId}` | staff | Make primary, remove |
 | GET | `/reference` | public | Departments, types, active projects (staff: `includeInactive=true` lists all) |

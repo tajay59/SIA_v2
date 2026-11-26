@@ -426,6 +426,36 @@ class CatalogService:
         if doc is None:
             raise conflict("VERSION_CONFLICT", "The product was changed by someone else; reload and retry")
 
+    async def reactivate_product(self, p: Principal, product_id: str, version: int, cid: str) -> dict[str, Any]:
+        """Undo a deactivation (owner 2026-11-25). Customers see it again only if it is sellable (or Pro Bono), as
+        before; inventory copies `active` from the `product.updated` event, so no new event type is needed."""
+        current = await self.store.product.find_one({"id": product_id})
+        if current is None:
+            raise not_found("Product not found")
+        if current.get("active", True):
+            return staff_view(current)
+        events = [
+            new_event(
+                "product.updated",
+                _event_payload({**current, "active": True}, ["active"]),
+                correlation_id=cid,
+                actor_id=p.sub,
+            ).model_dump(mode="python"),
+            _audit(p, "product.reactivated", "product", product_id, cid),
+        ]
+        doc = await self.store.product.find_one_and_update(
+            {"id": product_id, "version": version},
+            {
+                "$set": {"active": True, "updatedAt": now(), "updatedBy": actor_of(p)},
+                "$inc": {"version": 1},
+                "$push": {"outbox": {"$each": events}},
+            },
+            return_document=ReturnDocument.AFTER,
+        )
+        if doc is None:
+            raise conflict("VERSION_CONFLICT", "The product was changed by someone else; reload and retry")
+        return staff_view(doc)
+
     # ------------------------------------------------------------------ images (C6)
 
     async def queue_images(

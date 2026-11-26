@@ -121,6 +121,12 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin
+  POST /api/catalog/v1/products/{productId}/reactivate:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; undoes DELETE (owner 2026-11-25)
   POST /api/catalog/v1/products/{productId}/images:
     roles:
     - staff

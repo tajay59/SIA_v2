@@ -187,8 +187,16 @@ export interface paths {
                         "application/json": components["schemas"]["LoginResponse"];
                     };
                 };
-                401: components["responses"]["Unauthorized"];
-                /** @description Account not ACTIVE (code ACCOUNT_PENDING_VERIFICATION, ACCOUNT_PENDING_APPROVAL, ACCOUNT_REJECTED, ACCOUNT_SUSPENDED, ACCOUNT_LOCKED, MFA_REQUIRED) */
+                /** @description INVALID_CREDENTIALS; MFA_INVALID (wrong code, counts towards the lock); MFA_CODE_REUSED (the right code, already used: each 30 s code works once; not counted) */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                /** @description Account not ACTIVE (code ACCOUNT_PENDING_VERIFICATION, ACCOUNT_PENDING_APPROVAL, ACCOUNT_REJECTED, ACCOUNT_SUSPENDED, MFA_REQUIRED) or ACCOUNT_LOCKED (5 failures; `Retry-After` = seconds until it unlocks) */
                 403: {
                     headers: {
                         [name: string]: unknown;

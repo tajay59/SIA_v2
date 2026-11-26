@@ -19,12 +19,13 @@ import {
   useCursorList,
   useReference,
 } from '@cimh/web-app'
-import { mdiCheck, mdiChevronDown, mdiFilterVariant, mdiFormatListBulleted, mdiImageMultipleOutline, mdiMagnify, mdiPlus } from '@mdi/js'
+import { mdiCheck, mdiChevronDown, mdiChevronLeft, mdiChevronRight, mdiFilterVariant, mdiFormatListBulleted, mdiImageMultipleOutline, mdiMagnify, mdiPlus } from '@mdi/js'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 import { useRoute, useRouter } from 'vue-router'
 import ProductRecord from '../../components/ProductRecord.vue'
 import StockMeter from '../../components/StockMeter.vue'
+import { neighbours, rememberProductOrder } from '../../product-nav'
 
 definePage({ meta: { guard: 'staff', title: 'Inventory', ownHeading: true } })
 const route = useRoute()
@@ -159,6 +160,14 @@ function onRowKey(e: KeyboardEvent, i: number) {
   if (!next) return
   document.getElementById(`prow-${next.id}`)?.focus()
   if (showRecord.value) open(next)
+}
+// Previous / next inside the record (owner 2026-11-25): the record steps through the order shown here, keeping its tab.
+watch(() => list.items.value.map((p) => p.id), rememberProductOrder, { immediate: true })
+const around = computed(() => (openId.value ? neighbours(openId.value, list.items.value.map((p) => p.id)) : null))
+function step(id: string | null) {
+  if (!id) return
+  void router.replace({ query: queryFor(id) })
+  document.getElementById(`prow-${id}`)?.scrollIntoView({ block: 'nearest' })
 }
 /** Keep the row in step with saves made in the record (name, stock, flags). */
 function onUpdated(p: ProductStaff) {
@@ -344,12 +353,17 @@ const summary = computed(() => {
         <div class="console-head">
           <h2 class="console-title">Selected product</h2>
           <span class="row head-acts">
+            <span v-if="around" class="row stepper" role="group" :aria-label="`Product ${around.index + 1} of ${around.total} in the list (Alt+Up / Alt+Down)`">
+              <v-btn variant="text" class="step-btn" :icon="mdiChevronLeft" :disabled="!around.prev" aria-label="Previous product" title="Previous product (Alt+↑)" aria-keyshortcuts="Alt+ArrowUp" @click="step(around.prev)" />
+              <span class="step-pos console-mono" aria-hidden="true">{{ around.index + 1 }} of {{ around.total }}{{ list.nextCursor.value ? '+' : '' }}</span>
+              <v-btn variant="text" class="step-btn" :icon="mdiChevronRight" :disabled="!around.next" aria-label="Next product" title="Next product (Alt+↓)" aria-keyshortcuts="Alt+ArrowDown" @click="step(around.next)" />
+            </span>
             <v-btn variant="text" size="small" class="m3" :to="`/products/${openId}`">Open full page</v-btn>
             <v-btn variant="text" size="small" class="m3" @click="close">Close</v-btn>
           </span>
         </div>
         <div class="console-scroll">
-          <ProductRecord :key="openId" :product-id="openId" embedded @updated="onUpdated" />
+          <ProductRecord :key="openId" :product-id="openId" embedded @updated="onUpdated" @step="step" />
         </div>
       </section>
     </div>
@@ -501,6 +515,17 @@ const summary = computed(() => {
 }
 .head-acts {
   gap: var(--sp-1);
+}
+.stepper {
+  gap: 0;
+  align-items: center;
+  margin-right: var(--sp-2);
+}
+.step-pos {
+  min-width: 6ch;
+  text-align: center;
+  font-size: 11px;
+  color: rgb(var(--v-theme-secondary));
 }
 .view {
   height: 32px;
@@ -868,4 +893,16 @@ const summary = computed(() => {
     transition: none;
   }
 }
+/* Previous / next: 32 px targets in ink (the disabled end stays visible at Vuetify's disabled opacity). */
+.step-btn {
+  width: 32px !important;
+  height: 32px !important;
+  color: rgb(var(--v-theme-on-surface));
+}
+.step-btn :deep(.v-icon) {
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
 </style>

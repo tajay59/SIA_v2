@@ -65,7 +65,7 @@ async function save(body: Record<string, unknown>) {
       <h1 class="t-h1">New product</h1>
       <p class="t-body muted">Name, type, department, the Pro Bono choice and the alert level are required. Photos are optional; labels and stock come after the product exists.</p>
     </header>
-    <ProductForm :saving="saving" :errors="errors" :draft-key="DRAFT" with-photos @save="save">
+    <ProductForm style="--form-ground: rgb(var(--v-theme-background))" :saving="saving" :errors="errors" :draft-key="DRAFT" with-photos @save="save">
       <template #photos><PhotoStager v-model="photos" v-model:remove-background="removeBackground" /></template>
       <template #actions><v-btn class="m3" variant="text" to="/products" @click="removeDraft(DRAFT)">Cancel</v-btn></template>
     </ProductForm>

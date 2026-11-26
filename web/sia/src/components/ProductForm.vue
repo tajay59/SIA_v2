@@ -3,9 +3,10 @@
  * A-06 / A-07 product form (all ProductInput fields). Pro Bono must be chosen explicitly (PRD C5); a Pro Bono
  * item is always sellable and may have a per-request limit. Cost is BBD with two decimals (staff only).
  */
-import { checkForm, type FormLike, type ProductStaff, PRODUCT_TYPES, type ProductType, rule, typeLabel, useDraft, useReference } from '@cimh/web-app'
+import { checkForm, type FormLike, type ProductStaff, PRODUCT_TYPES, type ProductType, rule, typeLabel, useDraft, useNotify, useReference } from '@cimh/web-app'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { z } from 'zod/mini'
+import SaveState from './SaveState.vue'
 
 const props = defineProps<{
   product?: ProductStaff | null
@@ -15,9 +16,13 @@ const props = defineProps<{
   draftKey?: string | null
   /** New product: show a Photos section (slot `photos`); the page uploads them after the product exists. */
   withPhotos?: boolean
+  /** Heading level of the section titles (2 on a page, 3 inside a record that is itself under an h2). */
+  level?: 2 | 3
 }>()
+const hs = computed(() => `h${props.level ?? 2}`)
 const emit = defineEmits<{ save: [body: Record<string, unknown>] }>()
 const { reference } = useReference()
+const notify = useNotify()
 
 interface Draft {
   id: string
@@ -74,10 +79,24 @@ const formRef = ref<FormLike | null>(null)
 const valid = ref<boolean | null>(null)
 /** True once Create/Save was pressed: from then on the bar says whether fields are still marked. */
 const pressed = ref(false)
+/** "Saved" for a moment after the product comes back with a new version (the parent saved it). */
+const justSaved = ref(false)
+/** Set when this form emitted save; the next new version is that save landing. */
+let savePending = false
+let savedTimer: ReturnType<typeof setTimeout> | undefined
 watch(
   () => props.product,
-  (p) => Object.assign(d, fromProduct(p)),
+  (p, before) => {
+    Object.assign(d, fromProduct(p))
+    if (p && before && p.id === before.id && p.version !== before.version && savePending) {
+      savePending = false
+      justSaved.value = true
+      clearTimeout(savedTimer)
+      savedTimer = setTimeout(() => (justSaved.value = false), 2600)
+    }
+  },
 )
+onBeforeUnmount(() => clearTimeout(savedTimer))
 useDraft(
   () => props.draftKey ?? null,
   () => ({ ...d, keywords: [...d.keywords] }),
@@ -139,9 +158,14 @@ async function submit() {
   if (props.saving) return
   pressed.value = true
   // The button is never disabled: every missing field is marked and the first one gets the cursor.
-  if (await checkForm(formRef.value)) emit('save', body())
+  if (await checkForm(formRef.value)) {
+    savePending = !isNew.value
+    emit('save', body())
+  }
 }
 defineExpose({ body })
+/** Editing: something differs from the saved product (what Save would send). */
+const dirty = computed(() => !isNew.value && Object.keys(body()).length > 0)
 
 // Section index (wide screens): jump to a section; the one in view is marked.
 const SECTIONS = [
@@ -170,6 +194,22 @@ onMounted(() => {
   }
 })
 onBeforeUnmount(() => observer?.disconnect())
+
+// Ctrl+S / ⌘S saves an edited product (owner 2026-11-25), with the same rules as Save changes; it never creates a
+// new product. The browser's own "save page" is held back while the form is open; nothing happens if nothing changed.
+function onSaveKey(e: KeyboardEvent) {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 's') return
+  if (isNew.value || document.querySelector('[role="dialog"]')) return
+  e.preventDefault()
+  if (dirty.value) void submit()
+}
+onMounted(() => addEventListener('keydown', onSaveKey))
+onBeforeUnmount(() => removeEventListener('keydown', onSaveKey))
+// Stepping to another product, closing the record or leaving the page keeps unsaved edits as a draft (useDraft,
+// per product version); say so, so nobody thinks they were saved or lost.
+onBeforeUnmount(() => {
+  if (props.product && dirty.value && !props.saving) notify.toast(`Unsaved changes to ${props.product.name} are kept: open it again to finish.`, 'info')
+})
 function jump(id: string) {
   const el = document.getElementById(id)
   if (!el) return
@@ -193,7 +233,7 @@ function jump(id: string) {
 
     <div class="sections">
       <section :id="SECTIONS[0]!.id" class="sec" aria-labelledby="pf-product-h">
-        <div class="console-head"><h2 id="pf-product-h" class="console-title">Product</h2></div>
+        <component :is="hs" id="pf-product-h" class="sec-title">Product</component>
         <div class="fields">
           <v-text-field v-model="d.name" label="Name" counter="200" maxlength="200" :rules="[required]" :error-messages="errors?.name" class="span-2" />
           <v-select v-model="d.type" :items="typeItems" label="Type" :rules="[required]" :error-messages="errors?.type" />
@@ -220,7 +260,7 @@ function jump(id: string) {
       </section>
 
       <section :id="SECTIONS[1]!.id" class="sec" aria-labelledby="pf-probono-h">
-        <div class="console-head"><h2 id="pf-probono-h" class="console-title">Pro Bono and visibility</h2></div>
+        <component :is="hs" id="pf-probono-h" class="sec-title">Pro Bono and visibility</component>
         <div class="fields">
           <v-radio-group
             v-model="d.probono"
@@ -258,28 +298,33 @@ function jump(id: string) {
       </section>
 
       <section :id="SECTIONS[2]!.id" class="sec" aria-labelledby="pf-model-h">
-        <div class="console-head"><h2 id="pf-model-h" class="console-title">Make and model</h2></div>
+        <component :is="hs" id="pf-model-h" class="sec-title">Make and model</component>
         <div class="fields">
           <v-text-field v-model="d.make" label="Make" maxlength="100" />
           <v-text-field v-model="d.modelname" label="Model name" maxlength="100" />
           <v-text-field v-model="d.modelnumber" label="Model number" maxlength="100" class="mono" />
           <span class="gap" aria-hidden="true" />
-          <v-text-field v-model="d.sn" label="Serial / part ref. (staff only)" maxlength="100" class="mono" />
-          <v-text-field v-model="d.sn1" label="Second serial / part ref. (staff only)" maxlength="100" class="mono" />
+          <v-text-field v-model="d.sn" label="Serial / part ref." maxlength="100" class="mono" />
+          <v-text-field v-model="d.sn1" label="Second serial / part ref." maxlength="100" class="mono" />
         </div>
+        <p class="sec-note">Serials are for staff only: customers never see them.</p>
       </section>
 
       <section :id="SECTIONS[3]!.id" class="sec" aria-labelledby="pf-desc-h">
-        <div class="console-head"><h2 id="pf-desc-h" class="console-title">Description</h2></div>
+        <component :is="hs" id="pf-desc-h" class="sec-title">Description</component>
         <div class="fields one">
           <v-textarea v-model="d.description" label="Short description (shown to customers)" rows="2" auto-grow counter="5000" maxlength="5000" />
           <v-textarea v-model="d.details" label="Details and specifications" rows="3" auto-grow counter="5000" maxlength="5000" />
-          <v-combobox v-model="d.keywords" label="Search keywords" multiple chips closable-chips hint="Press Enter after each keyword" persistent-hint />
+          <v-combobox v-model="d.keywords" label="Search keywords" multiple chips closable-chips hint="Press Enter after each keyword" persistent-hint>
+            <template #chip="{ props: chip, item }">
+              <v-chip v-bind="chip" :close-label="`Remove keyword ${item.title}`" />
+            </template>
+          </v-combobox>
         </div>
       </section>
 
       <section :id="SECTIONS[4]!.id" class="sec" aria-labelledby="pf-stock-h">
-        <div class="console-head"><h2 id="pf-stock-h" class="console-title">Stock and cost</h2></div>
+        <component :is="hs" id="pf-stock-h" class="sec-title">Stock and cost</component>
         <div class="fields">
           <v-text-field v-model="d.cost" label="Cost (BBD, staff only)" prefix="BBD" inputmode="decimal" class="mono" :rules="[(v: string) => !v || rule(money)(v)]" :error-messages="errors?.cost" />
           <v-text-field v-model.number="d.threshold" type="number" min="0" label="Low-stock alert at" hint="Staff are warned when available units reach this number" persistent-hint :rules="[required, wholeAtLeast(0)]" :error-messages="errors?.threshold" />
@@ -290,43 +335,51 @@ function jump(id: string) {
       </section>
 
       <section v-if="withPhotos" :id="PHOTOS.id" class="sec" aria-labelledby="pf-photos-h">
-        <div class="console-head"><h2 id="pf-photos-h" class="console-title">Photos</h2></div>
+        <component :is="hs" id="pf-photos-h" class="sec-title">Photos</component>
         <slot name="photos" />
       </section>
 
       <div class="bar">
         <span v-if="pressed && valid === false" class="t-caption need" role="alert">Fix the fields marked in red.</span>
-        <span v-else class="t-caption muted">{{ (isNew ? (withPhotos ? 'Photos upload once the product is created.' : 'Photos come next, after the product is created.') : 'Only changed fields are saved.') }}</span>
+        <span v-else-if="isNew" class="t-caption muted">{{ withPhotos ? 'Photos upload once the product is created.' : 'Photos come next, after the product is created.' }}</span>
+        <SaveState v-else :dirty="dirty" :saved="justSaved" />
+        <span v-if="!isNew && dirty" class="keyhint" aria-hidden="true"><kbd>Ctrl</kbd><kbd>S</kbd> saves</span>
         <span class="spacer" />
         <slot name="actions" />
-        <v-btn type="submit" class="m3" color="primary" :loading="saving">{{ isNew ? 'Create product' : 'Save changes' }}</v-btn>
+        <!-- Editing: Save waits for a change (next to the save state, DESIGN.md "Submit, then mark"); never for missing input. -->
+        <v-btn type="submit" class="m3" color="primary" :loading="saving" :disabled="!isNew && !dirty && !saving" :title="isNew ? undefined : 'Save changes (Ctrl+S)'" :aria-keyshortcuts="isNew ? undefined : 'Control+S'">{{ isNew ? 'Create product' : 'Save changes' }}</v-btn>
       </div>
+      <!-- Below the save bar, in the sections' column (the product record puts Deactivate here). -->
+      <slot name="after" />
     </div>
   </v-form>
 </template>
 
 <style scoped>
+/* Golden-ratio system (as the product record and the dialogs): 17.8 px section heads, 14 px fields and notes,
+   Fibonacci 8 · 13 · 21 · 34. Sections are plain heads over hairlines, no box per section. */
 .pform {
+  --rule: rgb(var(--v-theme-seam));
   display: grid;
   grid-template-columns: 200px minmax(0, 880px);
-  gap: var(--sp-6);
+  gap: 34px;
   align-items: start;
 }
 .index {
   position: sticky;
-  top: var(--sp-6);
+  top: 21px;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgb(var(--v-theme-seam));
+  border-left: 1px solid var(--rule);
 }
 .index a {
   transition: color 150ms ease, border-color 200ms var(--ease-out);
-  padding: 6px var(--sp-3);
+  padding: 6px 13px;
   margin-left: -1px;
   border-left: 2px solid transparent;
   color: rgb(var(--v-theme-secondary));
   text-decoration: none;
-  font-size: 13px;
+  font-size: 14px;
 }
 .index a:hover {
   color: rgb(var(--v-theme-on-surface));
@@ -339,19 +392,26 @@ function jump(id: string) {
 .sections {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-4);
 }
 .sec {
-  scroll-margin-top: var(--sp-6);
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 4px;
-  background: rgb(var(--v-theme-surface));
+  scroll-margin-top: 21px;
+}
+.sec + .sec {
+  margin-top: 13px;
+  padding-top: 21px;
+  border-top: 1px solid var(--rule);
+}
+.sec-title {
+  margin: 0 0 13px;
+  font-size: 17.8px;
+  line-height: 1.382;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 .fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-2) var(--sp-4);
-  padding: var(--sp-4);
+  gap: 8px 21px;
 }
 .fields.one {
   grid-template-columns: minmax(0, 1fr);
@@ -359,8 +419,26 @@ function jump(id: string) {
 .span-2 {
   grid-column: 1 / -1;
 }
+.sec-note {
+  margin: 0;
+  font-size: 12px;
+  color: rgb(var(--v-theme-secondary));
+}
 .yesno :deep(.v-selection-control-group) {
-  gap: var(--sp-6);
+  gap: 21px;
+}
+/* The question and the switch's words read as text, in ink (the primary colour is for the control itself). */
+.yesno :deep(.v-label),
+.fields :deep(.v-switch .v-label) {
+  color: rgb(var(--v-theme-on-surface));
+  opacity: 1;
+}
+.fields :deep(.v-selection-control .v-label) {
+  padding-inline-start: 9px; /* + the control's own 4 px = 13 px from the control to its words */
+}
+/* Field hints that wrap (phones) keep a readable line height (Vuetify draws 12/12). */
+.fields :deep(.v-messages__message) {
+  line-height: 1.4;
 }
 .mono :deep(input) {
   font-family: 'JetBrains Mono', ui-monospace, monospace;
@@ -368,20 +446,31 @@ function jump(id: string) {
 .need {
   color: rgb(var(--v-theme-error));
 }
+.keyhint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: rgb(var(--v-theme-secondary));
+}
+.keyhint kbd {
+  padding: 0 5px;
+  font: 500 11px/18px 'JetBrains Mono', ui-monospace, monospace;
+  border: 1px solid rgb(var(--v-theme-seam));
+  border-radius: 3px;
+}
 .bar {
   position: sticky;
-  transition: box-shadow 200ms ease;
   bottom: 0;
   z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 4px;
-  background: rgb(var(--v-theme-surface));
-  box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.12);
+  gap: 13px;
+  margin-top: 21px;
+  padding: 13px 0;
+  border-top: 1px solid var(--rule);
+  background: var(--form-ground, rgb(var(--v-theme-surface)));
 }
 @media (max-width: 1099.98px) {
   .pform {
@@ -400,7 +489,6 @@ function jump(id: string) {
   }
   .bar {
     position: static;
-    box-shadow: none;
   }
 }
 </style>

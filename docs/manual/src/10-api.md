@@ -78,7 +78,7 @@ Status diagrams: [Chapter 5](05-workflows.md#53-paid-request-quote-to-delivery).
 | Service | Main endpoints |
 |---|---|
 | identity | `/auth/register`, `/auth/verify`, `/auth/login`, `/auth/refresh`, `/auth/logout`, `/auth/password/*`, `/auth/mfa/*`, `/.well-known/jwks.json`, `/me`, `/admin/accounts` (+ `approve`, `deny`, `bulk-decision`, `suspend`, `reactivate`, `role`), `/organisations` (+ `merge`), `/audit` |
-| catalog | `/products` (browse, create), `/products/search`, `/products/{id}`, `/products/{id}/images`, `/reference`, `/settings/fees`, `/settings/email-lists`, `/settings/general` |
+| catalog | `/products` (browse, create), `/products/search`, `/products/{id}` (+ `/reactivate`), `/products/{id}/images`, `/reference`, `/settings/fees`, `/settings/email-lists`, `/settings/general` |
 | inventory | `/sites`, `/sites/{s}/locations`, `/locations/{l}/shelves`, `/shelves/{b}` (+ `/units`), `/units/{b}`, `/labels`, `/stow`, `/pick`, `/relocate`, `/assign`, `/unassign`, `/products/{id}/stock`, `/stock/low`, `/assignments`, `/history` |
 | orders | `/cart`, `/cart/lines/{productId}`, `/requests`, `/requests/{id}` + the actions in §10.4 |
 | documents | `POST /files`, `GET /files/{id}` (X-Accel-Redirect), `DELETE /files/{id}`, `GET/PUT/DELETE /requests/{id}/invoices/{kind}` (staff: the request's one invoice / commercial invoice, opened, revised or voided), `GET /requests/{id}/agreement-preview` (staff: the agreement before it is sent, marked as a preview, never stored), `GET /requests/{id}/invoice-draft`, `POST /requests/{id}/invoice-preview`, `POST /requests/{id}/invoices` (staff invoice builder, legacy SIA layout) |

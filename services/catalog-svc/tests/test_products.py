@@ -205,6 +205,33 @@ def test_deactivate_is_a_soft_delete(ctx: Ctx) -> None:
     )
 
 
+def test_reactivate_undoes_a_deactivation(ctx: Ctx) -> None:
+    p = ctx.create()
+    url = ctx.url(f"/products/{p['id']}")
+    assert ctx.client.delete(url, headers={**STAFF, "If-Match": "1"}).status_code == 204
+    react = ctx.url(f"/products/{p['id']}/reactivate")
+    assert ctx.client.post(react, headers={**STAFF, "If-Match": "1"}).status_code == 409  # stale version
+    assert ctx.client.post(react, headers=USER).status_code == 403
+    r = ctx.client.post(react, headers={**STAFF, "If-Match": "2"})
+    assert r.status_code == 200
+    assert r.json()["active"] is True
+    assert r.json()["version"] == 3
+    assert r.headers["ETag"] == '"3"'
+    out = ctx.product(p["id"])["outbox"]
+    # Inventory copies `active` from product.updated; admins see who brought it back in the audit log.
+    assert [e["type"] for e in out[-2:]] == ["product.updated", "audit.recorded"]
+    assert out[-2]["payload"]["changed"] == ["active"]
+    assert out[-2]["payload"]["active"] is True
+    assert out[-1]["payload"]["action"] == "product.reactivated"
+    # Already active: returned unchanged, nothing recorded.
+    again = ctx.client.post(react, headers={**STAFF, "If-Match": "3"})
+    assert again.status_code == 200
+    assert again.json()["version"] == 3
+    assert len(ctx.product(p["id"])["outbox"]) == len(out)
+    assert ctx.client.get(url).status_code == 200  # customers see it again (sellable)
+    assert ctx.client.post(ctx.url("/products/NOPE/reactivate"), headers={**STAFF, "If-Match": "1"}).status_code == 404
+
+
 def test_customers_cannot_write(ctx: Ctx) -> None:
     r = ctx.client.post(
         ctx.url("/products"),
