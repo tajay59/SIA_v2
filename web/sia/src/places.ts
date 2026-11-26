@@ -67,10 +67,14 @@ function location(code: string): Location | undefined {
 }
 
 export function shelfLabel(s: Shelf, siteName?: string, locationName?: string) {
+  const site = s.siteName ?? siteName
+  const location = s.locationName ?? locationName
   return {
     value: s.barcode,
     title: `Shelf ${s.number}`,
-    subtitle: [s.siteName ?? siteName, s.locationName ?? locationName].filter(Boolean).join(' · '),
+    subtitle: [site, location].filter(Boolean).join(' · '),
+    // Drawn as the legacy shelf label (LabelSheet): site, location and code top left, SHELF n top right, QR below.
+    shelf: { site, location, number: s.number },
   }
 }
 

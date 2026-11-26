@@ -32,6 +32,7 @@ import PersonPicker from '../components/PersonPicker.vue'
 import ScanField from '../components/ScanField.vue'
 import ScanLog, { type ScanEntry } from '../components/ScanLog.vue'
 import { waited } from '../request-queue'
+import { pinLeaving } from '../list-motion'
 
 definePage({ meta: { guard: 'staff', title: 'Pick' } })
 const route = useRoute()
@@ -345,7 +346,7 @@ function unpicked(l: PickLine) {
           <v-btn variant="tonal" @click="loadQueue">Try again</v-btn>
         </div>
         <p v-else-if="!queue.length" class="queue-empty t-body muted">Nothing is waiting to be picked. Approved Pro Bono requests and paid requests in purchasing show up here.</p>
-        <TransitionGroup v-else tag="ul" name="row" class="rows">
+        <TransitionGroup v-else tag="ul" name="row" class="rows" @before-leave="pinLeaving">
           <li v-for="(q, i) in queue" :key="q.id" :style="{ '--i': Math.min(i, 8) }">
             <button type="button" class="row-btn" :class="{ on: order?.id === q.id }" :aria-current="order?.id === q.id ? 'true' : undefined" @click="openFromQueue(q.id)">
               <span class="r1">
@@ -698,6 +699,7 @@ function unpicked(l: PickLine) {
   padding: 0;
   max-height: calc(100vh - 300px);
   overflow-y: auto;
+  position: relative; /* leaving items are pinned inside it (list-motion.ts) */
 }
 .rows li + li {
   border-top: 1px solid rgb(var(--v-theme-seam));
@@ -962,7 +964,6 @@ function unpicked(l: PickLine) {
 }
 .row-leave-active {
   position: absolute;
-  width: 100%;
   transition: opacity 140ms ease-in;
 }
 .row-leave-to {

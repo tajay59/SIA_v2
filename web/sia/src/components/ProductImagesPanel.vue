@@ -6,6 +6,7 @@
 import { ApiError, call, catalog, type ProductStaff, ProductImage, useNotify } from '@cimh/web-app'
 import { mdiDeleteOutline, mdiStar, mdiStarOutline, mdiUpload } from '@mdi/js'
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { pinLeaving } from '../list-motion'
 
 /** expect: total photos once uploads made elsewhere (the new-product page) finish processing. */
 const props = defineProps<{ product: ProductStaff; expect?: number }>()
@@ -128,7 +129,7 @@ async function remove(fileId: string) {
     </section>
 
     <p v-if="!product.images.length && !processing" class="t-body muted">No photos yet. Customers see a placeholder until one is added.</p>
-    <TransitionGroup tag="ul" name="tile" class="grid" aria-live="polite">
+    <TransitionGroup tag="ul" name="tile" class="grid" @before-leave="pinLeaving" aria-live="polite">
       <li v-for="img in product.images" :key="img.fileId" class="tile">
         <ProductImage :image="img" :alt="product.name" small sizes="200px" />
         <div class="row tile-bar">
@@ -153,6 +154,7 @@ async function remove(fileId: string) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--sp-4);
+  position: relative; /* leaving items are pinned inside it (list-motion.ts) */
 }
 .tile {
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));

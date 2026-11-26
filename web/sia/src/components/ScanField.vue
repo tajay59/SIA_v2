@@ -3,8 +3,10 @@
  * Scan input. Handheld scanners type the code and press Enter (keyboard wedge), so Enter = one scan:
  * the trimmed value is emitted, the field clears and keeps focus for the next scan.
  */
-import { mdiBarcodeScan } from '@mdi/js'
-import { nextTick, onMounted, ref } from 'vue'
+import { markRaw, nextTick, onMounted, ref } from 'vue'
+import QrScan from '../icons/QrScan.vue'
+
+const scanIcon = markRaw(QrScan)
 
 const props = withDefaults(
   defineProps<{
@@ -51,7 +53,7 @@ onMounted(() => {
       :color="prominent ? 'primary' : undefined"
 
       :persistent-hint="!!hint"
-      :prepend-inner-icon="mdiBarcodeScan"
+      :prepend-inner-icon="scanIcon"
       :loading="loading"
       autocomplete="off"
       autocapitalize="off"

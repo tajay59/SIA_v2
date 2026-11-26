@@ -1,0 +1,29 @@
+<script setup lang="ts">
+/**
+ * Scan icon: a QR code inside scan-frame corners (owner, 2026-11-25), used wherever SIA asks for a scan (scan fields,
+ * the drawer's scan box, scan actions, the history ledger). Drawn in currentColor at 1em, so it takes the colour and
+ * size its place gives it, like the Material icons around it.
+ */
+</script>
+
+<template>
+  <svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+    <g fill="currentColor">
+      <path d="M6 9a3 3 0 0 1 3-3h6v2H9a1 1 0 0 0-1 1v6H6z" />
+      <path
+        fill-rule="evenodd"
+        d="M14 14a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1zm1 2v2h2v-2zm-1 12a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1zm1 2v2h2v-2z"
+        clip-rule="evenodd"
+      />
+      <path d="M13 25a1 1 0 1 0 1-1a1 1 0 0 0 1-1a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 1 0-1 1a1 1 0 0 0-1 1m4 0a1 1 0 1 0 2 0a1 1 0 1 0 1-1a1 1 0 1 0 0-2a1 1 0 0 0 0 2a1 1 0 0 0-1 1a1 1 0 1 0-2 0" />
+      <path
+        d="M23 25a1 1 0 0 0 1 1a1 1 0 0 0-1 1a1 1 0 1 0-1 1a1 1 0 1 0 0 2a1 1 0 0 0 0-2a1 1 0 0 0 1-1a1 1 0 1 0 2 0a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 0 0-1-1a1 1 0 1 0 0-2a1 1 0 0 0 1-1a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 0 0-1-1a1 1 0 1 0 0-2a1 1 0 1 0 0-2a1 1 0 1 0-1-1a1 1 0 0 0-1-1a1 1 0 1 0 0-2a1 1 0 0 0 0 2a1 1 0 1 0 1 1a1 1 0 0 0 1 1a1 1 0 1 0 0 2a1 1 0 0 0-1 1a1 1 0 1 0-2 0a1 1 0 0 0 2 0a1 1 0 0 0 1 1a1 1 0 1 0 0 2a1 1 0 0 0-1 1m0 6a1 1 0 0 0 1 1a1 1 0 0 0-1 1a1 1 0 1 0-2 0a1 1 0 0 0 2 0a1 1 0 1 0 1-1a1 1 0 0 0 1-1a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 1 0-2 0"
+      />
+      <path
+        d="M28 26a1 1 0 1 1 0-2a1 1 0 0 1 0 2m1-3a1 1 0 1 0 2 0a1 1 0 0 0 1 1a1 1 0 1 0 0 2a1 1 0 0 0 0-2a1 1 0 1 0-1-1a1 1 0 1 0-2 0m0 10a1 1 0 1 0 2 0a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 1 0-2 0m-2-4a1 1 0 1 0 2 0a1 1 0 1 0 2 0a1 1 0 1 0 2 0a1 1 0 0 0-2 0a1 1 0 1 0-2 0a1 1 0 1 0-2 0"
+      />
+      <path fill-rule="evenodd" d="M27 15a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1zm2 3v-2h2v2z" clip-rule="evenodd" />
+      <path d="M6 39a3 3 0 0 0 3 3h6v-2H9a1 1 0 0 1-1-1v-6H6zM42 9a3 3 0 0 0-3-3h-6v2h6a1 1 0 0 1 1 1v6h2zm0 30a3 3 0 0 1-3 3h-6v-2h6a1 1 0 0 0 1-1v-6h2z" />
+    </g>
+  </svg>
+</template>

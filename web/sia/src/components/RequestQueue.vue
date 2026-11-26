@@ -10,6 +10,7 @@ import IOverdue from '~icons/material-symbols/schedule-rounded'
 import { nextTick, ref, watch } from 'vue'
 import { type RouteLocationRaw, useRouter } from 'vue-router'
 import { BTN, TONE_ICON, waited, why } from '../request-queue'
+import { pinLeaving } from '../list-motion'
 
 const props = withDefaults(
   defineProps<{
@@ -106,7 +107,7 @@ function onRowKey(e: KeyboardEvent, i: number) {
       <slot name="empty" />
     </div>
     <div v-else ref="scroller" class="console-scroll scroller">
-      <TransitionGroup tag="ul" name="row" appear class="rows" role="listbox" :aria-label="label">
+      <TransitionGroup tag="ul" name="row" appear class="rows" @before-leave="pinLeaving" role="listbox" :aria-label="label">
         <li
           v-for="(r, i) in items"
           :key="r.id"
@@ -315,8 +316,6 @@ function onRowKey(e: KeyboardEvent, i: number) {
 }
 .row-leave-active {
   position: absolute;
-  left: 0;
-  right: 0;
   transition: opacity 140ms ease-in;
 }
 .row-leave-to {

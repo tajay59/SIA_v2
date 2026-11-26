@@ -1,10 +1,13 @@
 <script setup lang="ts">
 /** A-15 Day ledger: filter strip (unit, scanned by, date presets, operation chips); movements grouped by Barbados day, newest first. */
 import { DateField, OPERATION_LABELS, ShortRef } from '@cimh/web-app'
-import { mdiArrowRight, mdiBarcodeScan } from '@mdi/js'
-import { onMounted } from 'vue'
+import { mdiArrowRight } from '@mdi/js'
+import { markRaw, onMounted } from 'vue'
+import QrScan from '../../icons/QrScan.vue'
 import PersonPicker from '../PersonPicker.vue'
 import { OP_ICONS, OPERATIONS, personPart, place, PRESETS, requestLink, shortUnit, timeOf, unitLink, useMovementHistory } from '../../history'
+
+const scanIcon = markRaw(QrScan)
 
 const { f, list, reload, active, clearAll, days, name } = useMovementHistory()
 onMounted(reload)
@@ -14,7 +17,7 @@ onMounted(reload)
   <div class="ledger">
     <form class="strip" @submit.prevent="reload">
       <div class="fields">
-        <v-text-field v-model="f.unit" label="Unit code" :prepend-inner-icon="mdiBarcodeScan" class="mono-in" hide-details clearable @click:clear="(f.unit = ''), reload()" />
+        <v-text-field v-model="f.unit" label="Unit code" :prepend-inner-icon="scanIcon" class="mono-in" hide-details clearable @click:clear="(f.unit = ''), reload()" />
         <PersonPicker v-model="f.person" label="Scanned by" clearable hide-details />
         <v-btn-toggle v-model="f.preset" mandatory class="presets" density="compact" aria-label="When">
           <v-btn v-for="p in PRESETS" :key="p.value" :value="p.value" size="small">{{ p.title }}</v-btn>
