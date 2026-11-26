@@ -100,7 +100,7 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
 
     const dialog = page.getByRole('dialog')
     await expect(dialog.getByText(org)).toBeVisible()
-    await dialog.getByLabel('Create a new one').check()
+    await dialog.getByLabel('New organisation').check()
     await expect(dialog.getByLabel('Organisation name')).toHaveValue(org)
     await dialog.getByRole('button', { name: 'Approve' }).click()
     await expect(page.getByText('Mem Ber approved')).toBeVisible()
