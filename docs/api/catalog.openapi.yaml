@@ -354,6 +354,41 @@ paths:
           content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementAdmin' } } }
         '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
 
+  /admin/announcements/images:
+    post:
+      tags: [announcements]
+      summary: Upload a banner picture or background (admin)
+      description: |
+        One JPEG/PNG/WebP file, ≤ 20 MB, checked by its bytes. Decoded and re-encoded by media-worker (WebP at 1600,
+        800 and 320 px, metadata dropped; `image.process` with `target: announcement`), so it is PROCESSING at
+        first: poll `GET /admin/announcements/images/{fileId}` until READY, then give `{ fileId }` as `picture` or
+        `background`. Uploads no announcement uses are dropped after 2 days (with the images of announcements that
+        ran out).
+      parameters: [ { $ref: './common.yaml#/components/parameters/CsrfToken' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } }
+      responses:
+        '202':
+          description: Accepted for processing
+          content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementImageStatus' } } }
+        '413': { description: File too large (code FILE_TOO_LARGE), content: { application/problem+json: { schema: { $ref: './common.yaml#/components/schemas/Problem' } } } }
+        '422': { $ref: './common.yaml#/components/responses/Unprocessable' }
+
+  /admin/announcements/images/{fileId}:
+    parameters:
+      - { name: fileId, in: path, required: true, schema: { type: string, maxLength: 64 } }
+    get:
+      tags: [announcements]
+      summary: An uploaded banner image's state (admin)
+      responses:
+        '200':
+          description: State
+          content: { application/json: { schema: { $ref: '#/components/schemas/AnnouncementImageStatus' } } }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+
   /admin/announcements/{announcementId}:
     parameters:
       - { name: announcementId, in: path, required: true, schema: { type: string, maxLength: 64 } }
@@ -633,6 +668,46 @@ components:
         label: { type: string, minLength: 1, maxLength: 40 }
         url: { type: string, minLength: 1, maxLength: 500, description: 'https:// address or a path on this site starting with / (never //, never http:)' }
         productId: { type: string, maxLength: 64 }
+        imageUrl: { type: [string, 'null'], description: "Product links only: the product's primary photo (null when it has none); the banner shows it as the link (2026-11-26)" }
+    AnnouncementLook:
+      type: string
+      enum: [SOFT, GRADIENT, STRONG]
+      default: SOFT
+      description: 'SOFT = a light wash of the tone colour; GRADIENT = the tone fading left to right; STRONG = solid tone colour with its own text colour (2026-11-26)'
+    AnnouncementEffect:
+      type: string
+      enum: [sweep, glint, ring, drift, zoom, nudge]
+      description: |
+        sweep = a band of light crosses the row every 7 s; glint = a light runs along the bottom edge; ring = the
+        icon sends out a ring every 3 s (2 s for alerts); drift = the tone colours drift slowly (not with a
+        background image); zoom = the background image zooms slowly in and out; nudge = the link badge on the
+        picture nudges towards its arrow. zoom needs a background, nudge a picture that is a link.
+    AnnouncementImage:
+      type: object
+      description: A banner picture or background, as media-worker wrote it (`<url>` 1600 px; `@800`, `@320` beside it).
+      required: [fileId, url]
+      properties:
+        fileId: { type: string }
+        url: { type: string, example: /media/announcements/IMG0123456789ABCDEF01234567.webp }
+        w: { type: integer }
+        h: { type: integer }
+    AnnouncementImageInput:
+      type: object
+      additionalProperties: false
+      required: [fileId]
+      description: An upload that is READY (422 IMAGE_NOT_FOUND / IMAGE_NOT_READY / IMAGE_NOT_USABLE otherwise).
+      properties:
+        fileId: { type: string, minLength: 4, maxLength: 64, pattern: '^IMG[A-Za-z0-9]+$' }
+    AnnouncementImageStatus:
+      type: object
+      required: [fileId, status]
+      properties:
+        fileId: { type: string }
+        status: { type: string, enum: [PROCESSING, READY, FAILED] }
+        url: { type: string, description: When READY }
+        w: { type: integer }
+        h: { type: integer }
+        error: { type: string, description: When FAILED, in words for the admin }
     AnnouncementLinkInput:
       type: object
       additionalProperties: false
@@ -664,6 +739,11 @@ components:
         tone: { type: string, enum: [INFO, ALERT] }
         audience: { type: string, enum: [SHOP, SIA, BOTH] }
         link: { anyOf: [ { $ref: '#/components/schemas/AnnouncementLink' }, { type: 'null' } ] }
+        picture: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImage' }, { type: 'null' } ], description: "Shown at the row's right (a product link shows the product's photo there when this is null); the row grows to fit, at most 300 px" }
+        background: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImage' }, { type: 'null' } ], description: Behind the text under a dark wash; the row grows, at most 300 px }
+        height: { type: [integer, 'null'], minimum: 48, maximum: 300, description: "Row height in px on wide screens (2026-11-26); narrower screens scale it with the width (phones about half) and the text, icon and picture follow it. null = fit the content" }
+        look: { $ref: '#/components/schemas/AnnouncementLook' }
+        effects: { type: array, items: { $ref: '#/components/schemas/AnnouncementEffect' }, description: 'Looping attention effects, in this order; [] = calm. Paused on hover and keyboard focus, none with reduced motion' }
         dismissible: { type: boolean, description: Viewers may close it (always false for ALERT) }
         startsAt: { type: string, format: date-time }
         expiresAt: { type: string, format: date-time }
@@ -686,6 +766,11 @@ components:
         tone: { type: string, enum: [INFO, ALERT] }
         audience: { type: string, enum: [SHOP, SIA, BOTH] }
         link: { $ref: '#/components/schemas/AnnouncementLinkInput' }
+        picture: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImageInput' }, { type: 'null' } ] }
+        background: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImageInput' }, { type: 'null' } ] }
+        height: { type: [integer, 'null'], minimum: 48, maximum: 300, description: px on wide screens; null or absent = fit the content }
+        look: { $ref: '#/components/schemas/AnnouncementLook' }
+        effects: { type: array, maxItems: 6, uniqueItems: true, items: { $ref: '#/components/schemas/AnnouncementEffect' }, description: 'Default [] (calm)' }
         dismissible: { type: boolean, default: true }
         startsAt: { type: string, format: date-time, description: Default now }
         ttl: { $ref: '#/components/schemas/AnnouncementTtl' }
@@ -698,6 +783,11 @@ components:
         tone: { type: string, enum: [INFO, ALERT] }
         audience: { type: string, enum: [SHOP, SIA, BOTH] }
         link: { anyOf: [ { $ref: '#/components/schemas/AnnouncementLinkInput' }, { type: 'null' } ] }
+        picture: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImageInput' }, { type: 'null' } ], description: null removes it }
+        background: { anyOf: [ { $ref: '#/components/schemas/AnnouncementImageInput' }, { type: 'null' } ], description: null removes it }
+        height: { type: [integer, 'null'], minimum: 48, maximum: 300, description: null = fit the content }
+        look: { $ref: '#/components/schemas/AnnouncementLook' }
+        effects: { type: array, maxItems: 6, uniqueItems: true, items: { $ref: '#/components/schemas/AnnouncementEffect' } }
         dismissible: { type: boolean }
         startsAt: { type: string, format: date-time }
         ttl: { $ref: '#/components/schemas/AnnouncementTtl' }

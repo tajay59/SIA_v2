@@ -24,12 +24,14 @@ import { formatDate } from '@cimh/web-ui'
 import {
   mdiAccountMultipleOutline,
   mdiAlertOutline,
-  mdiCheck,
   mdiCashMultiple,
+  mdiClose,
   mdiDeleteOutline,
+  mdiMagnify,
   mdiPlus,
   mdiShapeOutline,
   mdiTimerCogOutline,
+  mdiUndoVariant,
 } from '@mdi/js'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
@@ -195,9 +197,64 @@ const saveWorkflow = async () =>
   )
 
 // ---- reference
-const departments = ref<string[]>([])
-const departmentsSaved = ref('[]')
-const departmentsDirty = computed(() => snap(departments.value) !== departmentsSaved.value)
+// Departments are staged like everything else: removals stay on the list (struck through, with Undo) and
+// additions are marked New until Save reference. Saved order is kept; new names go at the end.
+const departmentsSaved = ref<string[]>([])
+const removedDepts = ref<string[]>([])
+const addedDepts = ref<string[]>([])
+const departments = computed(() => [...departmentsSaved.value.filter((d) => !removedDepts.value.includes(d)), ...addedDepts.value])
+const departmentsDirty = computed(() => removedDepts.value.length > 0 || addedDepts.value.length > 0)
+type DeptRow = { name: string; state: 'kept' | 'new' | 'removed' }
+const deptRows = computed<DeptRow[]>(() => [
+  ...departmentsSaved.value.map((name) => ({ name, state: removedDepts.value.includes(name) ? ('removed' as const) : ('kept' as const) })),
+  ...addedDepts.value.map((name) => ({ name, state: 'new' as const })),
+])
+/** One field finds and adds: typing narrows the list, so a near-duplicate shows before it is created. */
+const deptQuery = ref('')
+const deptError = ref('')
+const DEPT_PAGE = 24
+const deptAll = ref(false)
+const deptMatches = computed(() => {
+  const q = deptQuery.value.trim().toLowerCase()
+  return q ? deptRows.value.filter((r) => r.name.toLowerCase().includes(q)) : deptRows.value
+})
+// A long list folds after DEPT_PAGE rows, but a staged change (new, or to remove) always stays in view.
+const deptShown = computed(() =>
+  deptAll.value || deptQuery.value.trim() ? deptMatches.value : deptMatches.value.filter((r, i) => i < DEPT_PAGE || r.state !== 'kept'),
+)
+const deptExact = computed(() => {
+  const q = deptQuery.value.trim().toLowerCase()
+  return q ? deptRows.value.find((r) => r.name.toLowerCase() === q) : undefined
+})
+watch(deptQuery, () => (deptError.value = ''))
+function addDept() {
+  const name = deptQuery.value.trim()
+  if (!name) {
+    deptError.value = 'Type a department name'
+    document.getElementById('dept-add')?.focus()
+    return
+  }
+  const same = deptExact.value
+  if (same?.state === 'removed') {
+    undoDept(same.name) // typing a name you just removed brings it back
+  } else if (same) {
+    deptError.value = `${same.name} is already on the list`
+    return
+  } else {
+    addedDepts.value = [...addedDepts.value, name]
+  }
+  deptQuery.value = ''
+}
+function removeDept(r: DeptRow) {
+  if (r.state === 'new') addedDepts.value = addedDepts.value.filter((d) => d !== r.name)
+  else removedDepts.value = [...removedDepts.value, r.name]
+}
+function undoDept(name: string) {
+  removedDepts.value = removedDepts.value.filter((d) => d !== name)
+}
+const deptSummary = computed(() =>
+  [addedDepts.value.length && `${addedDepts.value.length} new`, removedDepts.value.length && `${removedDepts.value.length} to remove`].filter(Boolean).join(' · '),
+)
 const projects = ref<Project[]>([])
 // Project names and Active switches are staged here and saved with the section (no save-on-blur).
 const projectEdits = reactive<Record<string, { name: string; active: boolean }>>({})
@@ -224,8 +281,9 @@ const saveReference = async () =>
     async () => {
       if (departmentsDirty.value) {
         await call(() => catalog.PUT('/reference/departments', { body: { values: departments.value.map((d) => d.trim()).filter(Boolean) } }))
-        departments.value = [...(await reloadReference()).departments]
-        departmentsSaved.value = snap(departments.value)
+        departmentsSaved.value = [...(await reloadReference()).departments]
+        removedDepts.value = []
+        addedDepts.value = []
       }
       // One project at a time: if one is refused, those before it are saved and the rest stay marked unsaved.
       for (const p of [...changedProjects.value]) {
@@ -312,8 +370,7 @@ onMounted(async () => {
     workflow.value = w
     workflowSaved.value = snap(w)
     staff.value = [...adminPage.items, ...staffPage.items]
-    departments.value = [...(reference.value ?? (await reloadReference())).departments]
-    departmentsSaved.value = snap(departments.value)
+    departmentsSaved.value = [...(reference.value ?? (await reloadReference())).departments]
     await loadProjects()
     loaded.value = true
   } catch (e) {
@@ -447,20 +504,61 @@ onMounted(async () => {
 
           <!-- Reference -->
           <v-form v-else-if="tab === 'reference'" key="reference" ref="referenceForm" class="body" @submit.prevent="saveReference">
-            <section class="ledger" aria-label="Departments">
-              <h3 class="l-group">Departments</h3>
-              <div class="l-row set-grid">
-                <div class="set-label">
-                  <span class="set-title">Departments products can belong to</span>
-                  <span class="set-hint">Press Enter after each name. Products keep their department if it is removed here.</span>
-                </div>
-                <v-combobox v-model="departments" label="Departments" multiple chips closable-chips hide-details />
+            <section class="ledger" aria-labelledby="h-departments">
+              <div class="l-head-row">
+                <h3 id="h-departments" class="l-group">Departments</h3>
+                <span class="l-count console-mono">{{ departments.length }}</span>
+                <span v-if="deptSummary" class="l-pending" role="status">{{ deptSummary }}</span>
+              </div>
+              <p class="lede">
+                The departments a product can belong to. Removing one here does not change products that already use it.
+                <template v-if="!departments.length"> With none listed, any department is accepted.</template>
+              </p>
+              <!-- Not a nested form: Enter here adds the name to the list (saved with Save reference). -->
+              <div class="dept-add" role="group" aria-label="Add a department">
+                <v-text-field
+                  id="dept-add"
+                  v-model="deptQuery"
+                  label="Find or add a department"
+                  :prepend-inner-icon="mdiMagnify"
+                  maxlength="100"
+                  :error-messages="deptError"
+                  :hint="deptQuery.trim() && !deptExact ? `Enter adds “${deptQuery.trim()}”` : undefined"
+                  persistent-hint
+                  @keydown.enter.prevent="addDept"
+                  @keydown.esc="deptQuery = ''"
+                />
+                <v-btn class="m3" variant="tonal" :prepend-icon="mdiPlus" @click="addDept">Add</v-btn>
+              </div>
+              <TransitionGroup v-if="deptShown.length" tag="ul" name="lrow" class="dept-list" aria-label="Departments on the list">
+                <li v-for="r in deptShown" :key="`${r.state === 'new' ? 'n' : 's'}:${r.name}`" class="dept" :class="r.state">
+                  <span class="dept-name" :title="r.name">{{ r.name }}</span>
+                  <span v-if="r.state === 'new'" class="tag">New</span>
+                  <template v-if="r.state === 'removed'">
+                    <span class="sr-only">(removed when you save)</span>
+                    <v-btn class="undo" size="small" variant="text" :prepend-icon="mdiUndoVariant" :aria-label="`Keep ${r.name}`" @click="undoDept(r.name)">Undo</v-btn>
+                  </template>
+                  <v-btn v-else class="x" size="small" variant="text" :icon="mdiClose" :aria-label="`Remove ${r.name}`" @click="removeDept(r)" />
+                </li>
+              </TransitionGroup>
+              <p v-else class="l-empty t-body muted">
+                <template v-if="deptQuery.trim()">No department matches “{{ deptQuery.trim() }}”.</template>
+                <template v-else>No departments yet.</template>
+              </p>
+              <div v-if="!deptQuery.trim() && deptMatches.length > DEPT_PAGE" class="dept-more">
+                <v-btn class="m3" variant="text" size="small" @click="deptAll = !deptAll">
+                  {{ deptAll ? 'Show fewer' : `Show all ${deptMatches.length}` }}
+                </v-btn>
               </div>
             </section>
 
             <section class="ledger" aria-labelledby="h-projects">
-              <h3 id="h-projects" class="l-group">Projects</h3>
-              <p class="lede">Projects group Pro Bono items in the catalogue. A deactivated project disappears from the filters. Changes to names and Active are saved with Save reference.</p>
+              <div class="l-head-row">
+                <h3 id="h-projects" class="l-group">Projects</h3>
+                <span class="l-count console-mono">{{ projects.length }}</span>
+                <span v-if="changedProjects.length" class="l-pending" role="status">{{ changedProjects.length }} changed</span>
+              </div>
+              <p class="lede">Projects group Pro Bono items in the catalogue. A project that is not active disappears from the filters. Name and Active changes are saved with Save reference; a new project is created at once.</p>
               <div class="l-head proj-grid" aria-hidden="true"><span>Code</span><span>Name</span><span>Active</span></div>
               <TransitionGroup tag="div" name="lrow">
                 <div v-for="p in projects" :key="p.code" class="l-row proj-grid" :class="{ off: !projectEdits[p.code]!.active }">
@@ -519,18 +617,19 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.settings > .t-h1 {
+  margin-bottom: var(--sp-3); /* + the 12 px gap = 24 px under the title */
+}
 .settings {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  max-width: 1200px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }
 .frame {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
+  grid-template-columns: 288px minmax(0, 1fr);
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
@@ -744,7 +843,7 @@ onMounted(async () => {
 }
 .proj-grid {
   display: grid;
-  grid-template-columns: 160px minmax(0, 1fr) max-content;
+  grid-template-columns: 200px minmax(0, 1fr) max-content;
   gap: var(--sp-3);
   align-items: center;
 }
@@ -754,6 +853,98 @@ onMounted(async () => {
 }
 .code {
   font-size: 13px;
+}
+/* Section head: name, how many, and what is waiting to be saved. */
+.l-head-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+.l-count {
+  font-size: 13px;
+  color: rgb(var(--v-theme-secondary));
+}
+.l-pending {
+  margin-left: auto;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgb(var(--v-theme-primary));
+}
+/* Departments: one find-or-add field, then the list in columns, each name a ledger row. */
+.dept-add {
+  display: grid;
+  grid-template-columns: minmax(0, 420px) max-content;
+  gap: var(--sp-3);
+  align-items: start;
+  margin-top: var(--sp-1);
+}
+.dept-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+  column-gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid rgb(var(--v-theme-seam));
+}
+.dept {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  min-width: 0;
+  border-bottom: 1px solid rgb(var(--v-theme-seam));
+}
+.dept-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dept .x {
+  flex: none;
+  color: rgb(var(--v-theme-secondary));
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+/* The remove button shows on hover or focus with a pointer; always on touch screens. */
+.dept:hover .x,
+.dept:focus-within .x {
+  opacity: 1;
+}
+@media (hover: none) {
+  .dept .x {
+    opacity: 1;
+  }
+}
+.dept .x:hover {
+  color: rgb(var(--v-theme-error));
+}
+.tag {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.14);
+}
+.dept.removed .dept-name {
+  color: rgb(var(--v-theme-secondary));
+  text-decoration: line-through;
+}
+.dept .undo {
+  flex: none;
+}
+.dept-more {
+  padding-top: var(--sp-1);
+}
+/* Text button sits on the list's edge, not indented by its own padding. */
+.dept-more .v-btn {
+  margin-left: -12px;
 }
 .mono-in :deep(input) {
   font-family: var(--font-mono, 'JetBrains Mono', monospace);
@@ -886,8 +1077,14 @@ onMounted(async () => {
   .l-head.proj-grid {
     display: none;
   }
+  .proj-grid.add,
+  .dept-add {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .dept-add > .v-btn {
+    justify-self: start;
+  }
   .proj-grid.add > .v-btn {
-    grid-column: 1 / -1;
     justify-self: start;
   }
 }

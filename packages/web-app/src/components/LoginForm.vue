@@ -8,7 +8,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, type Account } from '../api'
-import { useNotify } from '../notify'
+import { tryAgainIn, useNotify } from '../notify'
 import { useSession } from '../session'
 import { code as codeSchema, email as emailSchema, rule } from '../validation'
 import { useInitialFocus } from '../focus'
@@ -21,6 +21,8 @@ const props = defineProps<{
   /** SHOP has an "awaiting approval" page; SIA shows the message inline. */
   pendingPath?: string
   initialEmail?: string
+  /** The page has something to be read first (a notice) and focuses it itself. */
+  skipInitialFocus?: boolean
 }>()
 const emit = defineEmits<{ success: [account: Account] }>()
 
@@ -38,7 +40,7 @@ const fieldErrors = ref<Record<string, string>>({})
 const formRef = ref<FormLike | null>(null)
 const emailField = ref<{ focus: () => void } | null>(null)
 const totpField = ref<{ focus: () => void } | null>(null)
-useInitialFocus(emailField)
+if (!props.skipInitialFocus) useInitialFocus(emailField)
 
 const MESSAGES: Record<string, string> = {
   ACCOUNT_PENDING_APPROVAL: 'Your email is verified. An administrator still has to approve your account; you will get an email.',
@@ -48,9 +50,7 @@ const MESSAGES: Record<string, string> = {
 
 /** "Try again in 12 minutes": when a lock ends (the server sends the seconds left as Retry-After). */
 function lockedMessage(seconds?: number): string {
-  if (!seconds) return 'Too many failed attempts. Try again later.'
-  const minutes = Math.ceil(seconds / 60)
-  return `Too many failed attempts. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`
+  return seconds ? `Too many failed attempts. ${tryAgainIn(seconds)}` : 'Too many failed attempts. Try again later.'
 }
 
 const title = computed(() => (step.value === 'mfa' ? 'Enter the code from your authenticator app' : null))
@@ -107,6 +107,8 @@ function back() {
   step.value = 'credentials'
   totp.value = ''
   fieldErrors.value = {}
+  // The pressed button is gone with the code step: put the cursor back where the next account goes.
+  void nextTick(() => emailField.value?.focus())
 }
 </script>
 
@@ -147,7 +149,7 @@ function back() {
         aria-label="6-digit code"
         @finish="submit"
       />
-      <p v-if="fieldErrors.totp" class="t-caption" style="color: rgb(var(--v-theme-error))" role="alert">
+      <p v-if="fieldErrors.totp" class="t-caption text-error" role="alert">
         {{ fieldErrors.totp }}
       </p>
       <v-btn variant="text" class="m3 align-self-start" @click="back">Use a different account</v-btn>

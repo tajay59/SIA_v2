@@ -125,11 +125,6 @@ async function giveBack(u: Unit) {
   font-weight: 600;
   overflow-wrap: anywhere;
 }
-.page {
-  max-width: 1100px;
-  margin: 0 auto;
-  width: 100%;
-}
 .strip {
   display: flex;
   flex-wrap: wrap;

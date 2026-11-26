@@ -9,3 +9,13 @@ definePage({ meta: { guard: 'staff', title: 'Not found', ownHeading: true } })
     <div class="row"><v-btn to="/" color="primary" class="m3">Back to the dashboard</v-btn></div>
   </div>
 </template>
+
+<style scoped>
+/* 24 px from the title to the message, as every page (8 + the stack's 16). */
+.page > .t-h1 {
+  margin-bottom: var(--sp-2);
+}
+.page > p {
+  margin: 0;
+}
+</style>

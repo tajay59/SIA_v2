@@ -330,7 +330,8 @@ def test_product_link(ctx: Ctx) -> None:
     shop_item = ctx.create(name="WXT536 weather station")  # MET + sellable: on SHOP
     staff_only = ctx.create(name="Bench multimeter", type="EQUIP", sn="SN-0002")
     a = make(ctx, link={"productId": shop_item["id"]})
-    assert a["link"] == {"label": "WXT536 weather station", "productId": shop_item["id"]}
+    # No photo yet: imageUrl null (the banner falls back to the label).
+    assert a["link"] == {"label": "WXT536 weather station", "productId": shop_item["id"], "imageUrl": None}
     live = ctx.client.get(ctx.url("/announcements")).json()["items"]
     assert live[0]["link"]["productId"] == shop_item["id"]
     named = make(ctx, link={"productId": shop_item["id"], "label": "See the new price"})
@@ -354,3 +355,148 @@ def test_product_link(ctx: Ctx) -> None:
     # A deactivated product can't be linked any more.
     ctx.client.delete(ctx.url(f"/products/{shop_item['id']}"), headers={**STAFF, "If-Match": str(shop_item["version"])})
     assert code(link={"productId": shop_item["id"]}) == (422, "PRODUCT_NOT_FOUND")
+
+
+# ---------------------------------------------------------------- images (owner 2026-11-26)
+
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+
+
+def upload(ctx: Ctx, data: bytes = JPEG, headers: dict[str, str] = ADMIN) -> Any:
+    return ctx.client.post(ctx.url(f"{URL}/images"), headers=headers, files=[("file", ("p.jpg", data, "image/jpeg"))])
+
+
+def finish(ctx: Ctx, file_id: str, ok: bool = True) -> None:
+    from catalog_svc.consumer import make_handler
+    from cimh_common.outbox import new_event
+
+    payload: dict[str, Any] = {"jobId": "JOB" + file_id.removeprefix("IMG"), "target": "announcement", "ok": ok}
+    if ok:
+        payload |= {"fileId": file_id, "url": f"/media/announcements/{file_id}.webp", "w": 1600, "h": 400}
+    evt = new_event("image.processed", payload, correlation_id="c1")
+    check_event(evt.model_dump(mode="python"))
+    ctx.run(make_handler(ctx.app.state.catalog)(evt))
+
+
+def test_picture_and_background_upload_then_use(ctx: Ctx) -> None:
+    r = upload(ctx)
+    assert r.status_code == 202, r.text
+    fid = r.json()["fileId"]
+    assert r.json()["status"] == "PROCESSING"
+    job = [e for e in ctx.misc("announcements")["outbox"] if e["type"] == "image.process"][-1]
+    check_event(job)
+    assert job["payload"]["target"] == "announcement"
+    assert "productId" not in job["payload"]
+    assert (ctx.media / job["payload"]["sourcePath"]).exists()
+
+    # Not ready yet: can't be used.
+    r = ctx.client.post(ctx.url(URL), headers=ADMIN, json=body(picture={"fileId": fid}))
+    assert r.json()["code"] == "IMAGE_NOT_READY"
+    finish(ctx, fid)
+    status = ctx.client.get(ctx.url(f"{URL}/images/{fid}"), headers=ADMIN).json()
+    assert status == {"fileId": fid, "status": "READY", "url": f"/media/announcements/{fid}.webp", "w": 1600, "h": 400}
+
+    a = make(ctx, picture={"fileId": fid}, background={"fileId": fid})
+    assert a["picture"]["url"] == status["url"]
+    assert a["background"]["fileId"] == fid
+    live = ctx.client.get(ctx.url("/announcements")).json()["items"][0]
+    assert live["picture"] == {"fileId": fid, "url": status["url"], "w": 1600, "h": 400}
+    # Removed with null.
+    r = ctx.client.patch(ctx.url(f"{URL}/{a['id']}"), headers={**ADMIN, "If-Match": "1"}, json={"background": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["background"] is None
+    assert r.json()["picture"]["fileId"] == fid
+
+
+def test_image_failures_and_checks(ctx: Ctx) -> None:
+    r = upload(ctx, data=b"<?php echo 1;")
+    assert (r.status_code, r.json()["code"]) == (422, "UNSUPPORTED_MEDIA_TYPE")
+    assert upload(ctx, headers=STAFF).status_code == 403
+    fid = upload(ctx).json()["fileId"]
+    finish(ctx, fid, ok=False)
+    st = ctx.client.get(ctx.url(f"{URL}/images/{fid}"), headers=ADMIN).json()
+    assert st["status"] == "FAILED"
+    assert "usable image" in st["error"]
+    r = ctx.client.post(ctx.url(URL), headers=ADMIN, json=body(picture={"fileId": fid}))
+    assert r.json()["code"] == "IMAGE_NOT_USABLE"
+    r = ctx.client.post(ctx.url(URL), headers=ADMIN, json=body(background={"fileId": "IMGNOPE"}))
+    assert r.json()["code"] == "IMAGE_NOT_FOUND"
+    assert ctx.client.get(ctx.url(f"{URL}/images/../x"), headers=ADMIN).status_code == 404
+    # A second result for the same job changes nothing (at-least-once delivery).
+    finish(ctx, fid)
+    assert ctx.client.get(ctx.url(f"{URL}/images/{fid}"), headers=ADMIN).json()["status"] == "FAILED"
+
+
+def test_unused_uploads_are_dropped_with_their_files(ctx: Ctx) -> None:
+    used, unused = upload(ctx).json()["fileId"], upload(ctx).json()["fileId"]
+    for fid in (used, unused):
+        finish(ctx, fid)
+        folder = ctx.media / "public" / "announcements"
+        folder.mkdir(parents=True, exist_ok=True)
+        for suffix in ("", "@800", "@320"):
+            (folder / f"{fid}{suffix}.webp").write_bytes(b"x")
+    make(ctx, picture={"fileId": used})
+    old = datetime.now(UTC) - timedelta(days=3)
+    ctx.run(
+        ctx.db["misc"].update_one(
+            {"id": "announcements"}, {"$set": {f"images.{used}.createdAt": old, f"images.{unused}.createdAt": old}}
+        )
+    )
+    upload(ctx)  # the next upload sweeps
+    images = ctx.misc("announcements")["images"]
+    assert used in images
+    assert unused not in images
+    names = sorted(f.name for f in (ctx.media / "public" / "announcements").iterdir())
+    assert len(names) == 3
+    assert all(n.startswith(used) for n in names)
+
+
+def test_product_link_carries_its_photo(ctx: Ctx) -> None:
+    from catalog_svc.consumer import make_handler
+    from cimh_common.outbox import new_event
+
+    item = ctx.create(name="WXT536 weather station")
+    evt = new_event(
+        "image.processed",
+        {"jobId": "JOB9", "productId": item["id"], "ok": True, "fileId": "IMG9", "url": "/media/products/x/IMG9.webp"},
+        correlation_id="c",
+    )
+    ctx.run(make_handler(ctx.app.state.catalog)(evt))
+    a = make(ctx, link={"productId": item["id"]})
+    assert a["link"]["imageUrl"] == "/media/products/x/IMG9.webp"
+    live = ctx.client.get(ctx.url("/announcements")).json()["items"][0]
+    assert live["link"]["imageUrl"] == "/media/products/x/IMG9.webp"
+
+
+def test_height(ctx: Ctx) -> None:
+    """Owner 2026-11-26: the admin sets the banner's height (48-300 px); null = fit the content."""
+    a = make(ctx)
+    assert a["height"] is None
+    b = make(ctx, height=180)
+    assert b["height"] == 180
+    assert (
+        next(i for i in ctx.client.get(ctx.url("/announcements")).json()["items"] if i["id"] == b["id"])["height"]
+        == 180
+    )
+    for bad in (47, 301, "120"):
+        assert ctx.client.post(ctx.url(URL), headers=ADMIN, json=body(height=bad)).status_code == 422
+    r = ctx.client.patch(ctx.url(f"{URL}/{b['id']}"), headers={**ADMIN, "If-Match": "1"}, json={"height": None})
+    assert r.status_code == 200, r.text
+    assert r.json()["height"] is None
+
+
+def test_look_and_effects(ctx: Ctx) -> None:
+    """Owner 2026-11-26: per announcement, a colour look and looping attention effects."""
+    a = make(ctx)
+    assert (a["look"], a["effects"]) == ("SOFT", [])
+    b = make(ctx, look="STRONG", effects=["ring", "sweep"])
+    assert (b["look"], b["effects"]) == ("STRONG", ["sweep", "ring"])  # stored in the listed order
+    live = next(i for i in ctx.client.get(ctx.url("/announcements")).json()["items"] if i["id"] == b["id"])
+    assert live["effects"] == ["sweep", "ring"]
+    for bad in ({"look": "LOUD"}, {"effects": ["blink"]}, {"effects": "sweep"}):
+        assert ctx.client.post(ctx.url(URL), headers=ADMIN, json=body(**bad)).status_code == 422
+    url = ctx.url(f"{URL}/{b['id']}")
+    r = ctx.client.patch(url, headers={**ADMIN, "If-Match": "1"}, json={"effects": [], "look": "GRADIENT"})
+    assert r.status_code == 200, r.text
+    assert (r.json()["look"], r.json()["effects"]) == ("GRADIENT", [])
+    assert ctx.client.patch(url, headers={**ADMIN, "If-Match": "2"}, json={"effects": None}).status_code == 422

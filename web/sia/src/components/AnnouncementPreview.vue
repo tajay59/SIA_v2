@@ -7,7 +7,9 @@
 import { type Announcement, AnnouncementRow } from '@cimh/web-app'
 import { computed } from 'vue'
 
-const props = defineProps<{ announcement: Pick<Announcement, 'message' | 'tone' | 'link' | 'dismissible' | 'audience'> }>()
+const props = defineProps<{
+  announcement: Pick<Announcement, 'message' | 'tone' | 'link' | 'dismissible' | 'audience'> & Partial<Pick<Announcement, 'picture' | 'background' | 'height' | 'look' | 'effects'>>
+}>()
 
 const pages = computed(() =>
   (['shop', 'sia'] as const).flatMap((app) =>

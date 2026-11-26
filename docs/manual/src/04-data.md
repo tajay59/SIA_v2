@@ -138,7 +138,7 @@ New key index: `{ product, stowed, picked, reservedFor }`; `reservedFor`, `order
 Updated **in the same transaction** as every scan, with counts recomputed from `storage`, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold > 0 and available ≤ threshold; `stock.low` is sent when it turns true.
 
 ### ✚ `announcements` (the banner on every page, catalog-svc)
-Admin messages shown at the top of every SHOP/SIA page: `id` (`ANN…`), `message` (plain text ≤ 280), `tone` INFO/ALERT, `audience` SHOP/SIA/BOTH, optional `link` (web address or `productId`), `dismissible` (never for alerts), `startsAt`, `expiresAt`, Actors, `version`. A **TTL index on `expiresAt`** deletes a message when the admin's time runs out (≤ 90 days); every read also filters on `expiresAt`. Audit entries ride on the `misc` document `announcements`. See BSD §5.12.
+Admin messages shown at the top of every SHOP/SIA page: `id` (`ANN…`), `message` (plain text ≤ 280), `tone` INFO/ALERT, `audience` SHOP/SIA/BOTH, optional `link` (web address or `productId`), optional `picture` and `background` (uploaded images prepared by media-worker, 2026-11-26; a product link shows the product's photo as the link), optional `height` (48–300 px; the row's content is sized from it), `look` (SOFT/GRADIENT/STRONG) and `effects` (looping attention effects), `dismissible` (never for alerts), `startsAt`, `expiresAt`, Actors, `version`. A **TTL index on `expiresAt`** deletes a message when the admin's time runs out (≤ 90 days); every read also filters on `expiresAt`. Audit entries ride on the `misc` document `announcements`. See BSD §5.12.
 
 ### `orders` (carts and requests)
 

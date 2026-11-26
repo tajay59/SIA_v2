@@ -49,14 +49,25 @@ test.describe.serial('J-01 registration → admin approval → first login', () 
     await page.getByLabel('Work email').fill(member)
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByRole('heading', { name: 'Organisation' })).toBeVisible()
+    // Each step opens with the cursor in its first field (it fell to <body> while the panes swapped), inside a
+    // group named by the step (so the field is found by its role: the group shares its name).
+    const orgField = page.getByRole('textbox', { name: 'Organisation' })
+    const password = page.locator('input[name=password]')
+    await expect(orgField).toBeFocused()
+    await expect(page.getByRole('group', { name: 'Organisation' })).toBeVisible()
+    await page.getByRole('button', { name: 'Back' }).click()
+    await expect(page.getByLabel('First name')).toBeFocused()
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(orgField).toBeFocused()
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByText('Enter your organisation')).toBeVisible()
-    await page.getByLabel('Organisation').fill(org)
+    await orgField.fill(org)
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByRole('heading', { name: 'Password' })).toBeVisible()
+    await expect(password).toBeFocused()
     await page.getByRole('button', { name: 'Create account' }).click()
     await expect(page.getByText('Please accept the terms')).toBeVisible()
-    await page.getByLabel('Password', { exact: true }).fill(PASSWORD)
+    await password.fill(PASSWORD)
     await page.getByLabel(/I agree/).check()
     await page.getByRole('button', { name: 'Create account' }).click()
 
@@ -177,6 +188,161 @@ test.describe('J-11 password reset', () => {
       await expect(page.getByRole('button', { name: 'E2e' })).toBeVisible()
     }
   })
+})
+
+test.describe('S-17 forgot password: what stops it', () => {
+  // Audit 2026-11-26: a 429 was only a toast in seconds; the outage banner's Try again did nothing.
+  for (const [app, base] of [['SHOP', SHOP], ['SIA', SIA]] as const) {
+    test(`${app}: blank field, rate limit on the form, outage banner resends`, async ({ page }) => {
+      const email = `nobody.forgot.${run}@example.org`
+      await page.goto(`${base}/forgot-password`)
+      const field = page.getByRole('textbox', { name: 'Email' })
+      await expect(field).toBeFocused()
+      await expect(field).toHaveAttribute('name', 'email')
+      await expect(field).toHaveAttribute('autocomplete', 'username')
+      const send = page.getByRole('button', { name: 'Send reset code' })
+
+      await send.click()
+      await expect(page.getByText('Enter your email address')).toBeVisible() // asked for, not "invalid"
+      await expect(field).toBeFocused()
+
+      await page.route('**/auth/password/forgot', (r) =>
+        r.fulfill({ status: 429, headers: { 'content-type': 'application/problem+json', 'retry-after': '120' }, body: JSON.stringify({ title: 'Too many requests', code: 'RATE_LIMITED' }) }),
+      )
+      await field.fill(email)
+      await send.click()
+      await expect(page.getByRole('alert').filter({ hasText: 'Too many attempts. Try again in 2 minutes.' })).toBeVisible()
+      await expect(page).toHaveURL(/\/forgot-password/)
+      await expect(page.locator('.v-snackbar')).toHaveCount(0) // on the form, not a passing toast
+      await page.unroute('**/auth/password/forgot')
+
+      // Outage: the banner says nothing was sent; its Try again sends the same address again.
+      let calls = 0
+      await page.route('**/auth/password/forgot', (r) => (++calls === 1 ? r.abort('internetdisconnected') : r.continue()))
+      await send.click()
+      const banner = page.getByRole('alert').filter({ hasText: 'The service is unavailable right now. No code was sent.' })
+      await expect(banner).toBeVisible()
+      await expect(page.getByText('Too many attempts.')).toHaveCount(0) // the earlier message is cleared on a new press
+      await banner.getByRole('button', { name: 'Try again' }).click()
+      await expect(page).toHaveURL(/\/reset-password\?email=/)
+      expect(calls).toBe(2)
+    })
+  }
+})
+
+test.describe('S-18 reset password: what stops it', () => {
+  // Audit 2026-11-26: a wrong code was said at the top with the cursor on the button; a refused password used up
+  // the code; too many wrong codes read as "expired"; the outage banner's Try again did nothing; a bad address
+  // from the link failed silently.
+  for (const [app, base] of [['SHOP', SHOP], ['SIA', SIA]] as const) {
+    test(`${app}: code answers under the boxes, refused password keeps the code, outage retry`, async ({ page }) => {
+      const email = await activeCimhAccount(`reset18${app.toLowerCase()}`)
+      await req(`${IDENTITY}/api/identity/v1/auth/password/forgot`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const good = await claimCode(email, 'reset_password')
+      await page.goto(`${base}/reset-password?email=${encodeURIComponent(email)}`)
+      const box = page.getByRole('textbox', { name: '6-digit code' })
+      await expect(box).toBeFocused()
+      await expect(page.getByText('It is valid for 15 minutes.')).toBeVisible()
+      // Password managers get the account with the new password; "Send a new code" keeps the address.
+      await expect(page.locator('input[autocomplete=username]')).toHaveValue(email)
+      await expect(page.getByRole('link', { name: 'Send a new code' })).toHaveAttribute('href', `/forgot-password?email=${email}`) // vue-router leaves @ as is
+
+      const pw = `a fresh reset password ${run}`
+      await page.locator('input[name=new-password]').fill(pw)
+      await page.locator('input[name=confirm-password]').fill(pw)
+      const change = page.getByRole('button', { name: 'Change password' })
+
+      // Wrong code: said under the boxes, boxes marked and emptied, cursor back in the first box.
+      await box.fill(good === '000000' ? '111111' : '000000')
+      await change.click()
+      const message = page.getByRole('alert').filter({ hasText: 'That code is not right. Check the email and try again.' })
+      await expect(message).toBeVisible()
+      await expect(box).toHaveValue('')
+      await expect(box).toBeFocused()
+      await expect(box).toHaveAttribute('aria-invalid', 'true')
+      await expect(box).toHaveAttribute('aria-describedby', (await message.getAttribute('id'))!)
+      await box.pressSequentially('1')
+      await expect(message).toHaveCount(0) // goes once the code changes
+      await expect(box).not.toHaveAttribute('aria-invalid', 'true')
+
+      // A breached password (dev has the breach check off: stubbed), then an outage, then the same code works.
+      let calls = 0
+      await page.route('**/auth/password/reset', (r) => {
+        calls++
+        if (calls === 1)
+          return r.fulfill({
+            status: 422,
+            headers: { 'content-type': 'application/problem+json' },
+            body: JSON.stringify({ title: 'Breached', status: 422, code: 'PASSWORD_BREACHED' }),
+          })
+        if (calls === 2) return r.abort('internetdisconnected')
+        return r.continue()
+      })
+      await box.fill(good)
+      await change.click()
+      await expect(page.getByText('This password appears in known data breaches. Choose another one.')).toBeVisible()
+      await expect(page.locator('input[name=new-password]')).toBeFocused()
+      await expect(box).toHaveValue(good) // the code stays: identity checks the password before using up the code
+      const next = `another fresh password ${run}`
+      await page.locator('input[name=new-password]').fill(next)
+      await page.locator('input[name=confirm-password]').fill(next)
+      await change.click()
+      const banner = page.getByRole('alert').filter({ hasText: 'The service is unavailable right now. Your password was not changed.' })
+      await expect(banner).toBeVisible()
+      await banner.getByRole('button', { name: 'Try again' }).click()
+      await expect(page).toHaveURL(/\/login\?notice=password-changed/)
+      expect(calls).toBe(3)
+    })
+
+    test(`${app}: too many wrong codes, a bad address from the link, no address`, async ({ page }) => {
+      const email = await activeCimhAccount(`reset18b${app.toLowerCase()}`)
+      await req(`${IDENTITY}/api/identity/v1/auth/password/forgot`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const good = await claimCode(email, 'reset_password')
+      const bad = good === '000000' ? '111111' : '000000'
+      await page.goto(`${base}/reset-password?email=${encodeURIComponent(email)}`)
+      const box = page.getByRole('textbox', { name: '6-digit code' })
+      const pw = `a fresh reset password ${run}`
+      await page.locator('input[name=new-password]').fill(pw)
+      await page.locator('input[name=confirm-password]').fill(pw)
+      const change = page.getByRole('button', { name: 'Change password' })
+      for (let i = 0; i < 5; i++) {
+        await box.fill(bad)
+        await change.click()
+        await expect(page.getByText('That code is not right.')).toBeVisible()
+      }
+      await box.fill(good) // right, but too late: five wrong codes used it up
+      await change.click()
+      const spent = page.getByRole('alert').filter({ hasText: 'Too many wrong codes. This one no longer works.' })
+      await expect(spent).toBeVisible()
+      await expect(spent.getByRole('link', { name: 'Send a new code' })).toHaveAttribute('href', `/forgot-password?email=${email}`) // vue-router leaves @ as is
+
+      // An address the server can't read: the Email field comes back with the message and the cursor.
+      await page.goto(`${base}/reset-password?email=foo`)
+      await page.getByRole('textbox', { name: '6-digit code' }).fill('123456')
+      await page.locator('input[name=new-password]').fill(pw)
+      await page.locator('input[name=confirm-password]').fill(pw)
+      await page.getByRole('button', { name: 'Change password' }).click()
+      const field = page.getByRole('textbox', { name: 'Email' })
+      await expect(field).toBeFocused()
+      await expect(field).toHaveValue('foo')
+      await expect(page.getByText('Enter a valid email address')).toBeVisible()
+
+      // No address in the link: the cursor starts in Email, which has a name.
+      await page.goto(`${base}/reset-password`)
+      await expect(page.getByRole('textbox', { name: 'Email' })).toBeFocused()
+      await expect(page.getByRole('textbox', { name: 'Email' })).toHaveAttribute('name', 'email')
+      await expect(page.getByText('Codes are valid for 15 minutes.')).toBeVisible()
+      await expect(page.getByRole('link', { name: 'Send a new code' })).toHaveAttribute('href', '/forgot-password')
+    })
+  }
 })
 
 test.describe('global behaviour', () => {

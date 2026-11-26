@@ -258,6 +258,9 @@ const {
 </template>
 
 <style scoped>
-.profile {
-  max-width: 880px;
-}</style>
+/* SIA: width and centring come from the page frame (console.css), as every page (owner 2026-11-26); 24 px from the
+   title block to the first section, as every page (8 + the stack's 16). */
+.profile.sia > .page-header {
+  margin-bottom: var(--sp-2);
+}
+</style>

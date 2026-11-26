@@ -15,7 +15,11 @@ import { z } from 'zod/mini'
 // this module), before any schema parses.
 z.config({ jitless: true })
 
-export const email = z.email('Enter a valid email address').check(z.maxLength(254))
+/** An empty field is asked for, not called invalid (audit 2026-11-26: "Enter a valid email address" for a blank). */
+const isBlank = (input: unknown) => input == null || (typeof input === 'string' && !input.trim())
+export const email = z
+  .email({ error: (iss) => (isBlank(iss.input) ? 'Enter your email address' : 'Enter a valid email address') })
+  .check(z.maxLength(254))
 export const password = z.string().check(z.minLength(12, 'At least 12 characters'), z.maxLength(256, 'At most 256 characters'))
 export const code = z.string().check(z.regex(/^\d{6}$/, 'Enter the 6-digit code'))
 export const name = z.string().check(z.trim(), z.minLength(1, 'Required'), z.maxLength(100, 'At most 100 characters'))

@@ -3,7 +3,7 @@
  * Sign up (S-13; SIA sign-up for CIMH staff), in three short steps: You · Organisation (CIMH
  * emails: Details) · Password. Each Continue checks only its own step (`checkForm`: marks every field, focuses
  * the first); nothing is ever disabled for missing input. A 422 from the server jumps to the step holding the
- * first bad field. The API answers 202 whether or not the email exists (no enumeration), then → /verify.
+ * first bad field and puts the cursor on it; a server message goes once its field is edited. The API answers 202 whether or not the email exists (no enumeration), then → /verify.
  * `staff` (SIA): only @cimh.edu.bb addresses; an administrator then gives the account staff access.
  */
 import { computed, nextTick, reactive, ref, watch } from 'vue'
@@ -15,7 +15,7 @@ import { checkForm, type FormLike } from '../form'
 import { isCimhEmail, register, registerFields, rule } from '../validation'
 import PasswordField from './PasswordField.vue'
 
-const props = withDefaults(defineProps<{ staff?: boolean; loginPath?: string }>(), { staff: false, loginPath: '/login' })
+const props = withDefaults(defineProps<{ staff?: boolean }>(), { staff: false })
 const step = defineModel<number>('step', { default: 0 })
 
 const router = useRouter()
@@ -43,21 +43,61 @@ const STEP_OF: Record<string, number> = {
   organisationText: 1, department: 1, country: 1, phone: 1,
   password: 2, terms: 2,
 } // prettier-ignore
-const titles = computed(() => ['You', cimh.value ? 'Details' : 'Organisation', 'Password'])
+// SIA sign-up takes only @cimh.edu.bb addresses, so its second step is always Details.
+const titles = computed(() => ['You', props.staff || cimh.value ? 'Details' : 'Organisation', 'Password'])
 defineExpose({ titles })
 
-// The step pane takes the cursor when it changes (screen readers hear its heading).
-const paneHead = ref<HTMLElement | null>(null)
+/*
+ * Where the cursor goes when a step opens: its first field, or the field a server error names. Each step is a
+ * group named by its heading, so a screen reader says the step as the cursor enters it. With out-in the new pane
+ * exists only once the old one has left, so the cursor moves from the Transition's after-enter (on nextTick it
+ * landed in the leaving pane and fell to <body>).
+ */
+const pane = ref<HTMLElement | null>(null)
+let focusField: string | null = null
+function placeCursor(root: Element | null) {
+  if (!root) return
+  const visible = (el: HTMLElement) => el.offsetParent !== null
+  const named = focusField ? root.querySelector<HTMLElement>(`[name="${CSS.escape(focusField)}"]`) : null
+  focusField = null
+  const first = Array.from(root.querySelectorAll<HTMLElement>('input:not([type=hidden]), textarea')).find(visible)
+  ;(named && visible(named) ? named : first)?.focus()
+}
+/** Open step `n` and put the cursor in it (on `field` when given). */
+function goTo(n: number, field?: string) {
+  focusField = field ?? null
+  if (n === step.value) void nextTick(() => placeCursor(pane.value))
+  else step.value = n
+}
+/** The step and name of the first field (in form order) among `keys`. */
+const FIELD_ORDER = Object.keys(STEP_OF)
+function firstError(keys: string[]): [number, string] {
+  const rank = (k: string) => (FIELD_ORDER.includes(k) ? FIELD_ORDER.indexOf(k) : 0)
+  const k = [...keys].sort((a, b) => rank(a) - rank(b))[0]
+  return [STEP_OF[k] ?? 0, k]
+}
 // Panes slide in the direction of travel: forward from the right, Back from the left.
 const dir = ref<'fwd' | 'back'>('fwd')
 watch(step, (n, o) => {
   dir.value = n < o ? 'back' : 'fwd'
-  void nextTick(() => paneHead.value?.focus())
 })
+
+// A server message describes what was sent, so it goes as soon as that field changes.
+for (const key of Object.keys(form) as (keyof typeof form)[]) {
+  watch(
+    () => form[key],
+    () => {
+      if (!(key in errors.value)) return
+      const rest = { ...errors.value }
+      delete rest[key]
+      errors.value = rest
+    },
+  )
+}
 
 async function next() {
   if (!(await checkForm(forms[step.value].value))) return
-  step.value = Math.min(step.value + 1, 2)
+  goTo(Math.min(step.value + 1, 2))
 }
 
 async function submit() {
@@ -66,7 +106,7 @@ async function submit() {
   const parsed = register.safeParse(form)
   if (!parsed.success) {
     errors.value = Object.fromEntries(parsed.error.issues.map((i) => [String(i.path[0]), i.message]))
-    step.value = Math.min(...Object.keys(errors.value).map((k) => STEP_OF[k] ?? 0))
+    goTo(...firstError(Object.keys(errors.value)))
     return
   }
   busy.value = true
@@ -93,7 +133,7 @@ async function submit() {
     if (e instanceof ApiError && e.status === 422) {
       errors.value = e.fieldErrors()
       if (e.code === 'PASSWORD_BREACHED') errors.value.password = 'This password appears in known data breaches. Choose another one.'
-      if (Object.keys(errors.value).length) step.value = Math.min(...Object.keys(errors.value).map((k) => STEP_OF[k] ?? 0))
+      if (Object.keys(errors.value).length) goTo(...firstError(Object.keys(errors.value)))
       else notify.report(e)
     } else notify.report(e)
   } finally {
@@ -106,16 +146,16 @@ async function submit() {
   <div class="signup">
     <ol class="dots" :aria-label="`Step ${step + 1} of 3`" :style="{ '--step': step }">
       <li v-for="(t, i) in titles" :key="i" :class="{ on: i === step, done: i < step }">
-        <button v-if="i < step" type="button" class="dot-btn" @click="step = i">{{ i + 1 }}. {{ t }}</button>
+        <button v-if="i < step" type="button" class="dot-btn" @click="goTo(i)">{{ i + 1 }}. {{ t }}</button>
         <span v-else :aria-current="i === step ? 'step' : undefined">{{ i + 1 }}. {{ t }}</span>
       </li>
       <li class="ink" aria-hidden="true" />
     </ol>
 
     <div class="panes">
-      <Transition :name="`pane-${dir}`" mode="out-in">
-        <div :key="step" class="pane">
-          <h2 ref="paneHead" tabindex="-1" class="pane-title sr-only">{{ titles[step] }}</h2>
+      <Transition :name="`pane-${dir}`" mode="out-in" @after-enter="placeCursor">
+        <div :key="step" ref="pane" class="pane" role="group" :aria-labelledby="`signup-step-${step}`">
+          <h2 :id="`signup-step-${step}`" class="sr-only">{{ titles[step] }}</h2>
 
           <v-form v-show="step === 0" :ref="(el) => (forms[0].value = el as unknown as FormLike)" class="stack" @submit.prevent="next">
             <div class="grid-2">
@@ -160,7 +200,7 @@ async function submit() {
             </div>
             <v-text-field v-model="form.phone" name="phone" label="Phone (optional)" type="tel" autocomplete="tel" :error-messages="errors.phone" />
             <v-btn type="submit" color="primary" size="large" block>Continue</v-btn>
-            <v-btn variant="text" class="back" @click="step = 0">Back</v-btn>
+            <v-btn variant="text" class="back" @click="goTo(0)">Back</v-btn>
           </v-form>
 
           <v-form v-show="step === 2" :ref="(el) => (forms[2].value = el as unknown as FormLike)" class="stack" @submit.prevent="submit">
@@ -171,7 +211,7 @@ async function submit() {
               </template>
             </v-checkbox>
             <v-btn type="submit" color="primary" size="large" block :loading="busy">Create account</v-btn>
-            <v-btn variant="text" class="back" @click="step = 1">Back</v-btn>
+            <v-btn variant="text" class="back" @click="goTo(1)">Back</v-btn>
           </v-form>
         </div>
       </Transition>
@@ -231,14 +271,6 @@ async function submit() {
 .dot-btn:focus-visible {
   text-decoration: underline;
 }
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-}
 .back {
   align-self: center;
 }
@@ -251,19 +283,6 @@ async function submit() {
   line-height: 18px;
   letter-spacing: normal;
   hyphens: manual;
-}
-.pane-title {
-  font-size: 20px;
-  line-height: 28px;
-  font-weight: 700;
-  margin: 0 0 var(--sp-4);
-  outline: none;
-}
-.row-2 {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--sp-3);
 }
 .terms {
   font-size: 14px;

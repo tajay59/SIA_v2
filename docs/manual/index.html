@@ -1382,7 +1382,7 @@ New key index: <code>{ product, stowed, picked, reservedFor }</code>; <code>rese
 <p><code>id</code> (= product id) · <code>productName</code>, <code>type</code>, <code>threshold</code>, <code>active</code> (copied from catalog events) · <code>available</code>, <code>reserved</code>, <code>picked</code>, <code>assigned</code> · <code>low</code> · <code>outbox[]</code>.
 Updated <strong>in the same transaction</strong> as every scan, with counts recomputed from <code>storage</code>, so counts always reconcile with units and history. It carries inventory's outbox, so stock events are keyed by product id. Low = threshold &gt; 0 and available ≤ threshold; <code>stock.low</code> is sent when it turns true.</p>
 <h3 id="announcements-the-banner-on-every-page-catalog-svc">✚ <code>announcements</code> (the banner on every page, catalog-svc)</h3>
-<p>Admin messages shown at the top of every SHOP/SIA page: <code>id</code> (<code>ANN…</code>), <code>message</code> (plain text ≤ 280), <code>tone</code> INFO/ALERT, <code>audience</code> SHOP/SIA/BOTH, optional <code>link</code> (web address or <code>productId</code>), <code>dismissible</code> (never for alerts), <code>startsAt</code>, <code>expiresAt</code>, Actors, <code>version</code>. A <strong>TTL index on <code>expiresAt</code></strong> deletes a message when the admin's time runs out (≤ 90 days); every read also filters on <code>expiresAt</code>. Audit entries ride on the <code>misc</code> document <code>announcements</code>. See BSD §5.12.</p>
+<p>Admin messages shown at the top of every SHOP/SIA page: <code>id</code> (<code>ANN…</code>), <code>message</code> (plain text ≤ 280), <code>tone</code> INFO/ALERT, <code>audience</code> SHOP/SIA/BOTH, optional <code>link</code> (web address or <code>productId</code>), optional <code>picture</code> and <code>background</code> (uploaded images prepared by media-worker, 2026-11-26; a product link shows the product's photo as the link), optional <code>height</code> (48–300 px; the row's content is sized from it), <code>look</code> (SOFT/GRADIENT/STRONG) and <code>effects</code> (looping attention effects), <code>dismissible</code> (never for alerts), <code>startsAt</code>, <code>expiresAt</code>, Actors, <code>version</code>. A <strong>TTL index on <code>expiresAt</code></strong> deletes a message when the admin's time runs out (≤ 90 days); every read also filters on <code>expiresAt</code>. Audit entries ride on the <code>misc</code> document <code>announcements</code>. See BSD §5.12.</p>
 <h3 id="orders-carts-and-requests"><code>orders</code> (carts and requests)</h3>
 <table>
 <thead>
@@ -2225,7 +2225,7 @@ Updated <strong>in the same transaction</strong> as every scan, with counts reco
 <td>S</td>
 <td>Verification / reset code guessing</td>
 <td>M</td>
-<td>6 digits, hashed, 15 min, 5 attempts, 3 resends/hour, rate-limited endpoint</td>
+<td>6 digits, hashed, 15 min, 5 attempts (then <code>CODE_ATTEMPTS_EXCEEDED</code>), 3 resends/hour, rate-limited endpoint; a reset checks the new password before the code, so a refused password never uses the code up (2026-11-26)</td>
 <td>✅</td>
 </tr>
 <tr>
@@ -4057,7 +4057,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tbody>
 </table>
 <p>The full catalogue with roles, and the <strong>legacy → v2 endpoint mapping</strong>, is in the <a href="../api/README.md#5-endpoint-catalogue">API Specification</a>.</p>
-<p><strong>Announcements</strong> (2026-11-23): <code>GET /api/catalog/v1/announcements?app=shop|sia</code> (live list), admin CRUD on <code>/admin/announcements</code> (If-Match on edit/end), and the WebSocket <code>/api/catalog/v1/announcements/stream</code> (catalog-push; <code>snapshot</code>, <code>upsert</code>, <code>remove</code>, <code>ping</code>; contract <code>docs/api/push.asyncapi.yaml</code>). Errors: <code>LINK_NOT_ALLOWED</code>, <code>TTL_OUT_OF_RANGE</code>, <code>STARTS_AFTER_EXPIRY</code>, <code>PRODUCT_NOT_FOUND</code>, <code>PRODUCT_NOT_ON_SHOP</code>.</p>
+<p><strong>Announcements</strong> (2026-11-23): <code>GET /api/catalog/v1/announcements?app=shop|sia</code> (live list), admin CRUD on <code>/admin/announcements</code> (If-Match on edit/end), and the WebSocket <code>/api/catalog/v1/announcements/stream</code> (catalog-push; <code>snapshot</code>, <code>upsert</code>, <code>remove</code>, <code>ping</code>; contract <code>docs/api/push.asyncapi.yaml</code>). Banner images (2026-11-26): <code>POST /admin/announcements/images</code> → poll <code>GET /admin/announcements/images/{fileId}</code> until READY → <code>picture</code> / <code>background: { fileId }</code>. Errors: <code>LINK_NOT_ALLOWED</code>, <code>TTL_OUT_OF_RANGE</code>, <code>STARTS_AFTER_EXPIRY</code>, <code>PRODUCT_NOT_FOUND</code>, <code>PRODUCT_NOT_ON_SHOP</code>, <code>IMAGE_NOT_FOUND</code>, <code>IMAGE_NOT_READY</code>, <code>IMAGE_NOT_USABLE</code>.</p>
 <h2 id="106-error-codes-clients-should-handle">10.6 Error codes clients should handle</h2>
 <table>
 <thead>
@@ -4183,11 +4183,11 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 </tr>
 <tr>
 <td>429</td>
-<td>Toast with the <code>Retry-After</code> countdown</td>
+<td>Toast "Too many attempts. Try again in n minutes." (from <code>Retry-After</code>; seconds under a minute). S-17 says it on the form instead</td>
 </tr>
 <tr>
 <td>503 / network</td>
-<td>Banner "Service unavailable, try again" + Retry. Nothing was saved</td>
+<td>Banner "The service is unavailable right now. Nothing was saved." + <strong>Try again</strong> (repeats the request where the screen passes it; S-17 says "No code was sent." and resends)</td>
 </tr>
 <tr>
 <td>Empty lists</td>
@@ -4328,7 +4328,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/signup</code></td>
 <td>Sign up</td>
 <td>public</td>
-<td>Three steps as tabs with a sliding indicator, panes slide in the direction of travel (You · Organisation (CIMH emails: Details) · Password; each Continue checks only its step, a server 422 jumps to the step of the first bad field); the picture lists the way to an approved account (form → email code → admin approval, usually two working days → requests). Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
+<td>Three steps as tabs with a sliding indicator, panes slide in the direction of travel (You · Organisation (CIMH emails, and always on SIA: Details) · Password; each Continue checks only its step; each step opens with the cursor in its first field, inside a group named by the step; a server 422 jumps to the step of the first bad field and puts the cursor on it, and a server message goes as soon as its field is edited); the picture lists the way to an approved account (form → email code → admin approval, usually two working days → requests) on its own dark plate (readable whatever the photo; phones: a panel under the form). Name, email, password (strength + breach check message), organisation (free text), department, country, phone, terms</td>
 <td>Submit → S-14</td>
 </tr>
 <tr>
@@ -4352,7 +4352,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/login</code></td>
 <td>Log in</td>
 <td>public</td>
-<td>Email, password, (code if MFA); contact line "Trouble logging in? Write to info@cimh.edu.bb" (sign-in pages have no footer)</td>
+<td>Email, password (with a <strong>Show password</strong> button, pressed state; every password field), (code if MFA); contact line "Trouble logging in? Write to info@cimh.edu.bb" (sign-in pages have no footer). A notice from the page before ("Password changed", "Account active") takes focus first so it is read; otherwise the cursor starts in Email. "Use a different account" (code step) puts the cursor back in Email. Fields marked in red also say so to screen readers (<code>aria-invalid</code>, every form)</td>
 <td>Success → <code>returnTo</code> or S-10 · Status errors as §2 · Forgot → S-17 · Sign up → S-13</td>
 </tr>
 <tr>
@@ -4360,16 +4360,16 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/forgot-password</code></td>
 <td>Forgot password</td>
 <td>public</td>
-<td>Email</td>
-<td>Submit → S-18 (always, no enumeration)</td>
+<td>Email (cursor starts there; empty = "Enter your email address"; <code>autocomplete="username"</code>)</td>
+<td>Submit → S-18 (always, no enumeration) · 429 → "Too many attempts. Try again in n minutes." on the form · outage → §2 banner, Try again resends</td>
 </tr>
 <tr>
 <td>S-18</td>
 <td><code>/reset-password?email=</code></td>
 <td>Reset password</td>
 <td>public</td>
-<td>6-digit code (six boxes, as S-14; no auto-submit) + new password</td>
-<td>Success → S-16 "Password changed"</td>
+<td>"If … has an account, we sent it a 6-digit code. It is valid for 15 minutes."; 6-digit code (six boxes, as S-14; no auto-submit; cursor starts there) + new password; a hidden <code>autocomplete="username"</code> field carries the address for password managers. Without <code>?email=</code>: Email field first (cursor there)</td>
+<td>Success → S-16 "Password changed" · code refused → said <strong>under the boxes</strong> (marked, emptied, cursor back in the first box): "That code is not right. Check the email and try again." / "This code has expired." / "Too many wrong codes. This one no longer works." (<code>CODE_ATTEMPTS_EXCEEDED</code>), the last two with <strong>Send a new code</strong> → S-17 with the address · breached password → on the field, <strong>the code stays usable</strong> (identity checks the password first) · address from the link refused → the Email field comes back marked · outage → §2 banner, Try again resends · footer "Send a new code" → S-17 <code>?email=</code></td>
 </tr>
 <tr>
 <td>S-19</td>
@@ -4521,7 +4521,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/reports/history</code></td>
 <td>Movement history</td>
 <td>staff</td>
-<td>Day ledger: movements grouped by Barbados day (newest first, count per day); rows = time, operation, unit, readable place (from → to), person/request/reason, who scanned. Filters: unit code, scanned by, date presets (any time, today, 7 days, 30 days, custom range), operation filters as tonal buttons (one at a time; chosen = tonal primary + check, owner 2026-11-25)</td>
+<td>Day ledger: movements grouped by Barbados day (newest first, count per day); rows = time, operation, unit, readable place (from → to), person/request/reason, who scanned. Filters: unit code, scanned by, date presets (any time, today, 7 days, 30 days, custom range), operation filters as tonal buttons; only the log scrolls (it fills the window under the filters, day heads stick to its top; the page itself stays still) (one at a time; chosen = tonal primary + check, owner 2026-11-25)</td>
 <td>→ unit / shelf on A-08, request A-03</td>
 </tr>
 <tr>
@@ -4529,7 +4529,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/admin/approvals</code></td>
 <td>Pending accounts</td>
 <td>admin</td>
-<td>Review queue, oldest first: person + email (domain emphasised), organisation given, email domain, wait (amber "Overdue" after 48 h); suggested organisation match in the dialog; checkbox multi-select, bulk actions in the panel head Each row has a match line: the email domain belongs to an organisation on record, the name given matches one, a personal email (Gmail etc.) never counts, or no organisation yet (create one when approving). Decision dialog (also on A-17) on the dialog system: head = name + email φ : "Organisation given" 1 (a long name goes under the title); <strong>Organisation</strong> section (On record · New organisation segmented; state "Matched by email domain / by name / No match on record"; why it was suggested under the picker), <strong>Role</strong> section (Customer · Staff · Administrator segmented + what the role can do), Deny = <strong>Reason</strong>; footer says who is emailed. Approve/Deny never disabled: a press marks and focuses what is missing.</td>
+<td>Review queue, oldest first (only the list scrolls: panel head with bulk actions stays in view, column names stick to the list top): person + email (domain emphasised), organisation given, email domain, wait (amber "Overdue" after 48 h); suggested organisation match in the dialog; checkbox multi-select, bulk actions in the panel head Each row has a match line: the email domain belongs to an organisation on record, the name given matches one, a personal email (Gmail etc.) never counts, or no organisation yet (create one when approving). Decision dialog (also on A-17) on the dialog system: head = name + email φ : "Organisation given" 1 (a long name goes under the title); <strong>Organisation</strong> section (On record · New organisation segmented; state "Matched by email domain / by name / No match on record"; why it was suggested under the picker), <strong>Role</strong> section (Customer · Staff · Administrator segmented + what the role can do), Deny = <strong>Reason</strong>; footer says who is emailed. Approve/Deny never disabled: a press marks and focuses what is missing.</td>
 <td><strong>Approve</strong> ⧉ (pick/create organisation, role) ↺ · <strong>Deny</strong> ⧉ reason ↺ · Bulk approve/deny ⧉ (207 results) ↺</td>
 </tr>
 <tr>
@@ -4561,7 +4561,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/admin/settings</code></td>
 <td>Settings</td>
 <td>admin</td>
-<td>One frame: section index (<code>?tab=</code> fees · lists · workflow · reference, unsaved dot) beside the open section: Fees ledger (once per CIMH-stock request, total) · Email lists (who, count, warning when a list is empty) · Workflow grouped Quotes/Accounts/Carts with explanations · Reference (departments; projects incl. inactive, rename, toggle, add); sticky save bar per section; one save model: every edit waits for the section's Save (project names and Active included; only Add project acts at once)</td>
+<td>One frame: section index (<code>?tab=</code> fees · lists · workflow · reference, unsaved dot) beside the open section: Fees ledger (once per CIMH-stock request, total) · Email lists (who, count, warning when a list is empty) · Workflow grouped Quotes/Accounts/Carts with explanations · Reference (departments as a ledger in columns: one Find or add field narrows the list, Enter adds, a name already listed is refused, remove = struck through with Undo, new = New tag, folds after 24 with Show all, head counts what waits to be saved; projects incl. inactive, rename, toggle, add); sticky save bar per section; one save model: every edit waits for the section's Save (project names and Active included; only Add project acts at once)</td>
 <td>Save ↺ · Leaving with unsaved sections ⧉ "Leave without saving?" (lists them; also on tab close)</td>
 </tr>
 <tr>
@@ -4569,7 +4569,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/admin/audit</code></td>
 <td>Audit log</td>
 <td>admin</td>
-<td>Day ledger (Barbados days, newest first): filters action, record id, date presets (Any time/Today/7/30 days/Custom), record kind chips, all in the URL; entry = time, action in words + code, from → to, reason, record, who + role Entries read in words: action as a sentence (code kept small for the filter), people and organisations by name, services as "System", change details as "Field: value" (never JSON); runs of 2+ routine sign-in entries fold into one line with "Show them".</td>
+<td>Day ledger (Barbados days, newest first; only the log scrolls, filters stay in view): filters action, record id, date presets (Any time/Today/7/30 days/Custom), record kind chips, all in the URL; entry = time, action in words + code, from → to, reason, record, who + role Entries read in words: action as a sentence (code kept small for the filter), people and organisations by name, services as "System", change details as "Field: value" (never JSON); runs of 2+ routine sign-in entries fold into one line with "Show them".</td>
 <td>Record link → A-17 / A-18 record</td>
 </tr>
 <tr>
@@ -4577,7 +4577,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/admin/announcements</code></td>
 <td>Announcements</td>
 <td>admin</td>
-<td>List beside the record (owner's pick, 2026-11-23; frequent, quick use): search + Shown on filter + New; list Live now (alerts first) / Starting later with mono meta (tone · audience · ends in); record: message (280), the preview right under it (the real banner on SHOP/SIA page sketches, light and dark; pages not reached named in one line), tone, shown on, keep for (1 h · 1 day · 1 week · 30 days · Until…; editing adds Current end), starts (now / later), closable (off for alerts), link (a product from the catalogue, or a web address)</td>
+<td>List beside the record (owner's pick, 2026-11-23; frequent, quick use): search + Shown on filter + New; list Live now (alerts first) / Starting later with mono meta (tone · audience · ends in); record: message (280), the preview right under it (the real banner on SHOP/SIA page sketches, light and dark; pages not reached named in one line), tone, shown on, keep for (1 h · 1 day · 1 week · 30 days · Until…; editing adds Current end), starts (now / later), closable (off for alerts), link (a product chosen in a search dialog, or a web address; a product link shows the product's photo as the link), picture and background images (prepared by media-worker; rows grow to at most 300 px), height (fit the content, or 48–300 px with the text, icon and picture sized from it; scaled down on narrow screens), look (Soft · Gradient · Strong) and motion (Calm · Gentle · Eye-catching · Custom: light sweep, edge glint, icon ring, colour drift, background zoom, picture nudge; paused on hover/focus, none with reduced motion)</td>
 <td>Publish / Schedule / Save ⧉ · End now ⧉ red · leave with unsaved edits ⧉</td>
 </tr>
 <tr>
@@ -4585,7 +4585,7 @@ other status must be listed on the operation. The Schemathesis contract tests ap
 <td><code>/login</code> · <code>/signup</code> · <code>/profile</code></td>
 <td>Login / Sign up / Profile</td>
 <td>public / staff</td>
-<td>As S-16 / S-19; non-staff → "staff only" message. <strong>SIA sign-up</strong> (owner, 2026-11-16): as S-13 but only @cimh.edu.bb addresses; after the email code an administrator gives the account staff access. Sign-in pages: graphite form side (whatever theme is stored) with the SIA mark + "SIA · Staff app" beside the picture. Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
+<td>As S-16 / S-19; non-staff → "staff only" message. <strong>SIA sign-up</strong> (owner, 2026-11-16): as S-13 but only @cimh.edu.bb addresses; after the email code an administrator gives the account staff access. Sign-in pages: graphite form side (whatever theme is stored) with the SIA mark alone (96 px, centred, links home) at the top; the white CIMH crest sits on the picture, bottom right. Profile: Graphite Console panels (Personal details, Sign-in, Appearance, Your data)</td>
 <td>—</td>
 </tr>
 </tbody>

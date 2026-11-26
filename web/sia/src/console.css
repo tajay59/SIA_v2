@@ -13,6 +13,69 @@
 :root {
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
+/*
+ * The page frame (owner, 2026-11-26): every page's content is at most 1500 px wide and centred, with the
+ * dashboard's 24 px gutters (16 px on phones), whatever the page's own rules say. It applies to each route's root
+ * (and the shell's page title; not the toasts layer or the outage banner) inside the staff shell, not to the sign-in pages (`bare`). The dashboard keeps
+ * its full-width photo band and frames what sits under it itself (pages/index.vue). `#main` outranks the pages'
+ * scoped class rules; the gutters are added to the max width, so the content stays 1500 px.
+ */
+:root {
+  --page-max: 1500px;
+  --page-gutter: var(--sp-6);
+}
+@media (max-width: 599.98px) {
+  :root {
+    --page-gutter: var(--sp-4);
+  }
+}
+#main.framed > :not(.dash, .toasts, .v-alert) {
+  box-sizing: border-box; /* pages that fit the window set height: 100dvh with their padding inside it */
+  width: 100%;
+  max-width: calc(var(--page-max) + 2 * var(--page-gutter));
+  margin-inline: auto;
+  padding-inline: var(--page-gutter);
+}
+/*
+ * Vertical rhythm, as /pick (owner, 2026-11-26): the page title 24 px below the top, its content 24 px below the
+ * title. The shell title and the page under it each start 24 px down; pages that draw their own title start 24 px
+ * down too and keep 24 px under their title block (each page sets that against its own gap).
+ */
+#main.framed > :not(.dash, .toasts, .v-alert) {
+  padding-top: var(--sp-6);
+}
+/*
+ * No page scrollbar (owner, 2026-11-26): the staff shell is exactly the window's height (v-main is border-box,
+ * so the app bar and announcement rows in its top padding are inside it). The shell title stays; the page under
+ * it takes the rest. Pages with tables fit the window and scroll only their lists; a page that is still too long
+ * (a form, a record, a phone layout) scrolls inside itself under the title, never the window. The dashboard
+ * keeps its own layout.
+ */
+#main.framed {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
+#main.framed > .page-title {
+  flex: none;
+}
+#main.framed > :not(.dash, .toasts, .v-alert, .page-title) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Absolute descendants without a positioned ancestor (screen-reader-only table heads, …) would otherwise be
+     placed against the document and stretch the window (found on /reports/history: 181 px). */
+  position: relative;
+}
+
+/* Every scrollbar in SIA, the page's included (owner, 2026-11-26): the /products list's thin bar, a seam-coloured
+   thumb on a transparent track. `scrollbar-width` does not inherit, hence `*`; places that hide a bar
+   (`scrollbar-width: none`) are more specific and keep doing so. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--v-theme-seam)) transparent;
+}
 
 /* ---- Panels: queue + detail side by side; one column below 1280 px; phones hide the detail. */
 .console-panels {
@@ -73,8 +136,7 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: rgb(var(--v-theme-seam)) transparent;
+    position: relative; /* absolute children (sr-only heads) scroll with the list, not the page */
   }
 }
 @media (max-width: 1279.98px) {

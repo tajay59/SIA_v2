@@ -251,3 +251,30 @@ def test_integers_beyond_mongodb_range_are_422_or_400_not_500(ctx: Ctx) -> None:
     p = ctx.create()
     r = ctx.client.patch(ctx.url(f"/products/{p['id']}"), headers={**STAFF, "If-Match": str(2**63)}, json={"name": "Y"})
     assert r.status_code == 400
+
+
+def test_keywords_null_is_refused(ctx: Ctx) -> None:
+    """Contract: keywords is an array, never null (Schemathesis found POST /products accepting it, 2026-11-26)."""
+    r = ctx.client.post(
+        ctx.url("/products"),
+        headers=STAFF,
+        json={
+            "name": "Rain gauge",
+            "type": "MET",
+            "department": "Meteorology",
+            "sellable": True,
+            "probono": False,
+            "threshold": 2,
+            "keywords": None,
+        },
+    )
+    assert r.status_code == 422, r.text
+    p = ctx.create()
+    r = ctx.client.patch(
+        ctx.url(f"/products/{p['id']}"), headers={**STAFF, "If-Match": str(p["version"])}, json={"keywords": None}
+    )
+    assert r.status_code == 422, r.text
+    r = ctx.client.patch(
+        ctx.url(f"/products/{p['id']}"), headers={**STAFF, "If-Match": str(p["version"])}, json={"keywords": []}
+    )
+    assert r.status_code == 200, r.text

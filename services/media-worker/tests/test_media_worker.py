@@ -180,3 +180,37 @@ def test_photo_bytes_round_trip() -> None:
     buf = BytesIO()
     Image.new("RGB", (4, 4)).save(buf, "WEBP")
     assert buf.getvalue()[8:12] == b"WEBP"
+
+
+def test_announcement_jobs_write_to_their_own_folder(tmp_path: Path) -> None:
+    (tmp_path / "incoming").mkdir()
+    photo(tmp_path / "incoming" / "abcdef123456.jpg", (1200, 600))
+    producer = FakeProducer()
+    worker = MediaWorker(Settings(media_root=tmp_path), producer)
+    payload = {
+        "jobId": "JOBANN1",
+        "target": "announcement",
+        "sourcePath": "incoming/abcdef123456.jpg",
+        "removeBackground": False,
+    }
+    evt = new_event("image.process", payload, correlation_id="corr-1", actor_id="USRADMIN")
+    schema("image.process").validate(json.loads(evt.model_dump_json()))
+    asyncio.run(worker.handle(evt))
+    fid = file_id_for("JOBANN1")
+    assert (tmp_path / "public" / "announcements" / f"{fid}.webp").exists()
+    assert not (tmp_path / "public" / "products").exists()
+    _, msg, key = producer.sent[0]
+    schema("image.processed").validate(msg)
+    assert msg["payload"] == {
+        "jobId": "JOBANN1",
+        "target": "announcement",
+        "ok": True,
+        "fileId": fid,
+        "url": f"/media/announcements/{fid}.webp",
+        "w": 1200,
+        "h": 600,
+    }
+    assert key == b"JOBANN1"
+    bad = new_event("image.process", {**payload, "target": "elsewhere"}, correlation_id="c")
+    with pytest.raises(ValueError, match="unknown target"):
+        asyncio.run(worker.handle(bad))

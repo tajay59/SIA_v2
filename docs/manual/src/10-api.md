@@ -85,7 +85,7 @@ Status diagrams: [Chapter 5](05-workflows.md#53-paid-request-quote-to-delivery).
 
 The full catalogue with roles, and the **legacy → v2 endpoint mapping**, is in the [API Specification](../api/README.md#5-endpoint-catalogue).
 
-**Announcements** (2026-11-23): `GET /api/catalog/v1/announcements?app=shop|sia` (live list), admin CRUD on `/admin/announcements` (If-Match on edit/end), and the WebSocket `/api/catalog/v1/announcements/stream` (catalog-push; `snapshot`, `upsert`, `remove`, `ping`; contract `docs/api/push.asyncapi.yaml`). Errors: `LINK_NOT_ALLOWED`, `TTL_OUT_OF_RANGE`, `STARTS_AFTER_EXPIRY`, `PRODUCT_NOT_FOUND`, `PRODUCT_NOT_ON_SHOP`.
+**Announcements** (2026-11-23): `GET /api/catalog/v1/announcements?app=shop|sia` (live list), admin CRUD on `/admin/announcements` (If-Match on edit/end), and the WebSocket `/api/catalog/v1/announcements/stream` (catalog-push; `snapshot`, `upsert`, `remove`, `ping`; contract `docs/api/push.asyncapi.yaml`). Banner images (2026-11-26): `POST /admin/announcements/images` → poll `GET /admin/announcements/images/{fileId}` until READY → `picture` / `background: { fileId }`. Errors: `LINK_NOT_ALLOWED`, `TTL_OUT_OF_RANGE`, `STARTS_AFTER_EXPIRY`, `PRODUCT_NOT_FOUND`, `PRODUCT_NOT_ON_SHOP`, `IMAGE_NOT_FOUND`, `IMAGE_NOT_READY`, `IMAGE_NOT_USABLE`.
 
 ## 10.6 Error codes clients should handle
 

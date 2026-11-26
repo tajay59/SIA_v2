@@ -47,7 +47,7 @@
         "payload": {
           "type": "object",
           "required": [
-            "productId",
+            "jobId",
             "ok"
           ],
           "properties": {
@@ -55,8 +55,18 @@
               "type": "string",
               "description": "From image.process"
             },
+            "target": {
+              "type": "string",
+              "enum": [
+                "product",
+                "announcement"
+              ],
+              "default": "product",
+              "description": "From image.process"
+            },
             "productId": {
-              "type": "string"
+              "type": "string",
+              "description": "Present when target is product"
             },
             "ok": {
               "type": "boolean"

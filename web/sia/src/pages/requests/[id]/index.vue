@@ -50,9 +50,6 @@ function toDesk(e: MouseEvent) {
 
 <style scoped>
 .req-page {
-  width: 100%;
-  max-width: 1500px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   display: flex;
   flex-direction: column;

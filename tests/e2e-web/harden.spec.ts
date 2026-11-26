@@ -82,17 +82,23 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
 
     // Saving turns an empty list (= any department) into a closed one: keep the
     // department the other specs' products use, or every later spec gets a 422.
-    const departments = page.getByRole('combobox', { name: 'Departments' })
-    const ledger = page.getByRole('region', { name: 'Departments' })
+    // One field finds and adds; Enter adds a name that is not on the list yet.
+    const departments = page.getByLabel('Find or add a department')
+    const ledger = page.getByRole('list', { name: 'Departments on the list' })
     // support.ts apiProduct uses Hydrology, orderableProduct Meteorology.
     for (const name of ['Hydrology', 'Meteorology']) {
-      if (await ledger.locator('.v-chip', { hasText: new RegExp(`^${name}$`) }).count()) continue
       await departments.fill(name)
+      if (await ledger.locator('.dept-name', { hasText: new RegExp(`^${name}$`) }).count()) continue
       await departments.press('Enter')
     }
+    // A name already on the list is refused in place, not added twice.
+    await departments.fill('hydrology')
+    await departments.press('Enter')
+    await expect(page.getByText('Hydrology is already on the list')).toBeVisible()
     const dept = `E2E dept ${run}`
-    await page.getByRole('combobox', { name: 'Departments' }).fill(dept)
-    await page.getByRole('combobox', { name: 'Departments' }).press('Enter')
+    await departments.fill(dept)
+    await departments.press('Enter')
+    await expect(ledger.getByText(dept)).toBeVisible()
     await expect(page.getByText('Unsaved changes', { exact: true })).toBeVisible()
 
     // Leaving asks; Stay keeps the page and the edit.
@@ -113,8 +119,8 @@ test.describe('harden: submits explain themselves, irreversible actions ask firs
 
     // Unsaved again, and this time leave: the edit is dropped.
     await page.goto(`${SIA}/admin/settings?tab=reference`)
-    await page.getByRole('combobox', { name: 'Departments' }).fill(`${dept} b`)
-    await page.getByRole('combobox', { name: 'Departments' }).press('Enter')
+    await page.getByLabel('Find or add a department').fill(`${dept} b`)
+    await page.getByLabel('Find or add a department').press('Enter')
     await siaGo(page, 'Inventory')
     await dialog.getByRole('button', { name: 'Leave without saving' }).click()
     await expect(page).toHaveURL(/\/products/)

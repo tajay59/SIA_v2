@@ -26,7 +26,7 @@ function retry() {
     density="compact"
   >
     <div class="row">
-      <span>The service is unavailable right now. Nothing was saved.</span>
+      <span>The service is unavailable right now. {{ unavailable.detail ?? 'Nothing was saved.' }}</span>
       <span class="spacer" />
       <v-btn variant="outlined" size="small" @click="retry">Try again</v-btn>
       <v-btn variant="text" size="small" :icon="mdiClose" aria-label="Dismiss" @click="unavailable = null" />

@@ -52,9 +52,11 @@ async function verify() {
       error.value =
         e.code === 'CODE_EXPIRED'
           ? 'This code has expired. Send a new one.'
-          : e.code === 'CODE_INVALID'
-            ? (e.detail ?? 'That code is not right. Check the email and try again.')
-            : e.message
+          : e.code === 'CODE_ATTEMPTS_EXCEEDED'
+            ? 'Too many wrong codes. Send a new one.'
+            : e.code === 'CODE_INVALID'
+              ? (e.detail ?? 'That code is not right. Check the email and try again.')
+              : e.message
       code.value = ''
     } else notify.report(e)
   } finally {

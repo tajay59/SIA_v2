@@ -8,11 +8,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import secrets
 import time
+from pathlib import Path
 from typing import Annotated, Any, Literal
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -21,7 +23,7 @@ from cimh_common.authz import optional_principal, require_admin
 from cimh_common.errors import ProblemError, forbidden, unauthorized
 
 from .announcements import AnnouncementService, Client, PushHub
-from .api import IfMatch, cid, if_match, with_etag
+from .api import IfMatch, cid, if_match, image_ext, with_etag
 
 PING_SECONDS = 25
 MAX_FRAME = 1024
@@ -50,6 +52,15 @@ class LinkIn(Strict):
         return self
 
 
+class ImageIn(Strict):
+    """An uploaded image (POST /admin/announcements/images) once it is READY."""
+
+    fileId: str = Field(min_length=4, max_length=64, pattern=r"^IMG[A-Za-z0-9]+$")
+
+
+Effect = Literal["sweep", "glint", "ring", "drift", "zoom", "nudge"]
+
+
 class TtlIn(Strict):
     preset: Literal["1h", "1d", "7d", "30d"] | None = None
     until: When | None = None
@@ -66,6 +77,11 @@ class AnnouncementPatch(Strict):
     tone: Literal["INFO", "ALERT"] | None = None
     audience: Literal["SHOP", "SIA", "BOTH"] | None = None
     link: LinkIn | None = None
+    picture: ImageIn | None = None
+    background: ImageIn | None = None
+    height: int | None = Field(default=None, ge=48, le=300)  # px on wide screens; null = fit the content
+    look: Literal["SOFT", "GRADIENT", "STRONG"] | None = None
+    effects: list[Effect] | None = Field(default=None, max_length=6)
     dismissible: bool | None = None
     startsAt: When | None = None
     ttl: TtlIn | None = None
@@ -127,6 +143,40 @@ async def create(body: AnnouncementInput, request: Request, me: Principal = Depe
     return with_etag(await ann(request).create(me, _dump(body), cid(request)), 201)
 
 
+@admin.post("/admin/announcements/images", status_code=202, tags=["announcements"])
+async def upload_image(
+    request: Request, file: Annotated[UploadFile, File()], me: Principal = Depends(require_admin)
+) -> dict[str, Any]:
+    """One picture or background. Checked by its bytes here, decoded only by media-worker; poll its status."""
+    s = request.app.state.settings
+    data = await file.read(s.max_image_bytes + 1)
+    if len(data) > s.max_image_bytes:
+        raise ProblemError(413, "FILE_TOO_LARGE", f"Larger than {s.max_image_bytes // 2**20} MB")
+    ext = image_ext(data[:16])
+    if ext is None:
+        raise ProblemError(422, "UNSUPPORTED_MEDIA_TYPE", "Only JPEG, PNG and WebP images are accepted")
+    media = Path(s.media_root)
+    incoming = media / "incoming"
+    incoming.mkdir(parents=True, exist_ok=True)
+    path = incoming / f"{secrets.token_hex(16)}{ext}"
+    path.write_bytes(data)
+    try:
+        out = await ann(request).queue_image(me, f"incoming/{path.name}", cid(request))
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    # Uploads nobody used (and images of announcements that ran out) go now, with their files.
+    for fid in await ann(request).drop_stale_images():
+        for f in (media / "public" / "announcements").glob(f"{fid}*.webp"):
+            f.unlink(missing_ok=True)
+    return out
+
+
+@admin.get("/admin/announcements/images/{fileId}", tags=["announcements"])
+async def image_status(fileId: str, request: Request, me: Principal = Depends(require_admin)) -> JSONResponse:
+    return JSONResponse(await ann(request).image_status(fileId), headers={"Cache-Control": "no-store"})
+
+
 @admin.get("/admin/announcements/{announcementId}", tags=["announcements"])
 async def get_one(announcementId: str, request: Request, me: Principal = Depends(require_admin)) -> JSONResponse:
     return with_etag(await ann(request).get(announcementId))
@@ -141,7 +191,7 @@ async def patch(
     me: Principal = Depends(require_admin),
 ) -> JSONResponse:
     fields = _dump(body, unset=True)
-    for required in ("message", "tone", "audience", "dismissible"):
+    for required in ("message", "tone", "audience", "dismissible", "look", "effects"):
         if required in fields and fields[required] is None:
             raise ProblemError(422, "VALIDATION_FAILED", errors=[{"field": required, "message": "cannot be empty"}])
     if not fields:

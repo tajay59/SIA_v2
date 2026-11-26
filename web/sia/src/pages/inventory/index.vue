@@ -136,10 +136,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  width: 100%;
-  max-width: 1440px;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
-  box-sizing: border-box;
 }
 .bar {
   display: grid;

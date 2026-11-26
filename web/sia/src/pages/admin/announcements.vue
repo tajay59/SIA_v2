@@ -252,8 +252,6 @@ async function closeRecord() {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  max-width: 1600px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }
@@ -271,6 +269,7 @@ async function closeRecord() {
   align-items: baseline;
   gap: var(--sp-3);
   flex-wrap: wrap;
+  margin-bottom: var(--sp-3); /* + the 12 px gap = 24 px under the title */
 }
 .counts {
   font-size: 12px;

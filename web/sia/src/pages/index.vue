@@ -181,10 +181,10 @@ watch(updatedAt, (_now, before) => {
 /* Everything under the banner: at most 1500 px wide, centred (owner, 2026-11-11). */
 .dash > :not(.banner) {
   width: 100%;
-  max-width: 1500px;
+  max-width: var(--page-max);
   margin-inline: auto;
 }
-/* Photo header line (owner keeps the radar photo): one 96 px band, greeting + date on the left,
+/* Photo header line (owner keeps the radar photo): one 150 px band, greeting + date on the left,
    updated time on the right; a left-to-right scrim keeps white text readable. Phones drop the photo. */
 .banner {
   position: relative;
@@ -192,7 +192,7 @@ watch(updatedAt, (_now, before) => {
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-4);
-  height: 96px;
+  height: 150px;
   margin: calc(-1 * var(--sp-6)) calc(-1 * var(--sp-6)) 0;
   padding: 0 var(--sp-6);
   overflow: hidden;

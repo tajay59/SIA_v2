@@ -7,6 +7,7 @@ at build time. Until `shop.webp` / `sia.webp` exist, the legacy enclosure photo 
 |---|---|---|
 | `shop.webp` | SHOP still (daylight) | 1536 × 2048 (3:4 portrait), WebP, < 400 KB |
 | `sia.webp` | SIA still (night) | 1536 × 2048 (3:4 portrait), WebP, < 400 KB |
+| `shop-800.webp`, `sia-800.webp`, … (optional) | Smaller copies of a still (`<app>-<width>.webp`), used for phones' 200 px band via `srcset` | e.g. 800 and 1024 wide |
 | `shop.mp4` (optional) | SHOP silent loop, first frame = the still | 1080 × 1440 (3:4), 6–10 s, H.264, no audio, < 4 MB |
 | `sia.mp4` (optional) | SIA silent loop | same |
 

@@ -1074,9 +1074,6 @@ async function send() {
 
 <style scoped>
 .qb {
-  width: 100%;
-  max-width: 1600px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   display: flex;
   flex-direction: column;
@@ -1144,7 +1141,6 @@ async function send() {
   display: flex;
   overflow-x: auto;
   scroll-padding-inline: 0 176px;
-  scrollbar-width: thin;
   border-bottom: 1px solid rgb(var(--v-theme-seam));
 }
 .tablist {

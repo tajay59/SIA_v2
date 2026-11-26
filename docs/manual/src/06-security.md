@@ -111,7 +111,7 @@ Status: ✅ designed (in TAD/TRD/API) · 🛠 build task · ⚠ residual risk ac
 | T-04 | S | Admin account takeover | H | **TOTP MFA required for admin** (TRD TR-AUTH-9, Must); admin sessions 8 h max; audit of every admin action; alert on admin login from a new IP | ✅ |
 | T-05 | S/E | Malicious registrant claims a member organisation | M | **Admin approval** with organisation link; domain match hint; `@cimh.edu.bb` auto-approve only after email verification and **no request rights** | ✅ |
 | T-06 | E | JWT forgery / algorithm confusion | H | EdDSA only; library pinned to `alg=EdDSA`; key from JWKS by `kid`; `exp`, `nbf`, `iss`, `aud` checked | ✅ |
-| T-07 | S | Verification / reset code guessing | M | 6 digits, hashed, 15 min, 5 attempts, 3 resends/hour, rate-limited endpoint | ✅ |
+| T-07 | S | Verification / reset code guessing | M | 6 digits, hashed, 15 min, 5 attempts (then `CODE_ATTEMPTS_EXCEEDED`), 3 resends/hour, rate-limited endpoint; a reset checks the new password before the code, so a refused password never uses the code up (2026-11-26) | ✅ |
 | T-08 | R | User denies having accepted a quote | M | Acceptance records user, time, IP **and the signed agreement file** (SHA-256), stamped with the quote version it was signed for; `auditlog` (insert-only) | ✅ |
 | T-09 | E | Suspended user keeps working with a live token | M | Suspension writes revoke-all marker in Redis, checked on every request | ✅ |
 | T-10 | I | Session theft via XSS | H | No `v-html` with user data (lint rule); strict CSP (`script-src 'self'`, no inline, no eval; named explicitly since 2026-11-25, and Zod runs `jitless` so it never probes `new Function`, which Chrome reported as a violation on every page); HttpOnly cookies; DOMPurify for any rich text | 🛠 |
