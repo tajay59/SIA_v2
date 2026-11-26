@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /** A-15 Day ledger: filter strip (unit, scanned by, date presets, operation chips); movements grouped by Barbados day, newest first. */
 import { DateField, OPERATION_LABELS, ShortRef } from '@cimh/web-app'
-import { mdiArrowRight } from '@mdi/js'
+import { mdiArrowRight, mdiCheck } from '@mdi/js'
 import { markRaw, onMounted } from 'vue'
 import QrScan from '../../icons/QrScan.vue'
 import PersonPicker from '../PersonPicker.vue'
@@ -29,10 +29,27 @@ onMounted(reload)
         <DateField v-model="f.to" label="To" clearable hide-details />
       </div>
       <div class="ops" role="radiogroup" aria-label="Operation">
-        <button type="button" role="radio" class="op-chip" :aria-checked="f.operation === null" @click="f.operation = null">All</button>
-        <button v-for="op in OPERATIONS" :key="op" type="button" role="radio" class="op-chip" :aria-checked="f.operation === op" @click="f.operation = f.operation === op ? null : op">
-          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path :d="OP_ICONS[op]" fill="currentColor" /></svg>{{ OPERATION_LABELS[op] }}
-        </button>
+        <!-- Tonal buttons (owner 2026-11-25), as the /products type filters: the chosen one tonal primary with a check. -->
+        <v-btn
+          class="op-chip"
+          variant="tonal"
+          role="radio"
+          :color="f.operation === null ? 'primary' : undefined"
+          :prepend-icon="f.operation === null ? mdiCheck : undefined"
+          :aria-checked="f.operation === null ? 'true' : 'false'"
+          @click="f.operation = null"
+        >All</v-btn>
+        <v-btn
+          v-for="op in OPERATIONS"
+          :key="op"
+          class="op-chip"
+          variant="tonal"
+          role="radio"
+          :color="f.operation === op ? 'primary' : undefined"
+          :prepend-icon="f.operation === op ? mdiCheck : OP_ICONS[op]"
+          :aria-checked="f.operation === op ? 'true' : 'false'"
+          @click="f.operation = f.operation === op ? null : op"
+        >{{ OPERATION_LABELS[op] }}</v-btn>
         <button v-if="active.length" type="button" class="console-retry clear" @click="clearAll">Clear filters</button>
       </div>
     </form>
@@ -115,31 +132,19 @@ onMounted(reload)
   align-items: center;
 }
 .op-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px 0 10px;
-  border: 1px solid rgb(var(--v-theme-seam));
-  border-radius: 8px;
-  font: 500 13px/18px inherit;
-  color: rgb(var(--v-theme-on-surface));
-  background: transparent;
-  cursor: pointer;
-  transition: background-color 120ms ease;
+  flex: none; /* phones scroll the row sideways; buttons keep their width */
+  height: 36px;
+  font-size: 14px;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
 }
-.op-chip:hover {
-  background: rgb(var(--v-theme-surface-bright));
+.op-chip:active {
+  transform: scale(0.97);
 }
-.op-chip[aria-checked='true'] {
-  background: rgb(var(--v-theme-primary-subtle));
-  border-color: rgb(var(--v-theme-primary));
-}
-.op-chip svg {
+/* The operation's icon is quiet on an unchosen button; the chosen one shows a check in the button's colour. */
+.op-chip:not([aria-checked='true']) :deep(.v-btn__prepend) {
   color: rgb(var(--v-theme-secondary));
-}
-.op-chip[aria-checked='true'] svg {
-  color: rgb(var(--v-theme-primary));
 }
 .clear {
   margin-left: var(--sp-2);
