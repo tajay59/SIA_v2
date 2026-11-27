@@ -67,6 +67,10 @@
   /* Absolute descendants without a positioned ancestor (screen-reader-only table heads, …) would otherwise be
      placed against the document and stretch the window (found on /reports/history: 181 px). */
   position: relative;
+  /* The scrollbar's room is kept whether or not it shows, so the page never changes width when content grows
+     past the window; width-driven layouts (ShortRef, RequestTimeline) would otherwise flip back and forth
+     (WebKit reported a ResizeObserver loop on J-06). */
+  scrollbar-gutter: stable;
 }
 
 /* Every scrollbar in SIA, the page's included (owner, 2026-11-26): the /products list's thin bar, a seam-coloured

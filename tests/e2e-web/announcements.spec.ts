@@ -127,6 +127,8 @@ test.describe('announcements: live banner on every page', () => {
     for (const fx of ['fx-sweep', 'fx-glint', 'fx-ring', 'fx-zoom', 'fx-nudge']) await expect(live).toHaveClass(new RegExp(fx))
     await expect(live).not.toHaveClass(/fx-drift/)
     const sweepState = () => live.locator('.ann-sweep').evaluate((el) => getComputedStyle(el, '::before').animationPlayState)
+    // The pointer starts at (0, 0), which is on the banner (top of the page): hovering pauses it. Move it off first.
+    await shop.mouse.move(0, shop.viewportSize()!.height - 1)
     expect(await sweepState()).toBe('running')
     await live.locator('.ann-text').hover()
     expect(await sweepState()).toBe('paused')

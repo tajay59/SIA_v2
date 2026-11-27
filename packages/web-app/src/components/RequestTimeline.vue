@@ -20,7 +20,14 @@ let ro: ResizeObserver | null = null
 onMounted(() => {
   if (!root.value) return
   width.value = root.value.clientWidth
-  ro = new ResizeObserver(([e]) => (width.value = e?.contentRect.width ?? width.value))
+  // Applied on the next frame: flipping horizontal/vertical inside the callback resizes what it watches in the same
+  // frame (a "ResizeObserver loop" error).
+  let frame = 0
+  ro = new ResizeObserver(([e]) => {
+    const w = e?.contentRect.width ?? width.value
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => (width.value = w))
+  })
   ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())

@@ -25,7 +25,11 @@ export function useFitToWindow(
   }
   onMounted(() => {
     fit()
-    ro = new ResizeObserver(() => fit())
+    let frame = 0
+    ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fit) // next frame: no layout change inside the observer's own callback
+    })
     for (const a of above) if (a.value) ro.observe(a.value)
     window.addEventListener('resize', fit, { passive: true })
   })
