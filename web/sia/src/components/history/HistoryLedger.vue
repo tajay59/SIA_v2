@@ -2,7 +2,8 @@
 /** A-15 Day ledger: filter strip (unit, scanned by, date presets, operation chips); movements grouped by Barbados day, newest first. */
 import { DateField, OPERATION_LABELS, ShortRef } from '@cimh/web-app'
 import { mdiArrowRight, mdiCheck } from '@mdi/js'
-import { markRaw, onMounted } from 'vue'
+import { markRaw, onMounted, ref } from 'vue'
+import { useFitToWindow } from '../../fit-scroller'
 import QrScan from '../../icons/QrScan.vue'
 import PersonPicker from '../PersonPicker.vue'
 import { OP_ICONS, OPERATIONS, personPart, place, PRESETS, requestLink, shortUnit, timeOf, unitLink, useMovementHistory } from '../../history'
@@ -10,12 +11,17 @@ import { OP_ICONS, OPERATIONS, personPart, place, PRESETS, requestLink, shortUni
 const scanIcon = markRaw(QrScan)
 
 const { f, list, reload, active, clearAll, days, name } = useMovementHistory()
+
+// Only the log scrolls (owner, 2026-11-26): it fills the window under the filters (fit-scroller.ts).
+const strip = ref<HTMLElement | null>(null)
+const log = ref<HTMLElement | null>(null)
+const logFit = useFitToWindow(log, [strip])
 onMounted(reload)
 </script>
 
 <template>
   <div class="ledger">
-    <form class="strip" @submit.prevent="reload">
+    <form ref="strip" class="strip" @submit.prevent="reload">
       <div class="fields">
         <v-text-field v-model="f.unit" label="Unit code" :prepend-inner-icon="scanIcon" class="mono-in" hide-details clearable @click:clear="(f.unit = ''), reload()" />
         <PersonPicker v-model="f.person" label="Scanned by" clearable hide-details />
@@ -54,7 +60,7 @@ onMounted(reload)
       </div>
     </form>
 
-    <section class="log" aria-label="Movements">
+    <section ref="log" class="log" aria-label="Movements" tabindex="0" :style="logFit.style()">
       <div v-if="!list.loaded.value" class="pad" aria-busy="true"><div v-for="n in 6" :key="n" class="console-skel sk" /></div>
       <div v-else-if="!list.items.value.length" class="pad empty">
         <p class="t-body">No movements match.</p>
@@ -154,6 +160,14 @@ onMounted(reload)
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
+  /* The one scroller on the page (height set in the script). */
+  overflow-y: auto;
+  position: relative; /* contains absolute children (sr-only heads), so they scroll with it */
+  overscroll-behavior: contain;
+}
+.log:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
 .day-head {
   position: sticky;

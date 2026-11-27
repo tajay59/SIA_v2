@@ -19,7 +19,8 @@ import {
 
 const BLOCKING = new Set(['serious', 'critical'])
 
-async function audit(page: Page, url: string, found: string[]) {
+/** `prepare` brings the page to a state that only appears while typing (e.g. the password strength meter). */
+async function audit(page: Page, url: string, found: string[], prepare?: (page: Page) => Promise<void>) {
   for (const theme of ['cimhLight', 'cimhDark'] as const) {
     // The apps read the remembered theme at start-up (theme-mode.ts): store it, then load the page.
     await page.addInitScript((t) => {
@@ -31,6 +32,7 @@ async function audit(page: Page, url: string, found: string[]) {
     }, theme)
     await page.goto(url)
     await page.waitForLoadState('networkidle')
+    if (prepare) await prepare(page)
     // Entrance motion (e.g. catalogue cards rising in) must finish first: axe reads a half-faded card as low contrast.
     await page.waitForFunction(() =>
       document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
@@ -41,8 +43,26 @@ async function audit(page: Page, url: string, found: string[]) {
     for (const v of result.violations.filter((x) => BLOCKING.has(x.impact ?? ''))) {
       const where = v.nodes.slice(0, 3).map((n) => n.target.join(' ')).join(' | ')
       const label = theme === 'cimhDark' ? 'dark' : 'light'
-      found.push(`${new URL(url).pathname} [${label}] ${v.impact} ${v.id}: ${v.help} — ${where}`)
+      const state = prepare ? ` (${prepare.name || 'prepared'})` : ''
+      found.push(`${new URL(url).pathname}${state} [${label}] ${v.impact} ${v.id}: ${v.help} — ${where}`)
     }
+  }
+}
+
+/** Sign-up at its last step with a password typed, so the strength meter is on the page (S-13; SIA sign-up). */
+function signupPasswordStep(email: string) {
+  return async function passwordTyped(page: Page) {
+    await page.getByLabel('First name').fill('Axe')
+    await page.getByLabel('Last name').fill('Check')
+    await page.locator('input[name=email]').fill(email)
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.getByRole('group', { name: /^(Organisation|Details)$/ }).waitFor()
+    // By role and name: each step's group shares its name with its first field.
+    const org = page.getByRole('textbox', { name: 'Organisation' })
+    if (await org.isVisible()) await org.fill('Axe Met Service')
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await page.locator('input[name=password]').fill('weakpass')
+    await expect(page.getByText(/^Strength:/)).toBeVisible()
   }
 }
 
@@ -57,6 +77,7 @@ test.describe('accessibility (axe)', () => {
       '/verify?email=a%40example.org', '/forgot-password', '/reset-password?email=a%40example.org', '/pending-approval', '/no-such-page']) {
       await audit(page, `${SHOP}${path}`, found)
     }
+    await audit(page, `${SHOP}/signup`, found, signupPasswordStep(`axe.${run}@example.org`))
     expect(found, found.join('\n')).toEqual([])
   })
 
@@ -82,6 +103,7 @@ test.describe('accessibility (axe)', () => {
     await page.goto(`${SIA}/login`)
     const found: string[] = []
     await audit(page, `${SIA}/signup`, found)
+    await audit(page, `${SIA}/signup`, found, signupPasswordStep(`axe.${run}@cimh.edu.bb`))
     await page.goto(`${SIA}/login`)
     await audit(page, `${SIA}/login`, found)
     await page.getByLabel('Email').fill(staff)

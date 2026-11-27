@@ -3,7 +3,9 @@
     python -m media_worker.worker
 
 Layout (BSD §2): originals wait in `<MEDIA_ROOT>/incoming/`; results go to
-`<MEDIA_ROOT>/public/products/<productId>/<fileId>[@800|@320].webp`, served by nginx at `/media/products/…`.
+`<MEDIA_ROOT>/public/products/<productId>/<fileId>[@800|@320].webp`, served by nginx at `/media/products/…`;
+announcement pictures and backgrounds (`target: announcement`, 2026-11-26) go to
+`<MEDIA_ROOT>/public/announcements/<fileId>[@800|@320].webp`, served at `/media/announcements/…`.
 The file id is derived from the job id, so a redelivered job writes the same files and reports the same
 result (catalog-svc attaches each fileId once). The original is deleted after the result is published.
 """
@@ -40,12 +42,14 @@ class Producer(Protocol):
 class Settings:
     media_root: Path
     url_prefix: str = "/media/products/"
+    announcement_url_prefix: str = "/media/announcements/"
 
     @classmethod
     def from_env(cls) -> Settings:
         return cls(
             media_root=Path(os.environ.get("MEDIA_ROOT", "/srv/sia-data")),
             url_prefix=os.environ.get("MEDIA_URL_PREFIX", "/media/products/"),
+            announcement_url_prefix=os.environ.get("ANNOUNCEMENT_MEDIA_URL_PREFIX", "/media/announcements/"),
         )
 
 
@@ -65,29 +69,40 @@ class MediaWorker:
         )
         # .envelope(): the published message is the plain envelope (no outbox bookkeeping fields such as
         # `attempts`), exactly what consumers validate with EventEnvelope (extra fields are refused).
-        await self.producer.send_and_wait(
-            RESULTS_TOPIC, result.envelope().model_dump_json().encode(), key=str(payload["productId"]).encode()
-        )
+        key = payload.get("productId") or payload["jobId"]
+        body = result.envelope().model_dump_json().encode()
+        await self.producer.send_and_wait(RESULTS_TOPIC, body, key=str(key).encode())
 
     async def handle(self, event: EventEnvelope) -> None:
         if event.type != "image.process":
             return
         p = event.payload
         job_id, product_id, source = p.get("jobId"), p.get("productId"), p.get("sourcePath")
-        if not (isinstance(job_id, str) and SAFE_ID.match(job_id)) or not (
-            isinstance(product_id, str) and SAFE_ID.match(product_id)
+        target = p.get("target", "product")
+        if target not in ("product", "announcement"):
+            raise ValueError(f"image.process {event.eventId}: unknown target")  # -> DLQ
+        if not (isinstance(job_id, str) and SAFE_ID.match(job_id)) or (
+            target == "product" and not (isinstance(product_id, str) and SAFE_ID.match(product_id))
         ):
             raise ValueError(f"image.process {event.eventId}: bad jobId/productId")  # -> DLQ
-        base = {"jobId": job_id, "productId": product_id}
+        base: dict[str, Any] = (
+            {"jobId": job_id, "productId": product_id}
+            if target == "product"
+            else {"jobId": job_id, "target": "announcement"}
+        )
         if not (isinstance(source, str) and SAFE_SOURCE.match(source)):
             # Never follow a path that isn't a plain file name in incoming/ (no traversal, no other folders).
             await self._publish(event, {**base, "ok": False, "error": "invalid source path"})
             return
         src = self.s.media_root / source
         file_id = file_id_for(job_id)
-        out_dir = self.s.media_root / "public" / "products" / product_id
+        if target == "product":
+            out_dir = self.s.media_root / "public" / "products" / str(product_id)
+            url = f"{self.s.url_prefix}{product_id}/{file_id}.webp"
+        else:
+            out_dir = self.s.media_root / "public" / "announcements"
+            url = f"{self.s.announcement_url_prefix}{file_id}.webp"
         main = out_dir / f"{file_id}.webp"
-        url = f"{self.s.url_prefix}{product_id}/{file_id}.webp"
 
         if not src.exists():
             if main.exists():  # redelivery after success: report the same result again

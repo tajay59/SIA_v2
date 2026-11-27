@@ -9,7 +9,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from cimh_common.auth import Principal
 from cimh_common.authz import optional_principal, require_admin, require_services, require_staff
@@ -48,6 +48,13 @@ class ProductPatch(Strict):
     sn: str | None = Field(default=None, max_length=100)
     sn1: str | None = Field(default=None, max_length=100)
     keywords: list[Annotated[str, Field(max_length=50)]] | None = Field(default=None, max_length=50)
+
+    @model_validator(mode="after")
+    def keywords_not_null(self) -> ProductPatch:
+        # Optional, but a list when given (contract: array, never null). Found by Schemathesis 2026-11-26.
+        if "keywords" in self.model_fields_set and self.keywords is None:
+            raise ValueError("keywords must be a list (send [] for none)")
+        return self
 
 
 class ProductInput(ProductPatch):

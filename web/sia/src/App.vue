@@ -341,7 +341,7 @@ async function logout() {
       </v-navigation-drawer>
     </template>
 
-    <v-main id="main">
+    <v-main id="main" :class="{ framed: !bare }">
       <AppNotifier />
       <div v-if="!bare && !route.meta.ownHeading && route.meta.title" class="page-title">
         <h1 class="t-h1">{{ route.meta.title }}</h1>
@@ -551,8 +551,7 @@ async function logout() {
   color: rgb(var(--v-theme-secondary));
 }
 .page-title {
-  max-width: 1440px;
-  padding: var(--sp-6) var(--sp-6) 0;
+  padding-top: var(--sp-6); /* width and side gutters: the page frame (console.css) */
 }
 .skip-link {
   position: absolute;

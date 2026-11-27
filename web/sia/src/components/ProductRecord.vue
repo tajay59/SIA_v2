@@ -603,8 +603,6 @@ watch(product, (p) => p && emit('updated', p))
   container: record / inline-size;
   font-size: 14px;
   line-height: 1.5;
-  max-width: 1440px;
-  margin-inline: auto;
   padding: var(--f3) var(--sp-6) var(--sp-12);
 }
 .pp.embedded {

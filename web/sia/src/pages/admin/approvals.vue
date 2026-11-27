@@ -10,6 +10,7 @@ import { formatAge, formatDate } from '@cimh/web-ui'
 import { mdiAccountCheckOutline, mdiAlertOutline, mdiCheckCircleOutline, mdiHelpCircleOutline } from '@mdi/js'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import DecisionDialog from '../../components/DecisionDialog.vue'
+import { useFitToWindow } from '../../fit-scroller'
 import { pinLeaving } from '../../list-motion'
 
 definePage({ meta: { guard: 'admin', title: 'Pending accounts', ownHeading: true } })
@@ -18,6 +19,12 @@ const list = useCursorList<AccountSummary>((cursor) =>
   call(() => identity.GET('/admin/accounts', { params: { query: { status: 'PENDING_APPROVAL', cursor, limit: 50 } } })),
 )
 onMounted(list.reload)
+
+/* Only the list scrolls (owner, 2026-11-26): the panel head (count, bulk actions) stays in view and the rows
+   fill the window below it (fit-scroller.ts; gap = page padding 24 + the panel's bottom edge 1). */
+const head = ref<HTMLElement | null>(null)
+const body = ref<HTMLElement | null>(null)
+const bodyFit = useFitToWindow(body, [head], { gap: 25 })
 
 const selected = ref<string[]>([])
 const dialog = ref(false)
@@ -102,7 +109,7 @@ const summary = computed(() => {
     </div>
 
     <section class="console-panels queue" aria-label="Accounts waiting for approval">
-      <div class="console-head">
+      <div ref="head" class="console-head">
         <span v-if="list.items.value.length" class="ck all">
           <v-checkbox-btn :model-value="allOn" :indeterminate="someOn" density="compact" aria-label="Select all" @update:model-value="toggleAll" />
         </span>
@@ -114,6 +121,7 @@ const summary = computed(() => {
         </template>
       </div>
 
+      <div ref="body" class="qbody" tabindex="0" aria-label="Accounts" :style="bodyFit.style()">
       <div v-if="!list.loaded.value && list.loading.value" class="skel-rows">
         <div v-for="i in 5" :key="i" class="console-skel skel-row" />
       </div>
@@ -154,6 +162,7 @@ const summary = computed(() => {
       <div v-if="list.nextCursor.value" class="load-more">
         <v-btn class="m3" variant="outlined" :loading="list.loading.value" @click="list.loadMore">Load more</v-btn>
       </div>
+      </div>
     </section>
 
     <DecisionDialog v-model="dialog" :accounts="target" :decision="decision" @done="done" />
@@ -165,8 +174,6 @@ const summary = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  max-width: 1400px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }
@@ -174,6 +181,7 @@ const summary = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
+  margin-bottom: var(--sp-2); /* + the 16 px gap = 24 px under the title block */
 }
 .intro {
   margin: 0;
@@ -204,6 +212,16 @@ const summary = computed(() => {
 .spacer {
   flex: 1;
 }
+/* The one scroller on the page (height from useFitToWindow). */
+.qbody {
+  overflow-y: auto;
+  position: relative; /* contains absolute children (sr-only heads), so they scroll with it */
+  overscroll-behavior: contain;
+}
+.qbody:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: -2px;
+}
 .rows {
   list-style: none;
   position: relative;
@@ -228,6 +246,11 @@ const summary = computed(() => {
   box-shadow: inset 2px 0 rgb(var(--v-theme-primary));
 }
 .rv-h {
+  /* The column names stay at the scroller's top. */
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: rgb(var(--v-theme-surface));
   min-height: 36px;
   padding-block: 0;
   font-size: 12px;

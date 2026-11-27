@@ -2,8 +2,10 @@
  * Announcements (plan 2026-11-23, A-22): an admin posts a message that appears at once, without a reload, at the
  * top of every SHOP page (catalog-push WebSocket), stays after a reload (stored), links to the product it is
  * about, can be closed when it is information, never when it is an alert, and leaves every page on End now.
+ * Pictures and backgrounds (owner 2026-11-26) go through media-worker; the picture is the product link.
  * axe on the banner and on A-22.
  */
+import path from 'node:path'
 import { expect, type Page, test } from '@playwright/test'
 import { SHOP, SIA } from './playwright.config'
 import { adminWithMfa, auditDialog, auditPart, CATALOG, IDENTITY, mongo, nextTotpWindow, siaCompact, orderableProduct, PASSWORD, req, run, shot, staffAccount, totp } from './support'
@@ -20,6 +22,7 @@ async function siaAdmin(page: Page): Promise<{ email: string }> {
   return admin
 }
 
+const fixtures = path.join(__dirname, 'fixtures') + path.sep
 const banner = (page: Page) => page.getByRole('region', { name: 'Announcements' })
 const row = (page: Page, text: string) => banner(page).locator('li', { hasText: text })
 
@@ -55,9 +58,34 @@ test.describe('announcements: live banner on every page', () => {
     const choose = (group: string, option: string) => page.getByRole('radiogroup', { name: group }).locator('label', { hasText: option }).click()
     await choose('Shown on', 'SHOP')
     await choose('Link', 'A product')
-    const picker = page.getByRole('combobox', { name: 'Product it is about' })
-    await picker.fill(`banner radar ${run}`)
-    await page.getByRole('option', { name: new RegExp(`E2E banner radar ${run}`) }).click()
+    await page.getByRole('button', { name: 'Choose a product…' }).click()
+    const chooser = page.getByRole('dialog', { name: 'Choose a product' })
+    await expect(chooser.getByRole('textbox', { name: 'Search products' })).toBeFocused()
+    await chooser.getByRole('textbox', { name: 'Search products' }).fill(`banner radar ${run}`)
+    const match = chooser.getByRole('listitem').filter({ hasText: `E2E banner radar ${run}` })
+    await expect(match).toBeVisible()
+    await auditDialog(page, 'product chooser')
+    await shot(page, 'a22-product-chooser', { fullPage: false })
+    await match.click()
+    await expect(chooser).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Change…' })).toBeFocused()
+    // A picture (it becomes the product link) and a background, each prepared by media-worker before it can be used.
+    await page.locator('#picture input[type=file]').setInputFiles(`${fixtures}photo-a.jpg`)
+    await page.locator('#background input[type=file]').setInputFiles(`${fixtures}photo-b.png`)
+    await expect(page.locator('#picture').getByRole('button', { name: 'Replace…' })).toBeEnabled({ timeout: 60_000 })
+    await expect(page.locator('#background').getByRole('button', { name: 'Replace…' })).toBeEnabled({ timeout: 60_000 })
+    // A set height (owner 2026-11-26): 200 px on wide screens, scaled with the width on narrow ones.
+    await page.getByRole('radiogroup', { name: 'Height' }).locator('label', { hasText: 'Set height' }).click()
+    await page.getByRole('spinbutton', { name: 'Height' }).fill('200')
+    // Motion (owner 2026-11-26): a new announcement starts Gentle; Eye-catching switches on every effect that has
+    // something to act on (drift has no place over a background image).
+    const motion = page.getByRole('radiogroup', { name: 'Motion' })
+    await expect(motion.getByRole('radio', { name: 'Gentle' })).toBeChecked()
+    await motion.locator('label', { hasText: 'Eye-catching' }).click()
+    await expect(page.getByRole('button', { name: /^Light sweep/ })).toHaveAttribute('aria-pressed', 'true')
+    await expect(page.getByRole('button', { name: /^Colour drift/ })).toContainText('Not with a background image')
+    await page.locator('#background').scrollIntoViewIfNeeded()
+    await shot(page, 'a22-images', { fullPage: false })
     // The preview shows the row as SHOP will (four-up: SHOP light + dark reached, SIA dimmed).
     await expect(page.getByText(message).first()).toBeVisible()
     await expect(page.getByText('Not shown on SIA.')).toBeVisible()
@@ -82,6 +110,32 @@ test.describe('announcements: live banner on every page', () => {
     // SHOP, no reload: the banner arrives over the socket, with the product as its link.
     await expect(banner(shop).getByText(message)).toBeVisible({ timeout: 15_000 })
     await expect(row(shop, message).getByText('Information:')).toBeVisible()
+    // The background fills the row, the picture is the product link (no link text); the row stays ≤ 300 px.
+    await expect(row(shop, message).locator('img.ann-bg')).toBeVisible()
+    const pictureLink = row(shop, message).getByRole('link', { name: new RegExp(`E2E banner radar ${run}`) })
+    await expect(pictureLink.locator('img')).toBeVisible()
+    await expect(row(shop, message).locator('.ann-link')).toHaveCount(0)
+    const box = (await row(shop, message).boundingBox())!
+    const expected = Math.max(40, Math.round(200 * Math.min(1, Math.max(0.5, box.width / 1100))))
+    expect(Math.abs(box.height - (expected + 1))).toBeLessThanOrEqual(2) // + its 1 px edge
+    // The picture follows the height: as tall as the row's inside.
+    const pic = (await pictureLink.locator('img').boundingBox())!
+    expect(pic.height).toBeLessThan(expected)
+    expect(pic.height).toBeGreaterThan(expected * 0.7)
+    // The effects that apply loop on SHOP, pause under the pointer, and are off with reduced motion.
+    const live = row(shop, message).locator('.ann-row')
+    for (const fx of ['fx-sweep', 'fx-glint', 'fx-ring', 'fx-zoom', 'fx-nudge']) await expect(live).toHaveClass(new RegExp(fx))
+    await expect(live).not.toHaveClass(/fx-drift/)
+    const sweepState = () => live.locator('.ann-sweep').evaluate((el) => getComputedStyle(el, '::before').animationPlayState)
+    // The pointer starts at (0, 0), which is on the banner (top of the page): hovering pauses it. Move it off first.
+    await shop.mouse.move(0, shop.viewportSize()!.height - 1)
+    expect(await sweepState()).toBe('running')
+    await live.locator('.ann-text').hover()
+    expect(await sweepState()).toBe('paused')
+    await shop.mouse.move(0, shop.viewportSize()!.height - 1)
+    await shop.emulateMedia({ reducedMotion: 'reduce' })
+    await expect(live.locator('.ann-sweep')).toBeHidden()
+    await shop.emulateMedia({ reducedMotion: 'no-preference' })
     await auditPart(shop, 'section[aria-label="Announcements"]', 'banner (information)')
     await shot(shop, 'banner-shop', { fullPage: false })
     // Reload: still there (stored, first paint from the list).
@@ -130,7 +184,8 @@ test.describe('announcements: live banner on every page', () => {
     const r = await req(`${CATALOG}/api/catalog/v1/admin/announcements`, {
       method: 'POST',
       headers: auth,
-      body: JSON.stringify({ message, tone: 'INFO', audience: 'SIA', ttl: { preset: '1h' } }),
+      // The Strong look (solid tone, its own text colour) is checked by axe below.
+      body: JSON.stringify({ message, tone: 'INFO', audience: 'SIA', ttl: { preset: '1h' }, look: 'STRONG', effects: ['sweep', 'glint', 'ring', 'drift'] }),
     })
     expect(r.status).toBe(201)
     const created = (await r.json()) as { id: string; version: number }

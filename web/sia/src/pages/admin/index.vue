@@ -128,12 +128,13 @@ const tools = computed(() =>
 </template>
 
 <style scoped>
+.admin > .t-h1 {
+  margin-bottom: var(--sp-2); /* + the 16 px gap = 24 px under the title */
+}
 .admin {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  max-width: 1400px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** A-21 log in (as S-16). Customers get the "staff only" screen; admins without MFA go to setup first. */
-import { AuthCard, LoginForm, safeReturnTo } from '@cimh/web-app'
+import { AuthCard, AuthNotice, LoginForm, safeReturnTo } from '@cimh/web-app'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -22,10 +22,11 @@ function done() {
 
 <template>
   <AuthCard title="Welcome back" subtitle="Stores, inventory and requests for CIMH staff.">
-    <v-alert v-if="notice" type="success" variant="tonal" density="compact" class="mb-4">{{ notice }}</v-alert>
+    <AuthNotice v-if="notice" :text="notice" />
     <LoginForm
       verify-path="/verify"
       forgot-path="/forgot-password"
+      :skip-initial-focus="!!notice"
       :initial-email="typeof route.query.email === 'string' ? route.query.email : ''"
       @success="done"
     />

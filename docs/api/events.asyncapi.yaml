@@ -75,12 +75,12 @@ channels:
       documentDeleted: { $ref: '#/components/messages/documentDeleted' }
   mediaJobs:
     address: media.jobs
-    description: Image processing jobs. Key = productId.
+    description: Image processing jobs. Key = productId (announcement images = the misc carrier id `announcements`).
     messages:
       imageProcess: { $ref: '#/components/messages/imageProcess' }
   mediaResults:
     address: media.results
-    description: Image processing results. Key = productId.
+    description: Image processing results. Key = productId (announcement images = jobId).
     messages:
       imageProcessed: { $ref: '#/components/messages/imageProcessed' }
   auditEvents:
@@ -635,7 +635,15 @@ components:
         allOf:
           - $ref: '#/components/schemas/Envelope'
           - properties:
-              payload: { type: object, required: [jobId, productId, sourcePath, removeBackground], properties: { jobId: { type: string }, productId: { type: string }, sourcePath: { type: string, description: 'Relative to the files volume, e.g. incoming/<random>.jpg' }, removeBackground: { type: boolean } } }
+              payload:
+                type: object
+                required: [jobId, sourcePath, removeBackground]
+                properties:
+                  jobId: { type: string }
+                  target: { type: string, enum: [product, announcement], default: product, description: 'product = a product photo (productId required), written to public/products/<productId>/; announcement = a banner picture or background (2026-11-26), written to public/announcements/' }
+                  productId: { type: string, description: Required when target is product }
+                  sourcePath: { type: string, description: 'Relative to the files volume, e.g. incoming/<random>.jpg' }
+                  removeBackground: { type: boolean }
     imageProcessed:
       name: image.processed
       payload:
@@ -644,10 +652,11 @@ components:
           - properties:
               payload:
                 type: object
-                required: [productId, ok]
+                required: [jobId, ok]
                 properties:
                   jobId: { type: string, description: From image.process }
-                  productId: { type: string }
+                  target: { type: string, enum: [product, announcement], default: product, description: From image.process }
+                  productId: { type: string, description: Present when target is product }
                   ok: { type: boolean }
                   fileId: { type: string }
                   url: { type: string }

@@ -455,6 +455,11 @@ No personal data beyond the admin Actor.
 | `tone` | enum | R | `INFO` \| `ALERT` (alerts first; never closable) |
 | `audience` | enum | R | `SHOP` \| `SIA` \| `BOTH` |
 | `link` | object | | `{ label, url }` (`https://…` or a site path `/…`) **or** `{ label, productId }` (owner 2026-11-23: a banner about a product links to it; SHOP opens `/catalogue/<id>`, SIA `/products/<id>`). The product must be active, and on SHOP when the audience includes SHOP |
+| `picture` | object \| null | | `{ fileId, url, w, h }` (owner 2026-11-26): shown at the row's right; a product link without one shows the product's primary photo there, as the link (served as `link.imageUrl`, read at each request, never stored). The row grows to fit, ≤ 300 px |
+| `background` | object \| null | | `{ fileId, url, w, h }`: behind the text under a dark wash; the row grows, ≤ 300 px |
+| `look` | enum | | `SOFT` (default) \| `GRADIENT` \| `STRONG` (owner 2026-11-26): light wash, tone fading left to right, or solid tone colour |
+| `effects` | [enum] | | Looping attention effects (owner 2026-11-26), any of `sweep`, `glint`, `ring`, `drift`, `zoom`, `nudge`; `[]`/absent = calm. Paused on hover/keyboard focus, none with reduced motion |
+| `height` | int \| null | | Row height in px on wide screens, 48–300 (owner 2026-11-26); narrower screens scale it with the width (phones about half) and text, icon, lines and picture follow it. `null` = fit the content |
 | `dismissible` | bool | R | Viewers may close it (stored per browser); `false` for every `ALERT` |
 | `startsAt` | Timestamp | R | Default now; scheduled ones wait (≤ 90 days ahead) |
 | `expiresAt` | Timestamp | R | From the admin's TTL: preset 1 h / 1 day / 1 week / 30 days from the start, or an end time; ≤ 90 days from now |
@@ -463,6 +468,13 @@ No personal data beyond the admin Actor.
 | `version` | int | R | If-Match; also part of a viewer's "closed" mark, so an edit shows the message again |
 
 **Indexes:** `{ id: 1 }` unique; `{ expiresAt: 1 }` TTL (`expireAfterSeconds: 0`, name `announcement_ttl`); `{ audience: 1, startsAt: 1 }`.
+
+**Images** (2026-11-26): uploaded one at a time (`POST /admin/announcements/images`), decoded only by media-worker
+(`image.process` with `target: announcement`, on the `misc` carrier's outbox) and written to
+`public/announcements/<fileId>[@800|@320].webp`, served at `/media/announcements/…`. The carrier keeps each upload's
+state in `images.<fileId>` = `{ status: PROCESSING | READY | FAILED, createdAt, url?, w?, h?, error? }`
+(catalog-consumer records the result); only a READY image can be used. Uploads older than 2 days that no stored
+announcement uses (including those of announcements that ran out) are dropped, files and all, at the next upload.
 
 ### 5.10 `orders` (order-svc): carts and requests
 

@@ -60,9 +60,11 @@ async function save(body: Record<string, unknown>) {
 
 <template>
   <div class="np">
-    <router-link to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Inventory</router-link>
     <header class="head">
-      <h1 class="t-h1">New product</h1>
+      <div class="title-row">
+        <h1 class="t-h1">New product</h1>
+        <router-link to="/products" class="back t-label"><v-icon :icon="mdiArrowLeft" size="18" />Inventory</router-link>
+      </div>
       <p class="t-body muted">Name, type, department, the Pro Bono choice and the alert level are required. Photos are optional; labels and stock come after the product exists.</p>
     </header>
     <ProductForm style="--form-ground: rgb(var(--v-theme-background))" :saving="saving" :errors="errors" :draft-key="DRAFT" with-photos @save="save">
@@ -74,8 +76,6 @@ async function save(body: Record<string, unknown>) {
 
 <style scoped>
 .np {
-  max-width: 1200px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-12);
 }
 .back {
@@ -89,7 +89,13 @@ async function save(body: Record<string, unknown>) {
   color: rgb(var(--v-theme-primary));
 }
 .head {
-  margin: var(--sp-3) 0 var(--sp-6) 224px;
+  margin: 0 0 var(--sp-6) 224px;
+}
+.title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
 }
 .head p {
   margin: var(--sp-1) 0 0;

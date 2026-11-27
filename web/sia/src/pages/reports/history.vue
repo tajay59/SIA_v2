@@ -8,11 +8,3 @@ definePage({ meta: { guard: 'staff', title: 'Movement history' } })
 <template>
   <div class="page"><HistoryLedger /></div>
 </template>
-
-<style scoped>
-.page {
-  max-width: 1500px;
-  width: 100%;
-  margin: 0 auto;
-}
-</style>

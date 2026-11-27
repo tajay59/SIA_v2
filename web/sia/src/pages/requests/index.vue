@@ -448,9 +448,6 @@ const time = computed(() =>
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  width: 100%;
-  max-width: 1500px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
 }
 .toolbar {

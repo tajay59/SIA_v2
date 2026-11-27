@@ -33,6 +33,7 @@ import ScanField from '../components/ScanField.vue'
 import ScanLog, { type ScanEntry } from '../components/ScanLog.vue'
 import { waited } from '../request-queue'
 import { pinLeaving } from '../list-motion'
+import { useFitToWindow } from '../fit-scroller'
 
 definePage({ meta: { guard: 'staff', title: 'Pick' } })
 const route = useRoute()
@@ -53,6 +54,10 @@ const op = computed<Op>(() =>
 // Choosing the active tab again (a stray click, or a scanner's Enter on a focused tab) never clears the log;
 // it just puts the cursor back in the panel.
 const panel = ref<HTMLElement | null>(null)
+/* The queue fills the window under the tabs and only its rows scroll; the page itself never does (owner,
+   2026-11-26). Two columns only from 900 px; below, the queue follows the open request at its own height. */
+const queueEl = ref<HTMLElement | null>(null)
+const queueFit = useFitToWindow(queueEl, [], { minWidth: 900 })
 function choose(key: Op) {
   if (op.value === key) return focusPanel()
   entries.value = []
@@ -108,6 +113,7 @@ onMounted(() => {
 onBeforeUnmount(() => removeEventListener('resize', placeInk))
 
 function focusPanel() {
+  queueFit.fit() // the tab has finished sliding in: measure where the queue really starts
   void nextTick(() => {
     if (op.value === 'pick') return focusPick()
     if (op.value === 'order' && order.value) return unitScan.value?.focus()
@@ -313,7 +319,7 @@ function unpicked(l: PickLine) {
 
     <Transition :name="`tab-${tabDir}`" mode="out-in" @after-enter="focusPanel">
     <section v-if="op === 'order'" ref="panel" class="desk" :class="{ open: !!order }">
-      <aside class="queue panel" aria-label="Ready to pick">
+      <aside ref="queueEl" class="queue panel" aria-label="Ready to pick" :style="queueFit.style()">
         <!-- Head (golden ratio, 2026-11-25): title 17.8 ink + count in mono, order 11 muted; nothing wraps. -->
         <div class="queue-head">
           <div class="ph-text">
@@ -546,11 +552,6 @@ function unpicked(l: PickLine) {
 </template>
 
 <style scoped>
-.page {
-  max-width: 1320px;
-  margin: 0 auto;
-  width: 100%;
-}
 /* Underline tabs (owner's choice from the "Tabs and live log" sketch). */
 .tabs {
   display: flex;
@@ -620,6 +621,8 @@ function unpicked(l: PickLine) {
   overflow: hidden;
   position: sticky;
   top: var(--sp-4);
+  display: flex; /* head and scan field stay; the rows take the rest of the fitted height and scroll */
+  flex-direction: column;
 }
 /* Golden-ratio head: 11 / 14 / 17.8 px (14 ÷ √φ, 14, 14 × √φ), spacing 8 · 13 · 21; sides at the rows' 16 px edge.
    Hierarchy by size and ink: the title in full ink, the count in medium ink, the order muted. No line ever wraps. */
@@ -697,8 +700,10 @@ function unpicked(l: PickLine) {
   list-style: none;
   margin: 0;
   padding: 0;
-  max-height: calc(100vh - 300px);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   position: relative; /* leaving items are pinned inside it (list-motion.ts) */
 }
 .rows li + li {
@@ -708,6 +713,7 @@ function unpicked(l: PickLine) {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  box-sizing: border-box; /* a button is content-box: 100% + its padding made every row 32 px wider than the pane (sideways scroll) */
   width: 100%;
   padding: var(--sp-3) var(--sp-4);
   font: inherit;
@@ -1013,8 +1019,11 @@ function unpicked(l: PickLine) {
   align-self: flex-start;
   margin-top: 13px;
 }
+/* The two buttons are separate M3 pills, so they need room between them (they touched). */
 .mode {
   align-self: flex-start;
+  gap: var(--sp-2);
+  overflow: visible;
 }
 /* Not ready yet: dashed edge, no primary ring (contrast kept: no opacity). */
 .waiting :deep(.v-field)::after {

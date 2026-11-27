@@ -46,6 +46,38 @@ export async function endAnnouncement(a: { id: string; version: number }): Promi
   )
 }
 
+export type AnnouncementImage = S['AnnouncementImage']
+export type AnnouncementImageStatus = S['AnnouncementImageStatus']
+export type AnnouncementEffect = S['AnnouncementEffect']
+export type AnnouncementLook = S['AnnouncementLook']
+
+/** Upload a banner picture or background; media-worker prepares it (PROCESSING), so wait for READY. */
+export function uploadAnnouncementImage(file: File): Promise<AnnouncementImageStatus> {
+  const form = new FormData()
+  form.append('file', file)
+  return call(() =>
+    catalog.POST('/admin/announcements/images', { body: form as never, bodySerializer: (b: unknown) => b as FormData }),
+  )
+}
+
+/** Poll an upload until media-worker has finished it (READY or FAILED); gives up after `timeoutMs`. */
+export async function waitForAnnouncementImage(fileId: string, timeoutMs = 90_000): Promise<AnnouncementImageStatus> {
+  const until = Date.now() + timeoutMs
+  let wait = 600
+  for (;;) {
+    const s = await call(() => catalog.GET('/admin/announcements/images/{fileId}', { params: { path: { fileId } } }))
+    if (s.status !== 'PROCESSING') return s
+    if (Date.now() > until) return { fileId, status: 'FAILED', error: 'The image is taking too long to prepare. Try again.' }
+    await new Promise((r) => setTimeout(r, wait))
+    wait = Math.min(3_000, wait * 1.5)
+  }
+}
+
+/** The 320/800 px copies media-worker writes beside each image (`<id>@320.webp`). */
+export function announcementImageSrcset(url: string): string {
+  return `${url.replace(/\.webp$/, '@320.webp')} 320w, ${url.replace(/\.webp$/, '@800.webp')} 800w, ${url} 1600w`
+}
+
 /** Where a banner link goes in this app: a product link opens the product's page here (SHOP /catalogue/<id>,
  *  SIA /products/<id>); a web address goes where it says. */
 export function announcementHref(link: NonNullable<Announcement['link']>, app: AnnouncementApp): string | null {

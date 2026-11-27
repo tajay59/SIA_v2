@@ -8,6 +8,7 @@ import { type AuditEntry, call, DateField, identity, shortRef, useAccountNames, 
 import { statusLabel } from '@cimh/web-ui'
 import { mdiArrowRight, mdiMagnify } from '@mdi/js'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useFitToWindow } from '../../fit-scroller'
 import { useRoute, useRouter } from 'vue-router'
 import { dayKey, dayLabel, type Preset, PRESETS, timeOf } from '../../history'
 
@@ -52,6 +53,12 @@ const list = useCursorList<AuditEntry>((cursor) =>
   ),
 )
 onMounted(list.reload)
+
+/* Only the log scrolls (owner, 2026-11-26): the filters stay in view and the log fills the window below them
+   (fit-scroller.ts); the day heads stick to the log's own top. */
+const strip = ref<HTMLElement | null>(null)
+const log = ref<HTMLElement | null>(null)
+const logFit = useFitToWindow(log, [strip])
 let timer: ReturnType<typeof setTimeout> | undefined
 // A pending debounce must not fire after the page is left (router.replace would navigate back here).
 onBeforeUnmount(() => clearTimeout(timer))
@@ -239,7 +246,7 @@ const rowKey = (r: Row) => (r.kind === 'fold' ? r.key : r.e.id)
   <div class="audit">
     <h1 class="t-h1">Audit log</h1>
 
-    <div class="strip">
+    <div ref="strip" class="strip">
       <div class="fields">
         <v-text-field v-model="f.action" data-page-search :prepend-inner-icon="mdiMagnify" label="Action, e.g. account.approved" hide-details clearable class="act" @click:clear="f.action = ''" />
         <v-text-field v-model="f.entityId" label="Record id" hide-details clearable class="mono-in" @click:clear="f.entityId = ''" />
@@ -259,7 +266,7 @@ const rowKey = (r: Row) => (r.kind === 'fold' ? r.key : r.e.id)
       </div>
     </div>
 
-    <section class="log" aria-label="Audit entries">
+    <section ref="log" class="log" aria-label="Audit entries" tabindex="0" :style="logFit.style()">
       <div v-if="!list.loaded.value" class="pad" aria-busy="true"><div v-for="n in 6" :key="n" class="console-skel sk" /></div>
       <div v-else-if="!list.items.value.length" class="pad empty">
         <p class="t-body">No entries match these filters.</p>
@@ -312,12 +319,13 @@ const rowKey = (r: Row) => (r.kind === 'fold' ? r.key : r.e.id)
 </template>
 
 <style scoped>
+.audit > .t-h1 {
+  margin-bottom: var(--sp-3); /* + the 12 px gap = 24 px under the title */
+}
 .audit {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  max-width: 1440px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }
@@ -380,6 +388,14 @@ const rowKey = (r: Row) => (r.kind === 'fold' ? r.key : r.e.id)
   border: 1px solid rgb(var(--v-theme-seam));
   border-radius: 4px;
   background: rgb(var(--v-theme-surface));
+  /* The one scroller on the page (height from useFitToWindow). */
+  overflow-y: auto;
+  position: relative; /* contains absolute children (sr-only heads), so they scroll with it */
+  overscroll-behavior: contain;
+}
+.log:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
 }
 .pad {
   padding: var(--sp-6);
@@ -406,11 +422,6 @@ const rowKey = (r: Row) => (r.kind === 'fold' ? r.key : r.e.id)
   padding: 0 var(--sp-4);
   background: rgb(var(--v-theme-surface));
   border-bottom: 1px solid rgb(var(--v-theme-seam));
-}
-@media (max-width: 1279.98px) {
-  .day-head {
-    top: 56px;
-  }
 }
 .rows {
   list-style: none;

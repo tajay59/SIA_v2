@@ -7,6 +7,7 @@ vi.mock('@cimh/web-api', () => ({
 
 const { ApiError, call, ifMatch, onSessionExpired } = await import('../src/api')
 const { safeReturnTo } = await import('../src/guards')
+const { tryAgainIn } = await import('../src/notify')
 const { passwordStrength, register, rule, email, code, isCimhEmail } = await import('../src/validation')
 
 const res = (status: number, body?: unknown, headers: Record<string, string> = {}) => ({
@@ -77,6 +78,19 @@ describe('call()', () => {
   })
 })
 
+describe('tryAgainIn (Retry-After wording)', () => {
+  it.each([
+    [undefined, 'Try again in a moment.'],
+    [0, 'Try again in a moment.'],
+    [1, 'Try again in 1 second.'],
+    [45, 'Try again in 45 seconds.'],
+    [60, 'Try again in 1 minute.'],
+    [61, 'Try again in 2 minutes.'],
+    [120, 'Try again in 2 minutes.'],
+    [900, 'Try again in 15 minutes.'],
+  ])('%s s -> %s', (s, want) => expect(tryAgainIn(s)).toBe(want))
+})
+
 describe('safeReturnTo (no open redirects)', () => {
   it.each([
     ['/requests?tab=mine', '/requests?tab=mine'],
@@ -100,6 +114,10 @@ describe('validation', () => {
   it('builds Vuetify rules from schemas', () => {
     expect(rule(email)('a@b.co')).toBe(true)
     expect(rule(email)('nope')).toBe('Enter a valid email address')
+    // A blank field is asked for, not called invalid.
+    expect(rule(email)('')).toBe('Enter your email address')
+    expect(rule(email)('   ')).toBe('Enter your email address')
+    expect(rule(email)(undefined)).toBe('Enter your email address')
     expect(rule(code)('12345')).toBe('Enter the 6-digit code')
   })
 

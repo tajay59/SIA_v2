@@ -3,6 +3,7 @@
  * with guards. Each app passes its file-based `routes` and options.
  */
 import { installAuthMotion } from './auth-motion'
+import { installFieldInvalid } from './field-invalid'
 import { vuetifyOptions } from '@cimh/web-ui'
 import { createPinia } from 'pinia'
 import { type Component, createApp, inject } from 'vue'
@@ -103,6 +104,7 @@ export function boot(opts: BootOptions) {
   app.use(pinia).use(vuetify).use(router)
   installGuards(router, opts)
   installAuthMotion(router, opts.app)
+  installFieldInvalid()
   router
     .isReady()
     .then(() => app.mount(opts.mount ?? '#app'))

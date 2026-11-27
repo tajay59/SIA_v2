@@ -48,7 +48,6 @@
           "type": "object",
           "required": [
             "jobId",
-            "productId",
             "sourcePath",
             "removeBackground"
           ],
@@ -56,8 +55,18 @@
             "jobId": {
               "type": "string"
             },
+            "target": {
+              "type": "string",
+              "enum": [
+                "product",
+                "announcement"
+              ],
+              "default": "product",
+              "description": "product = a product photo (productId required), written to public/products/<productId>/; announcement = a banner picture or background (2026-11-26), written to public/announcements/"
+            },
             "productId": {
-              "type": "string"
+              "type": "string",
+              "description": "Required when target is product"
             },
             "sourcePath": {
               "type": "string",

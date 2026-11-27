@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** S-16 log in → `returnTo` or home. Notices: password changed, account active (from S-14 / S-18). */
-import { AuthCard, LoginForm, safeReturnTo } from '@cimh/web-app'
+import { AuthCard, AuthNotice, LoginForm, safeReturnTo } from '@cimh/web-app'
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -21,11 +21,12 @@ function done() {
 
 <template>
   <AuthCard title="Welcome back" subtitle="Log in to CIMH Stores to browse and request instruments and spares.">
-    <v-alert v-if="notice" type="success" variant="tonal" density="compact" class="mb-4">{{ notice }}</v-alert>
+    <AuthNotice v-if="notice" :text="notice" />
     <LoginForm
       verify-path="/verify"
       forgot-path="/forgot-password"
       pending-path="/pending-approval"
+      :skip-initial-focus="!!notice"
       :initial-email="typeof route.query.email === 'string' ? route.query.email : ''"
       @success="done"
     />

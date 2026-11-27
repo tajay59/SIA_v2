@@ -29,7 +29,11 @@ let ro: ResizeObserver | undefined
 onMounted(() => {
   measure()
   requestAnimationFrame(() => (ready.value = true))
-  ro = new ResizeObserver(measure)
+  let frame = 0
+  ro = new ResizeObserver(() => {
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(measure) // next frame: no layout change inside the observer's own callback
+  })
   if (root.value) ro.observe(root.value)
 })
 onBeforeUnmount(() => ro?.disconnect())

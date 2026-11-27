@@ -8,16 +8,31 @@
 import { nextTick, ref } from 'vue'
 import { type Router, START_LOCATION } from 'vue-router'
 import fallback from './assets/legacy/met-enclosure.webp'
+import fallback800 from './assets/legacy/met-enclosure-800.webp'
+import fallback1024 from './assets/legacy/met-enclosure-1024.webp'
 
+// `<app>.webp` is the still; `<app>-<width>.webp` copies are only for srcset (never matched by find()).
 const files = import.meta.glob('./assets/auth/*.{webp,jpg,png,mp4,webm}', { eager: true, query: '?url', import: 'default' }) as Record<string, string>
 const find = (app: string, exts: string[]) => exts.map((e) => files[`./assets/auth/${app}.${e}`]).find(Boolean) ?? null
 
-export type AuthMedia = { still: string; video: string | null; generated: boolean; caption: string }
+/** Smaller copies of a still, named `<app>-<width>.webp` (e.g. `shop-800.webp`), for phones' 200 px band. */
+function smaller(app: string): string[] {
+  return Object.entries(files)
+    .map(([path, url]) => [path.match(new RegExp(`/${app}-(\\d+)\\.webp$`))?.[1], url] as const)
+    .filter((e): e is readonly [string, string] => !!e[0])
+    .map(([w, url]) => `${url} ${w}w`)
+}
+
+export type AuthMedia = { still: string; srcset: string | undefined; video: string | null; generated: boolean; caption: string }
 export function authMedia(app: 'shop' | 'sia'): AuthMedia {
   const still = find(app, ['webp', 'jpg', 'png'])
+  // A generated still is 1536 px wide (assets/auth/SOURCE.md); the stand-in photo 1600.
+  const copies = still ? smaller(app) : [`${fallback800} 800w`, `${fallback1024} 1024w`]
+  const full = still ? `${still} 1536w` : `${fallback} 1600w`
   // The caption says only what is true of the picture: the stand-in is a real photo; a generated one is illustrative.
   return {
     still: still ?? fallback,
+    srcset: copies.length && full ? [...copies, full].join(', ') : undefined,
     video: still ? find(app, ['mp4', 'webm']) : null,
     generated: !!still,
     caption: still ? 'Illustrative image' : 'Meteorological enclosure',

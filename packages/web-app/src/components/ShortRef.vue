@@ -55,11 +55,15 @@ let ro: ResizeObserver | null = null
 onMounted(() => {
   const parent = box()
   if (!props.fit || !parent || typeof ResizeObserver === 'undefined') return
+  // Measured on the next frame: switching forms inside the observer's callback changes the size it watches in the
+  // same frame, which browsers report as "ResizeObserver loop completed with undelivered notifications".
+  let frame = 0
   ro = new ResizeObserver((entries) => {
     const w = Math.round(entries[0]?.contentRect.width ?? 0)
     if (w === lastWidth) return
     lastWidth = w
-    void measure()
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => void measure())
   })
   // Watch the box around the id's block too: the block itself may size to the id (a flex item, a cell), so its
   // own width changes with every full/short switch and would make the two forms take turns.

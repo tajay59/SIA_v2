@@ -26,6 +26,16 @@ endpoints:
     - admin
     ownership: admin
     note: admin
+  POST /api/catalog/v1/admin/announcements/images:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
+  GET /api/catalog/v1/admin/announcements/images/{fileId}:
+    roles:
+    - admin
+    ownership: admin
+    note: admin
   DELETE /api/catalog/v1/admin/announcements/{announcementId}:
     roles:
     - admin
@@ -121,12 +131,6 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin
-  POST /api/catalog/v1/products/{productId}/reactivate:
-    roles:
-    - staff
-    - admin
-    ownership: staff
-    note: staff, admin; undoes DELETE (owner 2026-11-25)
   POST /api/catalog/v1/products/{productId}/images:
     roles:
     - staff
@@ -145,6 +149,12 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin
+  POST /api/catalog/v1/products/{productId}/reactivate:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; undoes DELETE (owner 2026-11-25)
   GET /api/catalog/v1/reference:
     roles:
     - anonymous
@@ -230,6 +240,11 @@ endpoints:
     - staff
     - admin
     ownership: public
+  POST /api/documents/v1/internal/labels:
+    roles:
+    - service
+    ownership: service
+    note: inventory-svc only (label PDFs)
   GET /api/documents/v1/requests/{requestId}/agreement-preview:
     roles:
     - staff
@@ -254,6 +269,12 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin; the request's invoice / commercial invoice (one per kind), stored + recorded + attached
+  DELETE /api/documents/v1/requests/{requestId}/invoices/{kind}:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff, admin; void with a reason; admin only once the request is marked paid (409/403 from order-svc)
   GET /api/documents/v1/requests/{requestId}/invoices/{kind}:
     roles:
     - staff
@@ -266,17 +287,6 @@ endpoints:
     - admin
     ownership: staff
     note: staff, admin; next revision (If-Match = rev); locked once the request is marked paid
-  DELETE /api/documents/v1/requests/{requestId}/invoices/{kind}:
-    roles:
-    - staff
-    - admin
-    ownership: staff
-    note: staff, admin; void with a reason; admin only once the request is marked paid (409/403 from order-svc)
-  POST /api/documents/v1/internal/labels:
-    roles:
-    - service
-    ownership: service
-    note: inventory-svc only (label PDFs)
   GET /api/hello/v1/greeting:
     roles:
     - anonymous
@@ -697,6 +707,11 @@ endpoints:
     - staff
     - admin
     ownership: public
+  GET /api/orders/v1/internal/invoice-numbers/next:
+    roles:
+    - service
+    ownership: service
+    note: document-svc; suggested next invoice number
   GET /api/orders/v1/internal/requests/{requestId}:
     roles:
     - service
@@ -707,11 +722,6 @@ endpoints:
     - service
     ownership: service
     note: document-svc; service token
-  GET /api/orders/v1/internal/requests/{requestId}/quote-preview:
-    roles:
-    - service
-    ownership: service
-    note: document-svc; the request as send-quote would leave it, nothing saved
   POST /api/orders/v1/internal/requests/{requestId}/files:
     roles:
     - service
@@ -727,11 +737,11 @@ endpoints:
     - service
     ownership: service
     note: document-svc; voids the current invoice
-  GET /api/orders/v1/internal/invoice-numbers/next:
+  GET /api/orders/v1/internal/requests/{requestId}/quote-preview:
     roles:
     - service
     ownership: service
-    note: document-svc; suggested next invoice number
+    note: document-svc; the request as send-quote would leave it, nothing saved
   GET /api/orders/v1/requests:
     roles: *id002
     ownership: same_org
@@ -741,6 +751,12 @@ endpoints:
     - user
     ownership: self
     cimh_forbidden: true
+  GET /api/orders/v1/requests/counts:
+    roles:
+    - staff
+    - admin
+    ownership: staff
+    note: staff
   GET /api/orders/v1/requests/{requestId}:
     roles: *id002
     ownership: same_org
@@ -770,12 +786,6 @@ endpoints:
     ownership: requester
     note: requester or admin
   POST /api/orders/v1/requests/{requestId}/deliver:
-    roles:
-    - staff
-    - admin
-    ownership: staff
-    note: staff
-  GET /api/orders/v1/requests/counts:
     roles:
     - staff
     - admin

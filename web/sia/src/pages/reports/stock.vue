@@ -246,9 +246,6 @@ const shortBy = computed(() => (record.value && record.value.threshold > 0 ? Mat
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
-  max-width: 1500px;
-  width: 100%;
-  margin: 0 auto;
 }
 .finder {
   max-width: 480px;

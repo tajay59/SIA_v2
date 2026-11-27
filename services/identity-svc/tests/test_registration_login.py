@@ -91,7 +91,7 @@ def test_code_attempts_and_expiry(ctx: Ctx) -> None:
         r = ctx.client.post(ctx.url("/auth/verify"), json={"email": "ana@met.gd", "code": bad})
         assert r.json()["code"] == "CODE_INVALID"
     r = ctx.client.post(ctx.url("/auth/verify"), json={"email": "ana@met.gd", "code": good})
-    assert r.json()["code"] == "CODE_EXPIRED"  # 5 attempts used
+    assert r.json()["code"] == "CODE_ATTEMPTS_EXCEEDED"  # 5 attempts used: said apart from an expired code
     # unknown email looks the same as a wrong code
     r = ctx.client.post(ctx.url("/auth/verify"), json={"email": "nobody@x.org", "code": "123456"})
     assert r.json()["code"] == "CODE_INVALID"
@@ -274,6 +274,23 @@ def test_password_reset_flow_revokes_sessions(ctx: Ctx) -> None:
     )
     assert r.status_code == 204
     assert ctx.client.get(ctx.url("/me"), headers={"Authorization": "Bearer " + t["accessToken"]}).status_code == 401
+    ctx.login("u@met.bb", password="a brand new password")
+
+
+@pytest.mark.req("A8")
+def test_refused_new_password_keeps_the_reset_code(ctx: Ctx) -> None:
+    # Audit 2026-11-26: the code was used up before the password check, so the retry said "not right".
+    ctx.seed_account("u@met.bb")
+    ctx.client.post(ctx.url("/auth/password/forgot"), json={"email": "u@met.bb"})
+    code = ctx.code("u@met.bb", "reset_password")
+    r = ctx.client.post(
+        ctx.url("/auth/password/reset"), json={"email": "u@met.bb", "code": code, "newPassword": BREACHED}
+    )
+    assert r.json()["code"] == "PASSWORD_BREACHED"
+    r = ctx.client.post(
+        ctx.url("/auth/password/reset"), json={"email": "u@met.bb", "code": code, "newPassword": "a brand new password"}
+    )
+    assert r.status_code == 204
     ctx.login("u@met.bb", password="a brand new password")
 
 

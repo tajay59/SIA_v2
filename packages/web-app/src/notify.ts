@@ -18,9 +18,24 @@ export interface Toast {
 
 let seq = 0
 
+/**
+ * "Try again in 2 minutes." from a Retry-After in seconds: minutes from a minute up (a lock or a rate limit
+ * lasts minutes; "120 s" had to be worked out), seconds below one. One wording for toasts and inline messages.
+ */
+export function tryAgainIn(seconds?: number): string {
+  if (!seconds || seconds <= 0) return 'Try again in a moment.'
+  if (seconds < 60) {
+    const s = Math.ceil(seconds)
+    return `Try again in ${s} second${s === 1 ? '' : 's'}.`
+  }
+  const m = Math.ceil(seconds / 60)
+  return `Try again in ${m} minute${m === 1 ? '' : 's'}.`
+}
+
 export const useNotify = defineStore('notify', () => {
   const toasts = ref<Toast[]>([])
-  const unavailable = ref<null | { retry?: () => void }>(null)
+  /** `detail` replaces "Nothing was saved." where nothing was being saved (e.g. "No code was sent."). */
+  const unavailable = ref<null | { retry?: () => void; detail?: string }>(null)
 
   function toast(text: string, tone: ToastTone = 'info', extra: Partial<Omit<Toast, 'id' | 'text' | 'tone'>> = {}) {
     const t: Toast = { id: ++seq, text, tone, timeout: extra.timeout ?? (tone === 'error' ? 8000 : 4000), ...extra }
@@ -32,13 +47,13 @@ export const useNotify = defineStore('notify', () => {
     toasts.value = toasts.value.filter((t) => t.id !== id)
   }
 
-  function report(err: unknown, opts: { retry?: () => void } = {}) {
+  function report(err: unknown, opts: { retry?: () => void; detail?: string } = {}) {
     if (!(err instanceof ApiError)) {
       toast('Something went wrong. Please try again.', 'error')
       return
     }
     if (err.isNetwork) {
-      unavailable.value = { retry: opts.retry }
+      unavailable.value = { retry: opts.retry, detail: opts.detail }
       return
     }
     if (err.status === 409 && err.code === 'VERSION_CONFLICT') {
@@ -48,7 +63,7 @@ export const useNotify = defineStore('notify', () => {
     }
     if (err.status === 429) {
       const s = err.retryAfter
-      toast(s ? `Too many attempts. Try again in ${s} s.` : 'Too many attempts. Please wait a moment.', 'warning', {
+      toast(`Too many attempts. ${tryAgainIn(s)}`, 'warning', {
         timeout: Math.max(4000, (s ?? 0) * 1000),
       })
       return

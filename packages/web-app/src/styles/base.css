@@ -30,6 +30,9 @@ body {
 .t-caption { font-size: 12px; line-height: 16px; letter-spacing: 0.1px; }
 .t-mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; line-height: 20px; }
 .tnum { font-variant-numeric: tabular-nums; }
+/* Read by screen readers, not drawn. Several components defined this scoped; a page that used it without its
+   own copy (SIA settings index: "(unsaved changes)") printed the text beside the dot. */
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .muted { color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); }
 /* The current page in breadcrumbs: Vuetify fades it like a disabled control (below AA); keep it readable. */
 .v-breadcrumbs-item--disabled { opacity: 1; color: rgba(var(--v-theme-on-surface), var(--v-medium-emphasis-opacity)); }

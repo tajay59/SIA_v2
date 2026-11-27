@@ -233,8 +233,6 @@ const summary = computed(() => {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
-  max-width: 1600px;
-  margin-inline: auto;
   padding: var(--sp-4) var(--sp-6) var(--sp-6);
   font-size: 14px;
 }
@@ -250,6 +248,7 @@ const summary = computed(() => {
 .top {
   display: flex;
   align-items: center;
+  margin-bottom: var(--sp-3); /* + the 12 px gap = 24 px under the title */
 }
 .strip {
   display: flex;

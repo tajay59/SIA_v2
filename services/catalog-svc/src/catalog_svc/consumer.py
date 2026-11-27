@@ -4,6 +4,7 @@
 
   inventory.stock.events  stock.changed     -> product.inStock / stockCount (display only)
   media.results           image.processed   -> product.images[] + product.image_added
+                                              (target announcement -> the announcement image's status)
 Other event types on these topics are ignored. Delivery is at-least-once; both handlers are idempotent.
 """
 
@@ -19,6 +20,7 @@ from typing import Any
 from cimh_common.outbox import EventEnvelope
 from cimh_common.redis_client import redis_client
 
+from .announcements import AnnouncementService
 from .service import CatalogService
 from .store import Store
 
@@ -26,9 +28,18 @@ log = logging.getLogger("catalog.consumer")
 TOPICS = ["inventory.stock.events", "media.results"]
 
 
-def make_handler(service: CatalogService) -> Any:
+def make_handler(service: CatalogService, announcements: AnnouncementService | None = None) -> Any:
     async def handle(event: EventEnvelope) -> None:
         p = event.payload
+        if event.type == "image.processed" and p.get("target") == "announcement":
+            if not isinstance(p.get("jobId"), str):
+                raise ValueError(f"image.processed {event.eventId} lacks jobId")  # -> DLQ
+            if p.get("ok") and not (isinstance(p.get("fileId"), str) and isinstance(p.get("url"), str)):
+                raise ValueError(f"image.processed {event.eventId} lacks fileId/url")
+            if not p.get("ok"):
+                log.warning("announcement image failed", extra={"jobId": p["jobId"], "error": p.get("error")})
+            await (announcements or AnnouncementService(service.store)).image_processed(p)
+            return
         if event.type == "stock.changed":
             if not isinstance(p.get("productId"), str) or not isinstance(p.get("available"), int):
                 raise ValueError(f"stock.changed {event.eventId} lacks productId/available")  # -> DLQ

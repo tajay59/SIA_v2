@@ -934,6 +934,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/admin/announcements/images": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a banner picture or background (admin)
+         * @description One JPEG/PNG/WebP file, ≤ 20 MB, checked by its bytes. Decoded and re-encoded by media-worker (WebP at 1600,
+         *     800 and 320 px, metadata dropped; `image.process` with `target: announcement`), so it is PROCESSING at
+         *     first: poll `GET /admin/announcements/images/{fileId}` until READY, then give `{ fileId }` as `picture` or
+         *     `background`. Uploads no announcement uses are dropped after 2 days (with the images of announcements that
+         *     ran out).
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: {
+                    /** @description Required for cookie-authenticated POST/PUT/PATCH/DELETE (double-submit value from the `csrf_token` cookie). */
+                    "X-CSRF-Token"?: components["parameters"]["CsrfToken"];
+                };
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "multipart/form-data": {
+                        /** Format: binary */
+                        file: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Accepted for processing */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnnouncementImageStatus"];
+                    };
+                };
+                /** @description File too large (code FILE_TOO_LARGE) */
+                413: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/problem+json": components["schemas"]["Problem"];
+                    };
+                };
+                422: components["responses"]["Unprocessable"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/admin/announcements/images/{fileId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fileId: string;
+            };
+            cookie?: never;
+        };
+        /** An uploaded banner image's state (admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    fileId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description State */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["AnnouncementImageStatus"];
+                    };
+                };
+                404: components["responses"]["NotFound"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/admin/announcements/{announcementId}": {
         parameters: {
             query?: never;
@@ -1447,6 +1551,45 @@ export interface components {
             /** @description https:// address or a path on this site starting with / (never //, never http:) */
             url?: string;
             productId?: string;
+            /** @description Product links only: the product's primary photo (null when it has none); the banner shows it as the link (2026-11-26) */
+            imageUrl?: string | null;
+        };
+        /**
+         * @description SOFT = a light wash of the tone colour; GRADIENT = the tone fading left to right; STRONG = solid tone colour with its own text colour (2026-11-26)
+         * @default SOFT
+         * @enum {string}
+         */
+        AnnouncementLook: "SOFT" | "GRADIENT" | "STRONG";
+        /**
+         * @description sweep = a band of light crosses the row every 7 s; glint = a light runs along the bottom edge; ring = the
+         *     icon sends out a ring every 3 s (2 s for alerts); drift = the tone colours drift slowly (not with a
+         *     background image); zoom = the background image zooms slowly in and out; nudge = the link badge on the
+         *     picture nudges towards its arrow. zoom needs a background, nudge a picture that is a link.
+         * @enum {string}
+         */
+        AnnouncementEffect: "sweep" | "glint" | "ring" | "drift" | "zoom" | "nudge";
+        /** @description A banner picture or background, as media-worker wrote it (`<url>` 1600 px; `@800`, `@320` beside it). */
+        AnnouncementImage: {
+            fileId: string;
+            /** @example /media/announcements/IMG0123456789ABCDEF01234567.webp */
+            url: string;
+            w?: number;
+            h?: number;
+        };
+        /** @description An upload that is READY (422 IMAGE_NOT_FOUND / IMAGE_NOT_READY / IMAGE_NOT_USABLE otherwise). */
+        AnnouncementImageInput: {
+            fileId: string;
+        };
+        AnnouncementImageStatus: {
+            fileId: string;
+            /** @enum {string} */
+            status: "PROCESSING" | "READY" | "FAILED";
+            /** @description When READY */
+            url?: string;
+            w?: number;
+            h?: number;
+            /** @description When FAILED */
+            error?: string;
         };
         /**
          * @description A web address with a label, or a product (label optional: defaults to the product name). The product must
@@ -1474,6 +1617,15 @@ export interface components {
             /** @enum {string} */
             audience: "SHOP" | "SIA" | "BOTH";
             link: components["schemas"]["AnnouncementLink"] | null;
+            /** @description Shown at the row's right (a product link shows the product's photo there when this is null); the row grows to fit, at most 300 px */
+            picture?: components["schemas"]["AnnouncementImage"] | null;
+            /** @description Behind the text under a dark wash; the row grows */
+            background?: components["schemas"]["AnnouncementImage"] | null;
+            /** @description Row height in px on wide screens (2026-11-26); narrower screens scale it with the width (phones about half) and the text, icon and picture follow it. null = fit the content */
+            height?: number | null;
+            look?: components["schemas"]["AnnouncementLook"];
+            /** @description Looping attention effects, in this order; [] = calm. Paused on hover and keyboard focus, none with reduced motion */
+            effects?: components["schemas"]["AnnouncementEffect"][];
             /** @description Viewers may close it (always false for ALERT) */
             dismissible: boolean;
             /** Format: date-time */
@@ -1498,6 +1650,13 @@ export interface components {
             /** @enum {string} */
             audience: "SHOP" | "SIA" | "BOTH";
             link?: components["schemas"]["AnnouncementLinkInput"];
+            picture?: components["schemas"]["AnnouncementImageInput"] | null;
+            background?: components["schemas"]["AnnouncementImageInput"] | null;
+            /** @description px on wide screens; null or absent = fit the content */
+            height?: number | null;
+            look?: components["schemas"]["AnnouncementLook"];
+            /** @description Default [] (calm) */
+            effects?: components["schemas"]["AnnouncementEffect"][];
             /** @default true */
             dismissible: boolean;
             /**
@@ -1514,6 +1673,14 @@ export interface components {
             /** @enum {string} */
             audience?: "SHOP" | "SIA" | "BOTH";
             link?: components["schemas"]["AnnouncementLinkInput"] | null;
+            /** @description null removes it */
+            picture?: components["schemas"]["AnnouncementImageInput"] | null;
+            /** @description null removes it */
+            background?: components["schemas"]["AnnouncementImageInput"] | null;
+            /** @description null = fit the content */
+            height?: number | null;
+            look?: components["schemas"]["AnnouncementLook"];
+            effects?: components["schemas"]["AnnouncementEffect"][];
             dismissible?: boolean;
             /** Format: date-time */
             startsAt?: string;

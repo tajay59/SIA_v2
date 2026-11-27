@@ -239,7 +239,7 @@ class IdentityService:
         if expire < now():
             raise ProblemError(422, "CODE_EXPIRED", "The code has expired; request a new one")
         if doc.get("attempts", 0) >= self.s.code_max_attempts:
-            raise ProblemError(422, "CODE_EXPIRED", "Too many attempts; request a new code")
+            raise ProblemError(422, "CODE_ATTEMPTS_EXCEEDED", "Too many wrong codes; request a new code")
         if not sec.code_matches(code, doc["codeHash"], self.s.code_pepper):
             await self.store.temp.update_one({"id": doc["id"]}, {"$inc": {"attempts": 1}})
             raise ProblemError(422, "CODE_INVALID", "The code is not valid")
@@ -500,8 +500,9 @@ class IdentityService:
         acc = await self.store.accounts.find_one({"email": email.lower().strip()})
         if acc is None:
             raise ProblemError(422, "CODE_INVALID", "The code is not valid")
-        await self._check_code(acc["id"], "reset_password", code)
+        # The password first: a refused password (too short, breached) must leave the code usable for the next try.
         await self._check_new_password(new_password)
+        await self._check_code(acc["id"], "reset_password", code)
         await self.store.accounts.update_one(
             {"id": acc["id"]},
             {
